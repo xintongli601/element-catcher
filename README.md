@@ -55,6 +55,8 @@ npm run preview
 - Milestone 2: Selection mode and element highlighting on supported ordinary webpages, including hover overlay, click-to-select, Escape cancellation, cleanup, and minimal selected-element confirmation.
 - Milestone 2.5: Product positioning and Capture architecture reset, including the `CaptureRecord v1` schema in `docs/CAPTURE_SCHEMA.md`.
 
+See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
+
 ## Selection Mode
 
 Open the Element Catcher side panel and click `Start Capture` on an ordinary webpage. Move the pointer across page elements to preview the current target with a temporary overlay, then click the highlighted element to select it. Press `Escape` or use the side panel `Cancel` button to leave selection mode without selecting anything.
