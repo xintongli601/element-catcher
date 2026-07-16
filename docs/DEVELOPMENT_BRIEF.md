@@ -2,49 +2,28 @@
 
 ## 1. Objective
 
-Build the first working MVP of Element Catcher as a Chrome extension.
+Define the revised product architecture for Element Catcher before implementing screenshot capture, DOM/CSS extraction, local persistence, Capture Library, or AI integration.
 
-The extension should allow a user to select a visible UI element on a webpage, capture a cropped screenshot of that element, extract basic DOM and computed CSS information, save the capture locally, and prepare the data for AI-based React + Tailwind component generation.
+Milestone 2.5 is a documentation and architecture-definition task only. It preserves the existing Milestone 1 scaffold and Milestone 2 selection implementation. It does not add new extension functionality.
 
-The first implementation should prioritize a working end-to-end capture flow over visual polish.
+The revised architecture is:
 
-## 2. Development Principles
+```text
+Raw element
+  -> Capture extractor
+  -> Normalized CaptureRecord
+  -> Local Library
+  -> AI generator
+  -> Generated versions
+```
 
-Keep the MVP small and focused.
+The `CaptureRecord` is the source of truth for preview, search, local library, AI generation, generated versions, and future export.
 
-Do not implement Figma export, user accounts, cloud sync, payment, team collaboration, or advanced design-system features.
+## 2. Existing Architecture to Preserve
 
-Avoid unnecessary dependencies.
+The current implementation should remain intact during Milestone 2.5.
 
-Use clear, readable code.
-
-Prefer a modular structure so later versions can add AI generation, search, tagging, and Figma integration.
-
-Do not hard-code any private API keys.
-
-If an AI API is added, use environment variables or a local config file that is excluded from git.
-
-## 3. Recommended Tech Stack
-
-Use Chrome Extension Manifest V3.
-
-Use TypeScript if practical.
-
-Use React for the extension UI if it can be set up cleanly.
-
-Use Tailwind for the extension UI if it does not create unnecessary setup complexity.
-
-Use Chrome extension APIs for active tab access, content scripts, screenshot capture, and local storage.
-
-Use local Chrome storage for v0.1 saved captures.
-
-No backend is required for v0.1.
-
-No domain is required for v0.1.
-
-## 4. Suggested Project Structure
-
-Create a structure similar to:
+Existing structure:
 
 ```text
 element-catcher/
@@ -52,194 +31,316 @@ element-catcher/
   docs/
     PRD.md
     DEVELOPMENT_BRIEF.md
+    CAPTURE_SCHEMA.md
   extension/
     manifest.json
+    public/
     src/
       background/
+        service-worker.ts
       content/
-      popup/
-      sidepanel/
+        index.ts
       shared/
-    public/
+        messages.ts
+      sidepanel/
+        App.tsx
+        index.html
+        main.tsx
+        styles.css
   package.json
-  .gitignore
+  tsconfig.json
+  vite.config.ts
 ```
 
-If a simpler structure is better for the initial implementation, use the simpler structure, but keep the code organized by responsibility.
+Current responsibilities:
 
-## 5. Core Functional Requirements
+- Side panel: user controls and selection status.
+- Background service worker: active-tab coordination and messaging.
+- Content script: page interaction, hover detection, overlay, click selection, cancellation, cleanup.
+- Shared module: typed message definitions and selected-element metadata types.
 
-### 5.1 Extension Activation
+Milestone 2 already supports basic selection mode and element highlighting. Future implementation should build on this rather than replacing it.
 
-The user should be able to click the extension icon to activate Element Catcher.
+## 3. Development Principles
 
-Activation should allow the user to start selecting an element on the current webpage.
+- Keep the MVP small and focused.
+- Treat raw extraction data as an intermediate input, not the final product.
+- Normalize all persisted capture data into `CaptureRecord`.
+- Store local records as JSON-compatible data.
+- Keep screenshot binary data as an asset reference instead of embedding large data URLs in every metadata record.
+- Do not persist live DOM references.
+- Do not store raw `outerHTML` without sanitization.
+- Preserve the distinction between original captures and generated component versions.
+- Keep parent/child navigation as selection refinement, not a full DOM inspector.
+- Avoid unnecessary dependencies.
+- Do not hard-code private API keys.
+- If AI generation is added later, use safe configuration excluded from git.
 
-### 5.2 Element Highlighting
+## 4. Module Responsibilities
 
-When selection mode is active, the content script should highlight the element currently under the cursor.
+### 4.1 Side Panel
 
-The highlight should be visually clear but temporary.
+Current:
 
-The highlight should not permanently modify the webpage.
+- Display extension title, description, selection status, cancel control, and selected-element summary.
 
-### 5.3 Element Selection
+Future:
 
-When the user clicks a highlighted element, the extension should record the selected element's bounding box.
+- Show Capture Preview.
+- Show local Capture Library.
+- Let users edit title, tags, notes, and component type.
+- Trigger AI generation.
+- Display generated versions and preview.
 
-The selected element should be identified using DOM selection where possible.
+### 4.2 Background Service Worker
 
-For v0.1, click-to-select is enough. Drag-to-select can be added later.
+Current:
 
-### 5.4 Screenshot Capture
+- Configure side panel open behavior.
+- Route start/cancel selection commands to the active tab.
+- Return clear errors when a content script cannot be reached.
 
-After selection, the extension should use chrome.tabs.captureVisibleTab to capture the visible tab.
+Future:
 
-The extension should crop the screenshot according to the selected element's bounding box.
+- Coordinate screenshot capture with `chrome.tabs.captureVisibleTab`.
+- Connect selected-element metadata with screenshot crop requests.
+- Coordinate local persistence.
+- Keep privileged Chrome API usage out of content scripts.
 
-The cropped screenshot should be stored as a data URL or Blob-compatible format.
+### 4.3 Content Script
 
-### 5.5 DOM and CSS Extraction
+Current:
 
-The content script should extract useful information from the selected element.
+- Handle selection mode, hover overlay, click selection, Escape cancellation, and cleanup.
 
-At minimum, extract:
+Future:
 
-- Tag name
-- Text content
-- Class names
-- Element dimensions
-- Computed color
-- Computed background color
-- Font family
-- Font size
-- Font weight
-- Border radius
-- Border
-- Box shadow
-- Padding
-- Margin
-- Display
-- Gap
-- Flex or grid-related properties where available
+- Lock selected element.
+- Support parent/child refinement.
+- Extract sanitized DOM snapshot.
+- Extract normalized computed style snapshot.
+- Extract optional `::before` and `::after` style snapshots.
+- Build semantic summaries where practical.
 
-The extraction should return a structured JSON object.
+The content script should not store captures permanently and should not send sensitive raw page content unless the user explicitly initiates capture.
 
-### 5.6 Capture Preview
+### 4.4 Shared Types and Utilities
 
-After an element is captured, the extension UI should show:
+Current:
 
-- The cropped screenshot
-- Source URL
-- Capture timestamp
-- Basic extracted style information
-- A placeholder area for generated component code
+- Define typed extension messages and minimal selected-element metadata.
 
-### 5.7 Local Storage
+Future:
 
-The extension should save captured items locally.
+- Define or import `CaptureRecord` types.
+- Define schema migration helpers.
+- Define common JSON-compatible primitives.
+- Define message types for capture creation, save, preview, and generation.
 
-Each item should include:
+### 4.5 Local Library
 
-- Unique ID
-- Source URL
-- Timestamp
-- Screenshot data
-- Extracted DOM/CSS JSON
-- Generated code if available
-- Optional title or element type
+Future module.
 
-### 5.8 Code Generation Placeholder
+Responsibilities:
 
-If AI integration is not implemented in the first commit, create a clear placeholder function such as generateComponentFromCapture(capture).
+- Store CaptureRecords locally.
+- List captures.
+- Reopen capture.
+- Edit user metadata.
+- Delete captures.
+- Search and filter by title, tags, component type, source URL, and summaries.
 
-The placeholder should return a simple React + Tailwind component template based on the extracted information.
+### 4.6 AI Generator
 
-This will later be replaced or extended with a vision-capable AI API call.
+Future module.
 
-## 6. AI Integration Requirements for Later Step
+Responsibilities:
 
-When AI generation is implemented, the function should send:
+- Prepare screenshot plus structured CaptureRecord input.
+- Warn before transmitting capture data to an external AI API.
+- Request React + Tailwind output.
+- Store generated component versions separately from the original CaptureRecord.
 
-- Cropped screenshot
-- Extracted DOM/CSS JSON
-- User instruction
-- Desired output format: React + Tailwind
+## 5. Revised Implementation Order
 
-The model should return:
+Completed Milestone 1: Extension scaffold.
 
-- Component name
-- React + Tailwind code
-- Short component summary
-- Optional notes about approximation limitations
+Completed Milestone 2: Selection mode and element highlighting.
 
-Do not implement API key handling insecurely.
+Milestone 2.5: Product positioning and Capture architecture reset.
 
-Do not commit API keys.
+Revised Milestone 3: Reliable Element Capture.
 
-## 7. Acceptance Criteria for v0.1
+Milestone 3 should implement:
 
-The MVP is acceptable when:
+- Click-to-lock selected element
+- Tag, semantic role, and dimensions
+- Parent/child element navigation
+- Source URL and page title
+- Element screenshot capture and cropping
+- Sanitized DOM snapshot
+- Normalized computed style extraction
+- Optional pseudo-element style extraction
+- Typography, color, layout, and spacing summaries
+- Capture Preview
+- Creation of one valid `CaptureRecord`
+- Local persistence of the completed `CaptureRecord`
 
-1. The extension can be loaded locally in Chrome developer mode.
-2. The user can activate selection mode.
-3. Hovered elements are highlighted.
-4. The user can click an element to select it.
-5. The extension captures and crops a screenshot of the selected element.
-6. The extension extracts basic DOM/CSS data.
-7. The extension displays a preview of the captured element.
-8. The extension saves the capture locally.
-9. The user can copy generated or placeholder React + Tailwind code.
-10. The project remains small, readable, and easy to extend.
+Milestone 4: Personal Capture Library.
 
-## 8. Out of Scope for First Build
+Milestone 5: AI React + Tailwind Reconstruction.
 
-Do not build Figma export.
+Milestone 6: Isolated Preview and Version Management.
 
-Do not build authentication.
+Milestone 7: Export and Future Expansion.
 
-Do not build cloud sync.
+## 6. CaptureRecord Versioning Requirements
 
-Do not build a backend.
+`CaptureRecord` must include a `schemaVersion` field. The initial schema is `1`.
 
-Do not build payment or subscription logic.
+Versioning rules:
 
-Do not build team libraries.
+- New persisted records should write the latest supported schema version.
+- Readers should detect older schema versions.
+- Migrations should be pure functions from one JSON-compatible object to the next.
+- Migrations must not require live DOM nodes, browser runtime objects, or extension-only classes.
+- Migrations should preserve original capture data where possible.
+- Destructive migrations should be avoided.
+- Generated component versions should maintain their link to the source capture record.
 
-Do not build full-page website reconstruction.
+See `docs/CAPTURE_SCHEMA.md` for the `CaptureRecord v1` contract.
 
-Do not implement drag-to-select unless the click-to-select flow is already stable.
+## 7. Screenshot Storage Strategy
 
-Do not spend time on advanced UI polish before the capture flow works.
+Screenshot capture is future Milestone 3 work. Architecturally, screenshots should be represented as assets referenced by the CaptureRecord rather than large inline strings in every record.
 
-## 9. README Requirements
+Recommended approach:
 
-The README should explain:
+- Store screenshot binary data or data URLs in a local asset store.
+- Store a stable `assets.screenshot` reference object in the CaptureRecord.
+- Include media type, dimensions, and storage key.
+- Keep crop metadata separate from raw selection metadata.
+- Avoid duplicating the same large image payload across generated versions.
 
-- What Element Catcher is
-- Why it exists
-- The core v0.1 workflow
-- How to run the extension locally
-- What is currently supported
-- What is planned next
+## 8. DOM Sanitization Requirements
 
-The README should be written clearly for a portfolio project.
+Sanitized DOM snapshots are future Milestone 3 work. They must be limited, serializable, and privacy-aware.
 
-## 10. Next Development Step
+Requirements:
 
-After this documentation is updated, begin implementing the Chrome extension MVP in small milestones.
+- Remove `<script>` elements.
+- Remove inline event-handler attributes such as `onclick`, `onload`, and `onerror`.
+- Remove or redact password values.
+- Do not save input or textarea values by default.
+- Limit text length.
+- Avoid hidden sensitive content.
+- Limit depth and child count.
+- Preserve useful structure such as tag names, selected attributes, child summaries, and semantic hints.
+- Do not store live `HTMLElement`, `Node`, `DOMRect`, or `CSSStyleDeclaration` objects.
 
-Milestone 1: Set up extension scaffold.
+## 9. Sensitive-Data Handling Requirements
 
-Milestone 2: Implement selection mode and element highlighting.
+Element Catcher can be used on many login-only, intranet, permissioned, dynamic, and localhost pages that the user can already view. That increases the privacy burden.
 
-Milestone 3: Implement screenshot capture and cropping.
+Rules:
 
-Milestone 4: Implement DOM/CSS extraction.
+- Keep captures local by default.
+- Warn before sending any screenshot, DOM summary, text preview, style summary, or notes to an AI API.
+- Do not store password values.
+- Do not store input or textarea values by default.
+- Limit text previews.
+- Prefer semantic summaries over raw content.
+- Avoid persisting hidden sensitive content.
+- Do not bypass access controls.
+- Do not scrape content the user cannot already view.
 
-Milestone 5: Implement preview UI and local storage.
+## 10. Restricted-Page Limitations
 
-Milestone 6: Add placeholder React + Tailwind generation.
+The extension should not promise universal capture.
 
-Milestone 7: Add AI integration after the core flow is stable.
+Known unsupported or limited surfaces:
 
+- Chrome internal pages such as `chrome://` pages
+- Chrome Web Store pages
+- Browser-controlled UI
+- Extension pages where content scripts cannot run
+- Inaccessible cross-origin iframe contents
+- Closed shadow roots
+- Pages where the content script is blocked, unavailable, or not reloaded
+
+Unsupported pages should produce clear user-facing errors rather than permanent loading states.
+
+## 11. Parent/Child Selection Scope
+
+Parent/child navigation should help users refine a selected UI element. It should not become a complete DOM inspector.
+
+Scope:
+
+- Move from selected element to parent.
+- Move from selected element to meaningful children.
+- Show tag, role, and dimensions.
+- Keep overlay aligned with the current locked target.
+
+Out of scope:
+
+- Full DOM tree browser
+- CSS editing panel
+- QA measurement suite
+- Complete computed-style explorer
+
+## 12. Explicit Exclusions
+
+Do not include the following in the current MVP:
+
+- Complete visual CSS editor
+- Large typography, shadow, gradient, or spacing editing panels
+- Full-page cloning
+- Multi-page cloning
+- Image scraper
+- Video scraper
+- Complete page HTML export
+- Website publishing
+- Figma export
+- GitHub export
+- Team collaboration
+- Cloud sync
+- Multiple framework generation
+- Enterprise workflow
+- Payment
+- Authentication
+- Drag-to-box selection unless later validated as necessary
+
+## 13. Future Acceptance Criteria
+
+### Revised Milestone 3 Acceptance Criteria
+
+Milestone 3 is acceptable when:
+
+1. A user can lock a selected element on a supported webpage.
+2. The user can move to parent or child targets where available.
+3. The extension records tag, semantic role, dimensions, source URL, page title, viewport, and device pixel ratio.
+4. The extension captures and crops an element screenshot.
+5. The extension creates a sanitized DOM snapshot.
+6. The extension creates a normalized computed style snapshot.
+7. Optional pseudo-element style snapshots are included where available.
+8. Typography, color, layout, and spacing summaries are created.
+9. A Capture Preview displays the result.
+10. One valid `CaptureRecord v1` is created.
+11. The CaptureRecord is locally persisted.
+12. Sensitive fields are omitted or redacted according to policy.
+
+### Milestone 4 Acceptance Criteria
+
+Milestone 4 is acceptable when users can list, reopen, edit, delete, search, and filter local CaptureRecords.
+
+### Milestone 5 Acceptance Criteria
+
+Milestone 5 is acceptable when users can generate a React + Tailwind component from screenshot plus structured CaptureRecord input and save the generated version.
+
+### Milestone 6 Acceptance Criteria
+
+Milestone 6 is acceptable when users can preview generated components in isolation, revise them with natural language, regenerate, and compare versions.
+
+### Milestone 7 Acceptance Criteria
+
+Milestone 7 is acceptable when export and future expansion paths are defined and implemented without turning the MVP into a full publishing, enterprise, or multi-framework platform.

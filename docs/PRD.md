@@ -2,198 +2,321 @@
 
 ## 1. Product Overview
 
-Element Catcher is a Chrome extension that helps designers, product managers, front-end learners, and indie makers capture useful UI elements from webpages and convert them into reusable front-end components.
+Element Catcher is a local-first Chrome extension for capturing UI inspiration from supported webpages currently visible in the user's browser and rebuilding it as reusable front-end code.
 
-When users browse websites, they often discover UI/UX details worth learning from: a clean pricing card, a well-designed comment box, a polished button, a useful form layout, a dashboard widget, or a navigation pattern. Current workflows are fragmented. Users usually take screenshots, save links, or manually recreate the element later. This process loses important design details such as spacing, typography, colors, structure, and component hierarchy.
+The refined positioning is:
 
-Element Catcher aims to turn UI inspiration into reusable design and code assets. In v0.1, users can select a visible UI element on any webpage, capture a screenshot of that area, extract basic DOM and computed CSS where available, and generate a clean reusable React + Tailwind component.
+> Capture UI inspiration. Rebuild it as reusable code.
 
-The product's key positioning is: capture from what users can see, not only from what external tools can access.
+The product is not primarily differentiated by element inspection, raw CSS extraction, Tailwind export, or element screenshots. Those are useful supporting capabilities, but competing tools already provide them. Element Catcher should instead focus on the full reuse workflow:
 
-This makes Element Catcher especially useful for private, login-only, permissioned, or dynamic webpages, such as university discussion platforms, internal dashboards, CRM systems, learning management systems, and other pages that URL-based design import tools may not be able to access.
+```text
+Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
+```
 
-## 2. Problem
+The long-term product flow is:
 
-Designers and front-end learners often collect UI inspiration while browsing, but screenshots alone are passive references. They do not preserve the underlying structure or make the element immediately reusable.
+```text
+Raw webpage element
+  -> Capture extractor
+  -> Normalized CaptureRecord
+  -> Local Capture Library
+  -> AI component generator
+  -> Generated component versions
+  -> Reuse or export
+```
 
-Existing URL-to-design tools are useful for public webpages, but they often struggle with private, login-only, dynamic, or permissioned pages. For example, a student may see a well-designed component inside Ed Discussion, Canvas, Moodle, or an internal dashboard, but an external design-import tool cannot access that page through a URL.
+Element Catcher should remain lighter and more focused than full-site cloning, visual CSS editing, enterprise design-to-code suites, website publishing tools, or team design-system platforms.
 
-Existing screenshot-to-code tools can generate code from images, but they are usually separated from the browsing workflow. Users must manually take a screenshot, upload it, generate code, copy the result, and organize it somewhere else. Many of these tools also focus on full-page or full-screen reconstruction rather than element-level capture.
+## 2. Project History and Current State
 
-Element Catcher solves this by capturing what the user can already see in their own browser and turning selected UI elements into reusable components.
+Milestone 1 established the Chrome Extension Manifest V3 scaffold, TypeScript build setup, React side panel, background service worker, content script entry, and plain CSS UI.
 
-## 3. Target Users
+Milestone 2 implemented selection mode and element highlighting. The user can start selection from the side panel, hover DOM elements on ordinary supported webpages, see a temporary overlay, click to select an element, cancel with Escape, and see minimal selected-element metadata in the side panel.
 
-The first target users are UI/UX students, junior product designers, product managers learning design, front-end beginners, and indie makers.
+Milestone 2.5 is a documentation and architecture reset. It does not implement new extension functionality. It clarifies the product direction before screenshot capture, DOM/CSS extraction, local persistence, Capture Library, or AI generation are built.
 
-These users frequently browse websites for inspiration and want to build their own UI reference library, but they do not want to manually recreate every element from scratch.
+## 3. Problem Statement
 
-The strongest early user is someone building a design or front-end portfolio. They browse products, collect UI patterns, study how good interfaces are structured, and want to quickly turn inspiration into editable front-end components.
+Designers, product managers, front-end learners, and indie makers often notice useful UI patterns while browsing: a pricing card, comment box, dashboard widget, navigation pattern, form layout, or polished call-to-action. Existing workflows usually produce passive references such as screenshots, bookmarks, and notes. These references are easy to collect but hard to reuse.
 
-## 4. Product Differentiation
+Element inspection tools can show dimensions, CSS, screenshots, or Tailwind-like values, but raw inspection data is not enough. A single "Copy Tailwind" action does not create a reusable asset workflow. Users still need to organize the inspiration, understand the component's role, reconstruct it cleanly, preview generated versions, and return to it later.
 
-Element Catcher sits between three existing product categories.
+URL-to-design and screenshot-to-code products can help in adjacent workflows, but they often focus on public pages, full-page conversion, or one-off generation. Element Catcher is intended for local-first capture from supported pages already visible in the user's browser, including many login-only, intranet, permissioned, dynamic, and localhost pages, while respecting browser and extension restrictions.
 
-URL-to-design tools can import public webpages into design tools, but they may not work well with private or login-only pages.
+## 4. Target Users
 
-Inspiration tools can save screenshots or links, but they do not turn captured UI elements into reusable code assets.
+The first target users remain:
 
-Screenshot-to-code tools can generate code from images, but they usually require a separate upload workflow and are not focused on browser-native element-level capture.
+- UI/UX students
+- Junior product designers
+- Product managers learning design
+- Front-end beginners
+- Indie makers
+- Portfolio builders collecting interaction and component references
 
-Element Catcher combines these workflows into one browser-based experience: capture a visible UI element, extract available design information, generate reusable component code, and save the result into a local component library.
+The strongest early user is someone building a design or front-end portfolio. They browse real products, collect UI patterns, study how interfaces are structured, and want to turn inspiration into organized, editable, reusable front-end assets.
 
-## 5. MVP Scope
+## 5. Product Positioning
 
-v0.1 should focus only on the core flow: capture a visible UI element and generate a reusable code asset.
+Element Catcher should be positioned as a local-first UI inspiration capture and reusable asset workflow.
 
-The core user flow is:
+The product should not be framed as:
 
-1. The user opens a webpage.
-2. The user clicks the Element Catcher extension.
-3. The webpage enters selection mode.
-4. The user selects a UI element.
-5. The extension captures a screenshot of the selected area.
-6. The extension extracts basic DOM and computed CSS if available.
-7. The user previews the captured element.
-8. The user clicks "Generate Component".
-9. The system generates a React + Tailwind component.
-10. The user copies or saves the generated component locally.
+- A complete CSS inspector
+- A QA measurement tool
+- A full-page cloning tool
+- A media scraper
+- A website publishing platform
+- An enterprise collaboration suite
 
-v0.1 should include element selection, screenshot capture, basic DOM/CSS extraction, local saved items, and AI-based component generation.
+Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are supporting capabilities. The product's durable value should come from transforming raw webpage observations into a structured CaptureRecord, storing that record in a personal library, and using it to generate reusable component versions.
 
-v0.1 should not include Figma export, cloud sync, user accounts, team sharing, paid plans, advanced responsive state handling, or full design-system management.
+## 6. Product Differentiation
 
-## 6. Key Features
+Element Catcher sits between inspiration libraries, browser inspection tools, and AI code generators.
 
-### 6.1 Selection Mode
+The differentiation is the workflow, not any single extraction feature:
 
-When the user activates the extension, the webpage enters a selection state. As the user moves the cursor, the hovered element should be highlighted with a visible outline. The user can click to select an element.
+1. Capture from supported webpages already visible in the user's browser.
+2. Normalize raw screenshot, DOM, CSS, and semantic summaries into a stable CaptureRecord.
+3. Store captures locally as reusable assets, not just screenshots.
+4. Let the user organize captures with titles, tags, notes, and component types.
+5. Generate React + Tailwind component versions from screenshot plus structured capture data.
+6. Preserve generated versions separately from the original capture.
+7. Support reuse, comparison, and eventual export without becoming a full publishing platform.
 
-The first version should prioritize DOM element selection. Drag-to-box selection can be considered in a later version if element selection is not precise enough.
+Interaction patterns worth borrowing from existing tools include accurate hover highlighting, click-to-lock selection, Escape to cancel, dimensions, parent/child navigation, and fixed side-panel interaction. These should serve the capture workflow rather than become a full inspector product.
 
-### 6.2 Element Screenshot Capture
+## 7. Supported Page Limitations
 
-After selection, the extension captures the current visible tab and crops the image to the selected element's bounding box. This screenshot becomes the visual reference for AI reconstruction.
+Element Catcher should use accurate language about page support.
 
-The cropped screenshot should be saved with the captured item.
+The product can capture from supported webpages currently visible in the user's browser, including many login-only, intranet, permissioned, dynamic, and localhost pages.
 
-### 6.3 DOM and CSS Extraction
+It should not claim to work on literally every visible browser page. Known limitations include:
 
-If the selected element is accessible, the extension should extract useful structural and style information.
+- Chrome internal pages such as `chrome://` pages
+- Chrome Web Store pages
+- Browser-controlled UI
+- Extension pages where content scripts cannot run
+- Inaccessible cross-origin iframe contents
+- Closed shadow roots
+- Pages where the extension content script is blocked, unavailable, or not reloaded
 
-The extracted information should include, where available:
+The product must not bypass access controls or capture content the user cannot already view.
 
-- Tag name
-- Text content
-- Class names
-- Child element summary
-- Width and height
-- Color
-- Background color
-- Font family
-- Font size
-- Font weight
-- Line height
-- Border
-- Border radius
-- Box shadow
-- Padding
-- Margin
-- Display
-- Flex or grid-related properties
-- Gap
-- Alignment
+## 8. Local-First Principle
 
-The extracted data does not need to be exhaustive. It should provide enough context to help AI generate a cleaner and more accurate component.
+Element Catcher should be local-first by default.
 
-### 6.4 AI Component Generation
+Captured records should stay on the user's device unless the user explicitly chooses to export them or send data to an AI API. The local Capture Library is the primary store for saved inspiration assets.
 
-The extension should send the cropped screenshot and extracted style information to an AI model and ask it to generate a clean React + Tailwind component.
+Future AI generation should warn users before transmitting screenshots, text previews, DOM summaries, or style summaries to an external model. Users should be warned not to send sensitive personal information, private messages, confidential business data, protected content, passwords, payment information, or private identifiers.
 
-The output should not blindly copy messy website code. It should create a readable, reusable component inspired by the captured element.
+## 9. Core User Flow
 
-The first version should generate React + Tailwind by default.
+The revised core user flow is:
 
-### 6.5 Local Component Library
+1. The user opens a supported webpage.
+2. The user opens the Element Catcher side panel.
+3. The user starts selection mode.
+4. The user hovers and selects a UI element.
+5. The extension locks the selected element and offers parent/child refinement.
+6. The extension captures a screenshot reference and extracts sanitized, limited source data.
+7. The extension builds a normalized `CaptureRecord`.
+8. The user reviews a Capture Preview.
+9. The user saves the record into the local Capture Library.
+10. The user organizes the capture with title, component type, tags, and notes.
+11. The user generates one or more React + Tailwind component versions.
+12. The user previews, revises, compares, reuses, or exports generated versions.
 
-Each captured item should be saved locally with:
+Milestone 2 currently covers only steps 2-4 at a minimal level.
 
-- Screenshot
-- Source URL
-- Capture date
-- Detected or user-assigned element type
-- Extracted style information
-- Generated component code
+## 10. Structured Capture Concept
 
-The user should be able to revisit saved captures and copy the generated code again.
+A capture is not just a screenshot. A capture is a normalized, serializable record that combines visual reference, source context, sanitized structure, normalized style information, semantic summaries, and user library metadata.
 
-## 7. AI Output Requirements
+The normalized `CaptureRecord` should become the source of truth for:
 
-The generated component should be readable, reusable, and not overly tied to the original website's internal class names.
+- Local library entries
+- Capture preview
+- Search and filtering
+- AI generation input
+- Generated component versions
+- Future export workflows
 
-If the user captures a pricing card, the AI should generate a standalone component such as PricingCard with a clean structure: container, title, price, feature list, and call-to-action button.
+The raw webpage element itself must never be stored as a live DOM reference. Raw `outerHTML` must not be stored without sanitization. Large image data should be referenced as an asset rather than embedded directly in every metadata record.
 
-Tailwind classes should approximate the captured spacing, colors, typography, border radius, and shadow.
+## 11. Capture Library Concept
 
-If exact reproduction is impossible, the AI should prioritize a clean reusable approximation over messy or overly specific code.
+The Capture Library is not screenshot history. Each entry should be a structured reusable asset.
 
-The AI should also return a short component summary, including the component type and key design properties.
+Future library features should include:
 
-Example summary: "This is a pricing card with rounded corners, a subtle border, soft shadow, primary CTA button, and vertical feature list."
+- Capture list
+- Reopen capture
+- Edit title
+- Tags
+- Notes
+- Component type
+- Delete
+- Search
+- Filter
 
-## 8. Success Criteria
+The library should remain personal and local-first in the MVP. Cloud sync and team sharing are future possibilities, not v0.1 requirements.
 
-The MVP is successful if a user can capture a UI element from a webpage and generate a usable React + Tailwind component in under one minute.
+## 12. AI Reconstruction Concept
 
-The generated component does not need to be pixel-perfect, but it should preserve the core structure, visual style, and layout of the selected element.
+AI reconstruction should use both the screenshot reference and the structured CaptureRecord. The model should not blindly copy messy website code or internal class names. It should produce readable, reusable React + Tailwind code inspired by the captured UI element.
 
-For portfolio purposes, success means the project clearly demonstrates a real user problem, a clear gap in existing tools, a focused MVP, a browser-based capture workflow, AI-assisted UI reconstruction, and product thinking around privacy, usability, and reuse.
+The AI input should eventually include:
 
-## 9. Non-Goals for v0.1
+- Cropped screenshot reference
+- Sanitized DOM summary
+- Normalized computed style summary
+- Typography summary
+- Color roles
+- Layout summary
+- Spacing summary
+- Component type and user intent where available
 
-v0.1 will not attempt to recreate entire websites.
+The output should include:
 
-v0.1 will not guarantee pixel-perfect reconstruction.
+- Component name
+- React + Tailwind code
+- Component summary
+- Approximation notes
+- Generated version metadata
 
-v0.1 will not support Figma export.
+## 13. Generated Component Versions
 
-v0.1 will not support cloud accounts or team libraries.
+Generated components should be stored conceptually separate from the original CaptureRecord.
 
-v0.1 will not automatically publish components to a design system.
+A single capture may produce multiple generated versions. Future versions may support natural-language revision, regeneration, comparison, and export. Generated versions should preserve their relationship to the source capture without mutating the original capture data.
 
-v0.1 will not bypass access controls or scrape content that the user cannot already view.
+## 14. MVP Boundaries and Revised Roadmap
 
-v0.1 will not include payment, subscriptions, or authentication.
+Completed Milestone 1: Extension scaffold.
 
-## 10. Privacy and Ethical Considerations
+Completed Milestone 2: Selection mode and element highlighting.
 
-Because this tool can capture private or login-only pages, the product should be framed carefully. It should not be positioned as a tool to steal UI or extract confidential information.
+Milestone 2.5: Product positioning and Capture architecture reset.
 
-The intended use is personal design inspiration, study, and component recreation.
+Revised Milestone 3: Reliable Element Capture.
 
-Captured content should stay local unless the user chooses to send it to an AI API for code generation.
+Milestone 3 should eventually include:
 
-If API-based generation is used, users should be warned not to send sensitive personal information, private messages, confidential business data, or protected content.
+- Click-to-lock selected element
+- Tag, role, and dimensions
+- Parent/child element navigation
+- Source URL and page title
+- Element screenshot capture and cropping
+- Sanitized DOM snapshot
+- Normalized computed style extraction
+- Optional pseudo-element style extraction
+- Semantic design-property summaries
+- Capture Preview
+- Creation of one valid CaptureRecord
+- Local persistence of the completed CaptureRecord
+
+Milestone 4: Personal Capture Library.
+
+Future scope:
+
+- Capture list
+- Reopen capture
+- Edit title
+- Tags
+- Notes
+- Component type
+- Delete
+- Search
+- Filter
+
+Milestone 5: AI React + Tailwind Reconstruction.
+
+Future scope:
+
+- Screenshot plus structured CaptureRecord input
+- React + Tailwind output
+- Component name
+- Component summary
+- Approximation notes
+- Save generated version
+
+Milestone 6: Isolated Preview and Version Management.
+
+Future scope:
+
+- Isolated component preview
+- Natural-language revision
+- Regeneration
+- Multiple generated versions
+- Compare versions
+
+Milestone 7: Export and Future Expansion.
+
+Future scope may include:
+
+- Code file export
+- GitHub workflow
+- Figma integration
+- Additional frameworks
+- Cloud sync
+- Team collaboration
+
+## 15. Success Criteria
+
+The revised MVP is successful if a user can capture a UI element from a supported webpage, save it as a structured local asset, and later use it to generate a readable reusable React + Tailwind component.
+
+For product and portfolio purposes, success means the project demonstrates:
+
+- A real inspiration-to-reuse workflow
+- Local-first capture and library thinking
+- Clear differentiation from raw inspection and full-site cloning
+- Accurate browser support boundaries
+- Privacy-conscious data handling
+- A stable CaptureRecord schema
+- A focused milestone roadmap
+
+The generated component does not need to be pixel-perfect. It should preserve core structure, visual style, layout intent, and reusable design properties.
+
+## 16. Non-Goals
+
+Element Catcher v0.1 will not include:
+
+- Complete visual CSS editor
+- Large typography, shadow, gradient, or spacing editing panels
+- Full-page cloning
+- Multi-page cloning
+- Image scraping
+- Video scraping
+- Complete page HTML export
+- Website publishing
+- Figma export
+- GitHub export
+- Team collaboration
+- Cloud sync
+- Multiple framework generation
+- Enterprise workflow
+- Payment
+- Authentication
+- Drag-to-box selection unless later validated as necessary
+
+## 17. Privacy and Ethical Boundaries
+
+Element Catcher should be framed as a tool for personal design inspiration, study, and component recreation. It should not be positioned as a tool to steal UI, scrape media, bypass access controls, or extract confidential information.
+
+Privacy safeguards should include:
+
+- Keep CaptureRecords local by default.
+- Do not save password values.
+- Do not save input or textarea values by default.
+- Limit captured text length.
+- Sanitize DOM before persistence.
+- Remove scripts and event-handler attributes.
+- Avoid persisting hidden sensitive content.
+- Warn before future AI transmission.
 
 A later version may explore local-only model options, but this is not required for v0.1.
-
-## 11. Recommended Technical Direction
-
-Build as a Chrome extension using Manifest V3.
-
-Use a content script for element highlighting and selection.
-
-Use chrome.tabs.captureVisibleTab to capture the current visible page.
-
-Crop the screenshot using the selected element's bounding box.
-
-Use window.getComputedStyle() to extract basic CSS from the selected element and important child elements.
-
-Use Chrome storage or local storage to save captured items.
-
-Use a popup or side panel for the extension UI. A side panel is preferred because the user needs to preview the screenshot and review generated code.
-
-Use React + Tailwind for the extension UI if it does not add unnecessary complexity.
-
-For AI generation, use a vision-capable model API. The request should include the cropped screenshot plus extracted style JSON. The model should return React + Tailwind code and a short component summary.
-

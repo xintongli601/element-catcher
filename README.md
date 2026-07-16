@@ -1,8 +1,10 @@
 # Element Catcher
 
-Element Catcher is a Chrome extension project for capturing useful UI elements from webpages and turning them into reusable front-end components. The product is aimed at designers, product managers, front-end learners, and indie makers who want a faster way to collect and study interface patterns from pages they can already view in their own browser.
+Element Catcher is a local-first Chrome extension project for capturing UI inspiration from supported webpages and rebuilding it as reusable front-end code. The product is aimed at designers, product managers, front-end learners, and indie makers who want a faster way to collect, organize, study, and reuse interface patterns from pages they can already view in their own browser.
 
-Milestone 2 supports a focused browser selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary webpages. Hovered DOM elements receive a temporary overlay highlight, clicking selects the highlighted element, and pressing Escape cancels selection. Screenshot capture, DOM/CSS extraction, local capture storage, and AI generation are intentionally not implemented yet.
+The refined positioning is: "Capture UI inspiration. Rebuild it as reusable code." Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are useful supporting capabilities, but the product's core direction is the full workflow: Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse.
+
+Milestone 2 supports a focused browser selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking selects the highlighted element, and pressing Escape cancels selection. Screenshot capture, DOM/CSS extraction, local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -47,32 +49,49 @@ npm run preview
 5. Select the generated `dist/` directory.
 6. Click the Element Catcher extension icon to open the side panel.
 
-## Milestone 2 Support
+## Completed Milestones
 
-- Chrome Extension Manifest V3 scaffold
-- Background service worker entry
-- Content script selection mode for ordinary webpages
-- React + TypeScript side panel UI
-- "Start Capture" button that starts selection mode on the active webpage
-- Hover highlight overlay that does not modify webpage layout
-- Click-to-select with minimal in-memory selection metadata
-- Escape key and side panel cancellation
-- Minimal selected-element confirmation in the side panel
-- Empty saved captures state
-- Plain CSS styling
+- Milestone 1: Chrome Extension Manifest V3 scaffold, TypeScript build setup, React side panel, background service worker, content script entry, and plain CSS UI.
+- Milestone 2: Selection mode and element highlighting on supported ordinary webpages, including hover overlay, click-to-select, Escape cancellation, cleanup, and minimal selected-element confirmation.
+- Milestone 2.5: Product positioning and Capture architecture reset, including the `CaptureRecord v1` schema in `docs/CAPTURE_SCHEMA.md`.
 
 ## Selection Mode
 
 Open the Element Catcher side panel and click `Start Capture` on an ordinary webpage. Move the pointer across page elements to preview the current target with a temporary overlay, then click the highlighted element to select it. Press `Escape` or use the side panel `Cancel` button to leave selection mode without selecting anything.
 
-Selection mode records only minimal metadata for this milestone: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, and optional class names. It does not save captures locally.
+Selection mode records only minimal in-memory metadata for this milestone: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, and optional class names. It does not save captures locally.
+
+## Capture Architecture
+
+The future capture workflow is:
+
+```text
+Raw webpage element
+  -> Capture extractor
+  -> Normalized CaptureRecord
+  -> Local Capture Library
+  -> AI component generator
+  -> Generated component versions
+  -> Reuse or export
+```
+
+The normalized `CaptureRecord` is planned as the source of truth for Capture Preview, local library entries, search, AI generation, generated component versions, and future export. Raw DOM references will not be persisted.
 
 ## Known Limitations
 
-- Selection mode is limited to ordinary `http://` and `https://` webpages where the content script is available.
+- Selection mode is limited to supported `http://` and `https://` webpages where the content script is available.
+- Element Catcher can support many login-only, intranet, permissioned, dynamic, and localhost pages, but it does not work on every visible browser page.
 - Restricted pages such as `chrome://` pages, Chrome Web Store pages, browser-controlled UI, and some extension pages cannot be selected.
 - Cross-origin iframe support is not implemented in Milestone 2.
 - Closed shadow roots and browser UI cannot be inspected.
+
+## Revised Roadmap
+
+- Milestone 3: Reliable Element Capture, including locked selection, parent/child navigation, source URL and page title, screenshot capture and cropping, sanitized DOM snapshot, normalized computed style extraction, semantic summaries, Capture Preview, one valid `CaptureRecord`, and local persistence.
+- Milestone 4: Personal Capture Library with list, reopen, edit title, tags, notes, component type, delete, search, and filter.
+- Milestone 5: AI React + Tailwind Reconstruction using screenshot plus structured CaptureRecord input, saving generated versions.
+- Milestone 6: Isolated Preview and Version Management with preview, natural-language revision, regeneration, multiple versions, and comparison.
+- Milestone 7: Export and Future Expansion, potentially including code file export, GitHub workflow, Figma integration, additional frameworks, cloud sync, and team collaboration.
 
 ## Intentionally Unimplemented
 
@@ -80,9 +99,8 @@ Selection mode records only minimal metadata for this milestone: tag name, bound
 - DOM/CSS extraction
 - Capture preview
 - Local capture library storage
+- Capture Library search and organization
 - React + Tailwind component generation
 - AI API integration
 - Figma export
 - Authentication, backend services, cloud sync, and payments
-
-Milestone 3 is the next planned step and will focus on screenshot capture and cropping.
