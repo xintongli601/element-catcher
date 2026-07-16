@@ -1,0 +1,24 @@
+{
+  "manifest_version": 3,
+  "name": "Element Catcher",
+  "version": "0.1.0",
+  "description": "Capture visible UI inspiration and prepare it for reusable component generation.",
+  "action": {
+    "default_title": "Element Catcher"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content/content-script.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": ["sidePanel"],
+  "side_panel": {
+    "default_path": "src/sidepanel/index.html"
+  }
+}
