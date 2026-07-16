@@ -17,7 +17,7 @@
       "run_at": "document_idle"
     }
   ],
-  "permissions": ["sidePanel"],
+  "permissions": ["activeTab", "sidePanel"],
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
   }
