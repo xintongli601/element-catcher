@@ -2,17 +2,19 @@ import { useEffect, useState } from "react";
 import type {
   ElementSelection,
   ExtensionMessage,
+  LockedSelectionState,
   SelectionCommandResponse,
   SidePanelStatus
 } from "../shared/messages";
 import { isExtensionMessage } from "../shared/messages";
 
-const activeInstruction = "Hover over an element and click to select it. Press Esc to cancel.";
+const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
 
 export function App() {
   const [status, setStatus] = useState<SidePanelStatus>("idle");
   const [message, setMessage] = useState("Ready to select an element on the active webpage.");
   const [selection, setSelection] = useState<ElementSelection | null>(null);
+  const [lockedSelection, setLockedSelection] = useState<LockedSelectionState | null>(null);
 
   useEffect(() => {
     const handleRuntimeMessage = (runtimeMessage: unknown) => {
@@ -23,24 +25,35 @@ export function App() {
       if (runtimeMessage.type === "EC_SELECTION_STARTED") {
         setStatus("active");
         setSelection(null);
+        setLockedSelection(null);
         setMessage(activeInstruction);
+      }
+
+      if (runtimeMessage.type === "EC_SELECTION_LOCKED") {
+        setStatus("locked");
+        setSelection(null);
+        setLockedSelection(runtimeMessage.lockedSelection);
+        setMessage("Element locked. Refine with Parent or Child, then confirm the final element.");
       }
 
       if (runtimeMessage.type === "EC_SELECTION_COMPLETED") {
         setStatus("selected");
         setSelection(runtimeMessage.selection);
+        setLockedSelection(null);
         setMessage("Element selected. Screenshot capture will be implemented in Milestone 3.");
       }
 
       if (runtimeMessage.type === "EC_SELECTION_CANCELLED") {
         setStatus("cancelled");
         setSelection(null);
+        setLockedSelection(null);
         setMessage("Selection cancelled. Normal page interaction has been restored.");
       }
 
       if (runtimeMessage.type === "EC_SELECTION_ERROR") {
         setStatus("error");
         setSelection(null);
+        setLockedSelection(null);
         setMessage(runtimeMessage.message);
       }
     };
@@ -52,6 +65,7 @@ export function App() {
   const handleStartCapture = async () => {
     setStatus("starting");
     setSelection(null);
+    setLockedSelection(null);
     setMessage("Starting selection mode on the active webpage...");
 
     const response = await sendCommand({ type: "EC_START_SELECTION" });
@@ -63,6 +77,30 @@ export function App() {
 
   const handleCancelSelection = async () => {
     const response = await sendCommand({ type: "EC_CANCEL_SELECTION" });
+    if (!response.ok) {
+      setStatus("error");
+      setMessage(response.message);
+    }
+  };
+
+  const handleParent = async () => {
+    const response = await sendCommand({ type: "EC_REFINE_PARENT" });
+    if (!response.ok) {
+      setStatus("error");
+      setMessage(response.message);
+    }
+  };
+
+  const handleChild = async () => {
+    const response = await sendCommand({ type: "EC_REFINE_CHILD" });
+    if (!response.ok) {
+      setStatus("error");
+      setMessage(response.message);
+    }
+  };
+
+  const handleConfirmSelection = async () => {
+    const response = await sendCommand({ type: "EC_CONFIRM_SELECTION" });
     if (!response.ok) {
       setStatus("error");
       setMessage(response.message);
@@ -82,11 +120,11 @@ export function App() {
             className="primary-action"
             type="button"
             onClick={handleStartCapture}
-            disabled={status === "starting" || status === "active"}
+            disabled={status === "starting" || status === "active" || status === "locked"}
           >
             {status === "starting" ? "Starting..." : "Start Capture"}
           </button>
-          {status === "active" ? (
+          {status === "active" || status === "locked" ? (
             <button className="secondary-action" type="button" onClick={handleCancelSelection}>
               Cancel
             </button>
@@ -94,6 +132,16 @@ export function App() {
         </div>
         <p className={`notice notice-${status}`}>{message}</p>
       </section>
+
+      {lockedSelection ? (
+        <LockedSelectionSummary
+          lockedSelection={lockedSelection}
+          onParent={handleParent}
+          onChild={handleChild}
+          onConfirm={handleConfirmSelection}
+          onCancel={handleCancelSelection}
+        />
+      ) : null}
 
       {selection ? <SelectionSummary selection={selection} /> : null}
 
@@ -107,42 +155,99 @@ export function App() {
   );
 }
 
+function LockedSelectionSummary({
+  lockedSelection,
+  onParent,
+  onChild,
+  onConfirm,
+  onCancel
+}: {
+  lockedSelection: LockedSelectionState;
+  onParent: () => void;
+  onChild: () => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <section className="selection-summary locked-summary" aria-labelledby="locked-selection-heading">
+      <h2 id="locked-selection-heading">Locked element</h2>
+      <SelectionDetails selection={lockedSelection.selection} />
+      <div className="refinement-actions">
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={onParent}
+          disabled={!lockedSelection.canSelectParent}
+        >
+          Parent
+        </button>
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={onChild}
+          disabled={!lockedSelection.canSelectChild}
+        >
+          Child
+        </button>
+        <button className="primary-action" type="button" onClick={onConfirm}>
+          Confirm
+        </button>
+        <button className="secondary-action" type="button" onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function SelectionSummary({ selection }: { selection: ElementSelection }) {
   return (
     <section className="selection-summary" aria-labelledby="selection-summary-heading">
       <h2 id="selection-summary-heading">Selected element</h2>
-      <dl>
-        <div>
-          <dt>Tag</dt>
-          <dd>{selection.tagName}</dd>
-        </div>
-        <div>
-          <dt>Size</dt>
-          <dd>
-            {selection.rect.width} x {selection.rect.height}
-          </dd>
-        </div>
-        {selection.id ? (
-          <div>
-            <dt>ID</dt>
-            <dd>{selection.id}</dd>
-          </div>
-        ) : null}
-        {selection.classNames?.length ? (
-          <div>
-            <dt>Classes</dt>
-            <dd>{selection.classNames.join(" ")}</dd>
-          </div>
-        ) : null}
-        {selection.textPreview ? (
-          <div>
-            <dt>Text</dt>
-            <dd>{selection.textPreview}</dd>
-          </div>
-        ) : null}
-      </dl>
+      <SelectionDetails selection={selection} />
       <p className="next-step-note">Screenshot capture will be implemented in Milestone 3.</p>
     </section>
+  );
+}
+
+function SelectionDetails({ selection }: { selection: ElementSelection }) {
+  return (
+    <dl>
+      <div>
+        <dt>Tag</dt>
+        <dd>{selection.tagName}</dd>
+      </div>
+      {selection.semanticRole ? (
+        <div>
+          <dt>Role</dt>
+          <dd>{selection.semanticRole}</dd>
+        </div>
+      ) : null}
+      <div>
+        <dt>Size</dt>
+        <dd>
+          {selection.rect.width} x {selection.rect.height}
+        </dd>
+      </div>
+      {selection.id ? (
+        <div>
+          <dt>ID</dt>
+          <dd>{selection.id}</dd>
+        </div>
+      ) : null}
+      {selection.classNames?.length ? (
+        <div>
+          <dt>Classes</dt>
+          <dd>{selection.classNames.join(" ")}</dd>
+        </div>
+      ) : null}
+      {selection.textPreview ? (
+        <div>
+          <dt>Text</dt>
+          <dd>{selection.textPreview}</dd>
+        </div>
+      ) : null}
+    </dl>
   );
 }
 

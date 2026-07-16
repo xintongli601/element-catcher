@@ -4,7 +4,7 @@ Element Catcher is a local-first Chrome extension project for capturing UI inspi
 
 The refined positioning is: "Capture UI inspiration. Rebuild it as reusable code." Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are useful supporting capabilities, but the product's core direction is the full workflow: Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse.
 
-Milestone 2 supports a focused browser selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking selects the highlighted element, and pressing Escape cancels selection. Screenshot capture, DOM/CSS extraction, local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
+Milestone 3A supports a focused locked-selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking locks the highlighted element, Parent and Child controls refine along a deterministic path, and Confirm returns the final selected metadata. Screenshot capture, DOM/CSS extraction, local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -59,9 +59,9 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
 ## Selection Mode
 
-Open the Element Catcher side panel and click `Start Capture` on an ordinary webpage. Move the pointer across page elements to preview the current target with a temporary overlay, then click the highlighted element to select it. Press `Escape` or use the side panel `Cancel` button to leave selection mode without selecting anything.
+Open the Element Catcher side panel and click `Start Capture` on an ordinary webpage. Move the pointer across page elements to preview the current target with a temporary overlay, then click the highlighted element to lock it. Use `Parent` or `Child` to refine the locked target along the deterministic refinement path, then click `Confirm` to select the final element. Press `Escape` or use the side panel `Cancel` button to leave selection mode without selecting anything.
 
-Selection mode records only minimal in-memory metadata for this milestone: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, and optional class names. It does not save captures locally.
+Selection mode records only minimal in-memory metadata for this stage: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, optional class names, and optional semantic role. It does not save captures locally.
 
 ## Capture Architecture
 

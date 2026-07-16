@@ -220,6 +220,55 @@ Acceptance criteria:
 - The `CaptureRecord` is locally persisted.
 - Sensitive fields are omitted or redacted according to policy.
 
+### Milestone 3A - Locked Selection and Parent/Child Refinement
+
+Status: Implemented, pending manual runtime validation
+
+Objective: Replace immediate click-to-select completion with a locked-selection refinement flow:
+
+```text
+Start Capture
+  -> Hover candidate
+  -> Click to lock candidate
+  -> Refine with Parent or Child
+  -> Confirm final element
+  -> Return confirmed metadata
+```
+
+Included scope:
+
+- Click-to-lock candidate element.
+- Temporary content-script runtime state for the locked element.
+- Parent refinement to the nearest eligible ancestor.
+- Child refinement down the deterministic path created by Parent actions.
+- Confirm action that returns final serializable selected-element metadata.
+- Cancel and Escape support in active hover and locked states.
+- Locked overlay styling and scroll/resize realignment.
+- Disconnected locked-element error handling.
+- Basic deterministic semantic-role metadata.
+- Side panel locked state and Parent, Child, Confirm, and Cancel controls.
+
+Explicitly excluded scope:
+
+- Screenshot capture.
+- `CaptureRecord v1` construction.
+- Local persistence.
+- Capture Preview.
+- Capture Library.
+- AI generation.
+- Full DOM tree browsing.
+- Sibling navigation.
+- Arbitrary child browsing.
+
+Acceptance criteria:
+
+- TypeScript production build passes.
+- The locked-selection runtime flow is manually validated on ordinary supported webpages.
+- Parent and Child refinement are manually validated as deterministic and bounded.
+- Confirm, Cancel, Escape, cleanup, and repeatability are manually validated.
+- Restricted and unreachable page behavior remains clearly reported.
+- Milestone 3A must not be marked Completed until required runtime validation is actually performed.
+
 ## Milestone 4 - Personal Capture Library
 
 Status: Planned

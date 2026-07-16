@@ -103,6 +103,13 @@ h2 {
   background: #f0f4fa;
 }
 
+.secondary-action:disabled {
+  border-color: #d8dee8;
+  background: #f1f4f8;
+  color: #8a97aa;
+  cursor: not-allowed;
+}
+
 .primary-action:focus-visible {
   outline: 3px solid #93c5fd;
   outline-offset: 2px;
@@ -131,6 +138,12 @@ h2 {
   color: #14532d;
 }
 
+.notice-locked {
+  border-left-color: #15803d;
+  background: #f0fdf4;
+  color: #14532d;
+}
+
 .notice-cancelled {
   border-left-color: #64748b;
   background: #f8fafc;
@@ -148,6 +161,11 @@ h2 {
   border-radius: 8px;
   padding: 16px;
   background: #ffffff;
+}
+
+.locked-summary {
+  border-color: #86efac;
+  background: #fbfffd;
 }
 
 .selection-summary dl {
@@ -181,6 +199,13 @@ h2 {
   color: #42506a;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.refinement-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
 }
 
 .saved-captures {

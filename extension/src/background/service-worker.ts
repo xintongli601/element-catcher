@@ -1,5 +1,8 @@
 import type {
   ContentCancelSelectionRequest,
+  ContentConfirmSelectionRequest,
+  ContentRefineChildRequest,
+  ContentRefineParentRequest,
   ContentStartSelectionRequest,
   ExtensionMessage,
   SelectionCommandResponse
@@ -17,7 +20,7 @@ chrome.runtime.onMessage.addListener(
     _sender: chrome.runtime.MessageSender,
     sendResponse: (response: SelectionCommandResponse) => void
   ) => {
-    if (message.type !== "EC_START_SELECTION" && message.type !== "EC_CANCEL_SELECTION") {
+    if (!isSidePanelCommand(message)) {
       return false;
     }
 
@@ -26,7 +29,21 @@ chrome.runtime.onMessage.addListener(
   }
 );
 
-async function sendSelectionCommand(command: "EC_START_SELECTION" | "EC_CANCEL_SELECTION") {
+type SidePanelCommand =
+  | "EC_START_SELECTION"
+  | "EC_CANCEL_SELECTION"
+  | "EC_REFINE_PARENT"
+  | "EC_REFINE_CHILD"
+  | "EC_CONFIRM_SELECTION";
+
+type ContentCommand =
+  | ContentStartSelectionRequest
+  | ContentCancelSelectionRequest
+  | ContentRefineParentRequest
+  | ContentRefineChildRequest
+  | ContentConfirmSelectionRequest;
+
+async function sendSelectionCommand(command: SidePanelCommand) {
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
   if (!activeTab?.id) {
@@ -43,10 +60,7 @@ async function sendSelectionCommand(command: "EC_START_SELECTION" | "EC_CANCEL_S
     } satisfies SelectionCommandResponse;
   }
 
-  const contentMessage: ContentStartSelectionRequest | ContentCancelSelectionRequest =
-    command === "EC_START_SELECTION"
-      ? { type: "EC_CONTENT_START_SELECTION" }
-      : { type: "EC_CONTENT_CANCEL_SELECTION" };
+  const contentMessage = toContentCommand(command);
 
   try {
     await chrome.tabs.sendMessage(activeTab.id, contentMessage);
@@ -62,4 +76,34 @@ async function sendSelectionCommand(command: "EC_START_SELECTION" | "EC_CANCEL_S
 
 function isSupportedPageUrl(url: string | undefined) {
   return Boolean(url && (url.startsWith("http://") || url.startsWith("https://")));
+}
+
+function isSidePanelCommand(message: ExtensionMessage): message is ExtensionMessage & { type: SidePanelCommand } {
+  return (
+    message.type === "EC_START_SELECTION" ||
+    message.type === "EC_CANCEL_SELECTION" ||
+    message.type === "EC_REFINE_PARENT" ||
+    message.type === "EC_REFINE_CHILD" ||
+    message.type === "EC_CONFIRM_SELECTION"
+  );
+}
+
+function toContentCommand(command: SidePanelCommand): ContentCommand {
+  if (command === "EC_START_SELECTION") {
+    return { type: "EC_CONTENT_START_SELECTION" };
+  }
+
+  if (command === "EC_CANCEL_SELECTION") {
+    return { type: "EC_CONTENT_CANCEL_SELECTION" };
+  }
+
+  if (command === "EC_REFINE_PARENT") {
+    return { type: "EC_CONTENT_REFINE_PARENT" };
+  }
+
+  if (command === "EC_REFINE_CHILD") {
+    return { type: "EC_CONTENT_REFINE_CHILD" };
+  }
+
+  return { type: "EC_CONTENT_CONFIRM_SELECTION" };
 }

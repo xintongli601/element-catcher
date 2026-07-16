@@ -1,7 +1,14 @@
-import type { ElementSelection, ExtensionMessage, SelectionRect } from "../shared/messages";
+import type {
+  ElementSelection,
+  ExtensionMessage,
+  LockedSelectionState,
+  SelectionRect
+} from "../shared/messages";
 
 let isSelectionActive = false;
 let highlightedElement: Element | null = null;
+let lockedElement: Element | null = null;
+let descendantPath: Element[] = [];
 let overlayElement: HTMLDivElement | null = null;
 let labelElement: HTMLDivElement | null = null;
 let previousCursor = "";
@@ -21,17 +28,33 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
     return false;
   }
 
+  if (message.type === "EC_CONTENT_REFINE_PARENT") {
+    refineToParent();
+    return false;
+  }
+
+  if (message.type === "EC_CONTENT_REFINE_CHILD") {
+    refineToChild();
+    return false;
+  }
+
+  if (message.type === "EC_CONTENT_CONFIRM_SELECTION") {
+    confirmLockedSelection();
+    return false;
+  }
+
   return false;
 });
 
 function startSelectionMode() {
   if (isSelectionActive) {
-    notifyStarted();
-    return;
+    cleanupSelectionMode();
   }
 
   isSelectionActive = true;
   highlightedElement = null;
+  lockedElement = null;
+  descendantPath = [];
   previousCursor = document.documentElement.style.cursor;
   document.documentElement.style.cursor = "crosshair";
 
@@ -54,7 +77,17 @@ function cancelSelectionMode() {
   chrome.runtime.sendMessage({ type: "EC_SELECTION_CANCELLED" } satisfies ExtensionMessage);
 }
 
-function completeSelection(selection: ElementSelection) {
+function confirmLockedSelection() {
+  if (!isSelectionActive || !lockedElement) {
+    failSelection("No locked element is available. Start capture again and lock an element before confirming.");
+    return;
+  }
+
+  if (!validateLockedElement()) {
+    return;
+  }
+
+  const selection = createSelection(lockedElement);
   cleanupSelectionMode();
   chrome.runtime.sendMessage({
     type: "EC_SELECTION_COMPLETED",
@@ -65,6 +98,8 @@ function completeSelection(selection: ElementSelection) {
 function cleanupSelectionMode() {
   isSelectionActive = false;
   highlightedElement = null;
+  lockedElement = null;
+  descendantPath = [];
   document.removeEventListener("pointermove", handlePointerMove, true);
   document.removeEventListener("click", handleSelectionClick, true);
   document.removeEventListener("keydown", handleKeyDown, true);
@@ -78,12 +113,12 @@ function cleanupSelectionMode() {
 }
 
 function handlePointerMove(event: PointerEvent) {
-  if (!isSelectionActive) {
+  if (!isSelectionActive || lockedElement) {
     return;
   }
 
   const target = getUnderlyingElement(event.clientX, event.clientY);
-  if (!target || target === document.documentElement || target === document.body) {
+  if (!target || !isEligibleSelectionTarget(target)) {
     highlightedElement = null;
     hideOverlay();
     return;
@@ -94,7 +129,7 @@ function handlePointerMove(event: PointerEvent) {
 }
 
 function handleSelectionClick(event: MouseEvent) {
-  if (!isSelectionActive || !highlightedElement) {
+  if (!isSelectionActive) {
     return;
   }
 
@@ -102,7 +137,11 @@ function handleSelectionClick(event: MouseEvent) {
   event.stopPropagation();
   event.stopImmediatePropagation();
 
-  completeSelection(createSelection(highlightedElement));
+  if (lockedElement || !highlightedElement) {
+    return;
+  }
+
+  lockElement(highlightedElement);
 }
 
 function handleKeyDown(event: KeyboardEvent) {
@@ -114,6 +153,66 @@ function handleKeyDown(event: KeyboardEvent) {
   event.stopPropagation();
   event.stopImmediatePropagation();
   cancelSelectionMode();
+}
+
+function lockElement(element: Element) {
+  if (!isEligibleSelectionTarget(element)) {
+    failSelection("The selected element is no longer available. Start capture again and select another element.");
+    return;
+  }
+
+  lockedElement = element;
+  highlightedElement = element;
+  descendantPath = [];
+  document.documentElement.style.cursor = "default";
+  updateOverlayPosition();
+  notifyLockedSelection();
+}
+
+function refineToParent() {
+  if (!isSelectionActive || !lockedElement) {
+    return;
+  }
+
+  if (!validateLockedElement()) {
+    return;
+  }
+
+  const parent = findEligibleAncestor(lockedElement);
+  if (!parent) {
+    notifyLockedSelection();
+    return;
+  }
+
+  descendantPath.push(lockedElement);
+  lockedElement = parent;
+  highlightedElement = parent;
+  updateOverlayPosition();
+  notifyLockedSelection();
+}
+
+function refineToChild() {
+  if (!isSelectionActive || !lockedElement || descendantPath.length === 0) {
+    notifyLockedSelection();
+    return;
+  }
+
+  if (!validateLockedElement()) {
+    return;
+  }
+
+  const child = descendantPath[descendantPath.length - 1];
+  if (!isValidRefinementChild(lockedElement, child)) {
+    descendantPath = [];
+    notifyLockedSelection();
+    return;
+  }
+
+  descendantPath.pop();
+  lockedElement = child;
+  highlightedElement = child;
+  updateOverlayPosition();
+  notifyLockedSelection();
 }
 
 function ensureOverlay() {
@@ -149,13 +248,18 @@ function ensureOverlay() {
 }
 
 function updateOverlayPosition() {
-  if (!isSelectionActive || !highlightedElement || !overlayElement || !labelElement) {
+  const target = lockedElement ?? highlightedElement;
+  if (!isSelectionActive || !target || !overlayElement || !labelElement) {
     hideOverlay();
     return;
   }
 
-  const rect = highlightedElement.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) {
+  if (lockedElement && !validateLockedElement()) {
+    return;
+  }
+
+  const rect = target.getBoundingClientRect();
+  if (!isUsableRect(rect)) {
     hideOverlay();
     return;
   }
@@ -166,11 +270,21 @@ function updateOverlayPosition() {
   overlayElement.style.width = `${rect.width}px`;
   overlayElement.style.height = `${rect.height}px`;
 
+  if (lockedElement) {
+    overlayElement.style.border = "2px solid #15803d";
+    overlayElement.style.background = "rgba(21, 128, 61, 0.1)";
+    overlayElement.style.boxShadow = "0 0 0 2px rgba(255, 255, 255, 0.9)";
+  } else {
+    overlayElement.style.border = "2px solid #2563eb";
+    overlayElement.style.background = "rgba(37, 99, 235, 0.08)";
+    overlayElement.style.boxShadow = "0 0 0 2px rgba(255, 255, 255, 0.85)";
+  }
+
   const labelTop = rect.top > 28 ? rect.top - 28 : rect.bottom + 6;
   labelElement.style.display = "block";
   labelElement.style.left = `${Math.max(6, rect.left)}px`;
   labelElement.style.top = `${Math.max(6, labelTop)}px`;
-  labelElement.textContent = `${highlightedElement.tagName.toLowerCase()} ${Math.round(rect.width)} x ${Math.round(rect.height)}`;
+  labelElement.textContent = `${lockedElement ? "Locked: " : ""}${target.tagName.toLowerCase()} ${Math.round(rect.width)} x ${Math.round(rect.height)}`;
 }
 
 function hideOverlay() {
@@ -185,7 +299,82 @@ function hideOverlay() {
 
 function getUnderlyingElement(clientX: number, clientY: number) {
   const elements = document.elementsFromPoint(clientX, clientY);
-  return elements.find((element) => !(element instanceof HTMLElement && element.dataset.elementCatcherOverlay));
+  return elements.find((element) => !isElementCatcherOverlay(element));
+}
+
+function findEligibleAncestor(element: Element) {
+  let parent = element.parentElement;
+
+  while (parent) {
+    if (isEligibleSelectionTarget(parent)) {
+      return parent;
+    }
+
+    parent = parent.parentElement;
+  }
+
+  return null;
+}
+
+function isValidRefinementChild(parent: Element, child: Element | undefined) {
+  return Boolean(
+    child &&
+      child.isConnected &&
+      parent.isConnected &&
+      parent.contains(child) &&
+      isEligibleSelectionTarget(child)
+  );
+}
+
+function canSelectParent(element: Element) {
+  return Boolean(findEligibleAncestor(element));
+}
+
+function canSelectChild() {
+  return descendantPath.length > 0;
+}
+
+function validateLockedElement() {
+  if (!lockedElement || !lockedElement.isConnected || isElementCatcherOverlay(lockedElement)) {
+    failSelection("The locked element is no longer available. Start capture again to select the element.");
+    return false;
+  }
+
+  const rect = lockedElement.getBoundingClientRect();
+  if (!isUsableRect(rect)) {
+    failSelection("The locked element is no longer visible enough to refine. Start capture again to select the element.");
+    return false;
+  }
+
+  return true;
+}
+
+function isEligibleSelectionTarget(element: Element | null | undefined) {
+  if (!element || !element.isConnected || isElementCatcherOverlay(element)) {
+    return false;
+  }
+
+  if (element === document.documentElement || element === document.body) {
+    return false;
+  }
+
+  return isUsableRect(element.getBoundingClientRect());
+}
+
+function isElementCatcherOverlay(element: Element) {
+  return element instanceof HTMLElement && Boolean(element.dataset.elementCatcherOverlay);
+}
+
+function isUsableRect(rect: DOMRect) {
+  return rect.width > 0 && rect.height > 0;
+}
+
+function createLockedSelectionState(element: Element): LockedSelectionState {
+  return {
+    selection: createSelection(element),
+    canSelectParent: canSelectParent(element),
+    canSelectChild: canSelectChild()
+  };
 }
 
 function createSelection(element: Element): ElementSelection {
@@ -193,6 +382,7 @@ function createSelection(element: Element): ElementSelection {
   const textPreview = getTextPreview(element);
   const id = element instanceof HTMLElement && element.id ? element.id : undefined;
   const classNames = element instanceof HTMLElement ? Array.from(element.classList).slice(0, 8) : undefined;
+  const semanticRole = getSemanticRole(element);
 
   return {
     tagName: element.tagName.toLowerCase(),
@@ -200,7 +390,8 @@ function createSelection(element: Element): ElementSelection {
     pageUrl: window.location.href,
     ...(textPreview ? { textPreview } : {}),
     ...(id ? { id } : {}),
-    ...(classNames && classNames.length > 0 ? { classNames } : {})
+    ...(classNames && classNames.length > 0 ? { classNames } : {}),
+    ...(semanticRole ? { semanticRole } : {})
   };
 }
 
@@ -226,8 +417,65 @@ function getTextPreview(element: Element) {
   return text ? text.slice(0, 120) : undefined;
 }
 
+function getSemanticRole(element: Element) {
+  if (element instanceof HTMLElement || element instanceof SVGElement) {
+    const explicitRole = element.getAttribute("role")?.trim();
+    if (explicitRole && /^[a-zA-Z][\w-]*$/.test(explicitRole)) {
+      return explicitRole.toLowerCase();
+    }
+  }
+
+  const tagName = element.tagName.toLowerCase();
+
+  if (tagName === "a" && element instanceof HTMLAnchorElement && element.href) {
+    return "link";
+  }
+
+  if (tagName === "input" && element instanceof HTMLInputElement) {
+    if (element.type === "button" || element.type === "submit" || element.type === "reset") {
+      return "button";
+    }
+
+    return "textbox";
+  }
+
+  const nativeRoles: Record<string, string> = {
+    aside: "complementary",
+    button: "button",
+    footer: "contentinfo",
+    form: "form",
+    header: "banner",
+    img: "img",
+    main: "main",
+    nav: "navigation",
+    select: "combobox",
+    textarea: "textbox"
+  };
+
+  return nativeRoles[tagName];
+}
+
 function notifyStarted() {
   chrome.runtime.sendMessage({ type: "EC_SELECTION_STARTED" } satisfies ExtensionMessage);
+}
+
+function notifyLockedSelection() {
+  if (!lockedElement) {
+    return;
+  }
+
+  chrome.runtime.sendMessage({
+    type: "EC_SELECTION_LOCKED",
+    lockedSelection: createLockedSelectionState(lockedElement)
+  } satisfies ExtensionMessage);
+}
+
+function failSelection(message: string) {
+  cleanupSelectionMode();
+  chrome.runtime.sendMessage({
+    type: "EC_SELECTION_ERROR",
+    message
+  } satisfies ExtensionMessage);
 }
 
 function isExtensionMessage(message: unknown): message is ExtensionMessage {
