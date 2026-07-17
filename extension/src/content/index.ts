@@ -15,6 +15,13 @@ let overlayElement: HTMLDivElement | null = null;
 let labelElement: HTMLDivElement | null = null;
 let previousCursor = "";
 
+type ViewportIntersection = {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if (!isExtensionMessage(message)) {
     return false;
@@ -278,11 +285,17 @@ function updateOverlayPosition() {
     return;
   }
 
+  const visibleRect = getViewportIntersection(rect);
+  if (!visibleRect) {
+    hideOverlay();
+    return;
+  }
+
   overlayElement.style.display = "block";
-  overlayElement.style.left = `${Math.max(0, rect.left)}px`;
-  overlayElement.style.top = `${Math.max(0, rect.top)}px`;
-  overlayElement.style.width = `${rect.width}px`;
-  overlayElement.style.height = `${rect.height}px`;
+  overlayElement.style.left = `${visibleRect.left}px`;
+  overlayElement.style.top = `${visibleRect.top}px`;
+  overlayElement.style.width = `${visibleRect.width}px`;
+  overlayElement.style.height = `${visibleRect.height}px`;
 
   if (lockedElement) {
     overlayElement.style.border = "2px solid #15803d";
@@ -296,9 +309,27 @@ function updateOverlayPosition() {
 
   const labelTop = rect.top > 28 ? rect.top - 28 : rect.bottom + 6;
   labelElement.style.display = "block";
-  labelElement.style.left = `${Math.max(6, rect.left)}px`;
-  labelElement.style.top = `${Math.max(6, labelTop)}px`;
+  labelElement.style.left = `${Math.min(Math.max(6, visibleRect.left), Math.max(6, window.innerWidth - 6))}px`;
+  labelElement.style.top = `${Math.min(Math.max(6, labelTop), Math.max(6, window.innerHeight - 28))}px`;
   labelElement.textContent = `${lockedElement ? "Locked: " : ""}${target.tagName.toLowerCase()} ${Math.round(rect.width)} x ${Math.round(rect.height)}`;
+}
+
+function getViewportIntersection(rect: DOMRect): ViewportIntersection | null {
+  const visibleLeft = Math.max(0, rect.left);
+  const visibleTop = Math.max(0, rect.top);
+  const visibleRight = Math.min(window.innerWidth, rect.right);
+  const visibleBottom = Math.min(window.innerHeight, rect.bottom);
+
+  if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
+    return null;
+  }
+
+  return {
+    left: visibleLeft,
+    top: visibleTop,
+    width: visibleRight - visibleLeft,
+    height: visibleBottom - visibleTop
+  };
 }
 
 function hideOverlay() {

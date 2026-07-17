@@ -86,6 +86,20 @@ function isSupportedPageUrl(url: string | undefined) {
   return Boolean(url && (url.startsWith("http://") || url.startsWith("https://")));
 }
 
+function areSameDocumentUrls(first: string, second: string) {
+  try {
+    const firstUrl = new URL(first);
+    const secondUrl = new URL(second);
+
+    firstUrl.hash = "";
+    secondUrl.hash = "";
+
+    return firstUrl.href === secondUrl.href;
+  } catch {
+    return false;
+  }
+}
+
 function isSidePanelCommand(message: ExtensionMessage): message is ExtensionMessage & { type: SidePanelCommand } {
   return (
     message.type === "EC_START_SELECTION" ||
@@ -159,6 +173,10 @@ async function validateScreenshotSender(
     throw new Error("Screenshot capture is only available on ordinary http and https webpages.");
   }
 
+  if (!senderUrl || !areSameDocumentUrls(senderUrl, message.extraction.source.url)) {
+    throw new Error("The selected page changed before screenshot capture. Restart capture and try again.");
+  }
+
   screenshotCapturesInFlight.add(tabId);
 
   const [activeTab] = await chrome.tabs.query({ active: true, windowId });
@@ -166,7 +184,11 @@ async function validateScreenshotSender(
     throw new Error("The selected tab is no longer active. Restart capture before taking a screenshot.");
   }
 
-  if (!activeTab.url || activeTab.url !== message.extraction.source.url) {
+  if (activeTab.url && !areSameDocumentUrls(activeTab.url, senderUrl)) {
+    throw new Error("The selected page changed before screenshot capture. Restart capture and try again.");
+  }
+
+  if (activeTab.pendingUrl && !areSameDocumentUrls(activeTab.pendingUrl, senderUrl)) {
     throw new Error("The selected page changed before screenshot capture. Restart capture and try again.");
   }
 
