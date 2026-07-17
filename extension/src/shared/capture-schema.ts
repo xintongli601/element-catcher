@@ -203,3 +203,8 @@ export type DomCaptureExtraction = {
   element: CapturedElement;
   dom: CaptureDom;
 };
+
+export type StructuredCaptureExtraction = DomCaptureExtraction & {
+  styles: CaptureStyles;
+  summaries: CaptureSummaries;
+};

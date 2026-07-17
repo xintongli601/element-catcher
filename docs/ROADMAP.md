@@ -343,7 +343,7 @@ Acceptance status: Completed. Milestone 3B.1 passed ordinary-page runtime regres
 
 #### Milestone 3B.2 - Normalized Styles, Pseudo-elements and Semantic Summaries
 
-Status: Planned
+Status: Implemented, pending manual runtime validation
 
 Objective: Add deterministic style extraction and summaries after DOM extraction is validated.
 
@@ -369,7 +369,14 @@ Explicitly excluded scope:
 Acceptance criteria:
 
 - Style extraction and semantic summaries are added without mutating the original DOM extraction contract.
+- Representative normalized computed styles are included in the combined extraction.
+- Optional pseudo-element snapshots are bounded and exclude unsafe `attr(...)` and `url(...)` content.
+- Typography, color, layout, spacing, and optional conservative component-type summaries are deterministic and bounded.
+- Combined DOM and style extraction remains JSON-compatible across typed extension messaging.
+- Ordinary-page regression, dynamic-page regression, payload inspection, privacy checks, and Console checks must pass before this milestone subsection is marked Completed.
 - No full computed-style explorer or visual CSS editor is introduced.
+
+Acceptance status: Implemented, pending manual runtime validation. Build and static validation are required first; runtime validation is still required before marking Milestone 3B.2 Completed.
 
 ## Milestone 4 - Personal Capture Library
 

@@ -1,7 +1,7 @@
-import type { DomCaptureExtraction, SerializableRect } from "./capture-schema";
+import type { DomCaptureExtraction, SerializableRect, StructuredCaptureExtraction } from "./capture-schema";
 
 export type SelectionRect = SerializableRect;
-export type { DomCaptureExtraction, SerializableRect };
+export type { DomCaptureExtraction, SerializableRect, StructuredCaptureExtraction };
 
 export type ElementSelection = {
   tagName: string;
@@ -84,7 +84,7 @@ export type SelectionCancelledEvent = {
 export type SelectionCompletedEvent = {
   type: "EC_SELECTION_COMPLETED";
   selection: ElementSelection;
-  extraction?: DomCaptureExtraction;
+  extraction: StructuredCaptureExtraction;
 };
 
 export type SelectionErrorEvent = {

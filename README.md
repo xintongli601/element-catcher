@@ -4,7 +4,7 @@ Element Catcher is a local-first Chrome extension project for capturing UI inspi
 
 The refined positioning is: "Capture UI inspiration. Rebuild it as reusable code." Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are useful supporting capabilities, but the product's core direction is the full workflow: Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse.
 
-Milestone 3A supports a focused locked-selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking locks the highlighted element, Parent and Child controls refine along a deterministic path, and Confirm returns the final selected metadata. Milestone 3B.1 adds a privacy-safe intermediate DOM extraction package for confirmed selections. Screenshot capture, CSS extraction, local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
+Milestone 3A supports a focused locked-selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking locks the highlighted element, Parent and Child controls refine along a deterministic path, and Confirm returns the final selected metadata. Milestone 3B.1 adds a privacy-safe intermediate DOM extraction package for confirmed selections, and Milestone 3B.2 adds bounded normalized style extraction and semantic summaries. Screenshot capture, local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -98,7 +98,7 @@ The normalized `CaptureRecord` is planned as the source of truth for Capture Pre
 ## Intentionally Unimplemented
 
 - Screenshot capture and cropping
-- DOM/CSS extraction
+- Complete `CaptureRecord` creation
 - Capture preview
 - Local capture library storage
 - Capture Library search and organization

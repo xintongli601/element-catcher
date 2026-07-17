@@ -3,7 +3,8 @@ import type {
   ExtensionMessage,
   LockedSelectionState
 } from "../shared/messages";
-import { createDomCaptureExtraction, getElementTextPreview, toSerializableRect } from "./capture-dom";
+import { getElementTextPreview, toSerializableRect } from "./capture-dom";
+import { createStructuredCaptureExtraction } from "./capture-style";
 import { getSemanticRole } from "./semantic-role";
 
 let isSelectionActive = false;
@@ -93,7 +94,7 @@ function confirmLockedSelection() {
 
   try {
     selection = createSelection(lockedElement);
-    extraction = createDomCaptureExtraction(lockedElement);
+    extraction = createStructuredCaptureExtraction(lockedElement);
   } catch {
     failSelection("Element Catcher could not safely extract this element. Start capture again and select another element.");
     return;
