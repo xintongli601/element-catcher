@@ -62,6 +62,29 @@ export function App() {
     return () => chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
   }, []);
 
+  useEffect(() => {
+    if (status !== "active" && status !== "locked") {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") {
+        return;
+      }
+
+      event.preventDefault();
+      void sendCommand({ type: "EC_CANCEL_SELECTION" }).then((response) => {
+        if (!response.ok) {
+          setStatus("error");
+          setMessage(response.message);
+        }
+      });
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [status]);
+
   const handleStartCapture = async () => {
     setStatus("starting");
     setSelection(null);

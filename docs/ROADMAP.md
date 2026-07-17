@@ -222,7 +222,7 @@ Acceptance criteria:
 
 ### Milestone 3A - Locked Selection and Parent/Child Refinement
 
-Status: Implemented, pending manual runtime validation
+Status: Completed
 
 Objective: Replace immediate click-to-select completion with a locked-selection refinement flow:
 
@@ -267,7 +267,8 @@ Acceptance criteria:
 - Parent and Child refinement are manually validated as deterministic and bounded.
 - Confirm, Cancel, Escape, cleanup, and repeatability are manually validated.
 - Restricted and unreachable page behavior remains clearly reported.
-- Milestone 3A must not be marked Completed until required runtime validation is actually performed.
+
+Acceptance status: Completed. Milestone 3A is accepted as the locked-selection refinement stage.
 
 ## Milestone 4 - Personal Capture Library
 
