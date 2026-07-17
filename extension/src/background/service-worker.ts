@@ -9,9 +9,20 @@ import type {
   SelectionPreparedForScreenshotEvent
 } from "../shared/messages";
 
+void configureSidePanelActionBehavior();
+
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch((error) => {
-    console.error("Failed to configure Element Catcher side panel.", error);
+  void configureSidePanelActionBehavior();
+});
+
+chrome.action.onClicked.addListener((tab) => {
+  if (typeof tab.id !== "number" || typeof tab.windowId !== "number") {
+    console.error("Element Catcher could not open the side panel because the clicked tab was unavailable.");
+    return;
+  }
+
+  void chrome.sidePanel.open({ windowId: tab.windowId }).catch((error) => {
+    console.error("Element Catcher could not open the side panel from the toolbar action.", error);
   });
 });
 
@@ -50,6 +61,14 @@ type ContentCommand =
   | ContentRefineParentRequest
   | ContentRefineChildRequest
   | ContentConfirmSelectionRequest;
+
+async function configureSidePanelActionBehavior() {
+  try {
+    await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
+  } catch (error) {
+    console.error("Failed to configure Element Catcher side panel action behavior.", error);
+  }
+}
 
 async function sendSelectionCommand(command: SidePanelCommand) {
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
