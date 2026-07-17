@@ -299,7 +299,7 @@ Acceptance criteria:
 
 #### Milestone 3B.1 - CaptureRecord Types and Privacy-Safe DOM Extraction
 
-Status: Implemented, pending manual runtime validation
+Status: Completed
 
 Objective: Extract a limited, serializable, privacy-aware DOM data package when the user confirms a locked element.
 
@@ -338,7 +338,8 @@ Acceptance criteria:
 - Privacy-oriented extraction payload is inspected.
 - Password values, input values, textarea values, hidden content, script text, style text, inline event handlers, arbitrary secret data attributes, raw `href`, and raw `src` are confirmed absent.
 - Console and extension error checks are completed where required.
-- Milestone 3B.1 must not be marked Completed until required runtime and privacy validation is actually performed.
+
+Acceptance status: Completed. Milestone 3B.1 passed ordinary-page runtime regression, dynamic-page regression, real extension messaging validation, privacy-oriented payload validation, and console and extension-error checks.
 
 #### Milestone 3B.2 - Normalized Styles, Pseudo-elements and Semantic Summaries
 
