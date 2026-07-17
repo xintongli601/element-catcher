@@ -382,7 +382,7 @@ Acceptance status: Completed. Milestone 3B.2 passed normalized style, Flex and G
 
 ### Milestone 3C - Screenshot Capture and Cropping
 
-Status: Implemented, pending manual runtime validation
+Status: Completed
 
 Objective: Capture one current-visible-tab PNG after confirmed selection cleanup, crop it to the selected element's visible viewport intersection, and show a temporary screenshot verification result without persistence.
 
@@ -424,7 +424,7 @@ Acceptance criteria:
 - No screenshot data is persisted and no fake `storageKey` is created.
 - Ordinary-page, dynamic-page, zoom, partial-visibility, oversized-element, offscreen, Console, and extension-error checks must pass before this milestone subsection is marked Completed.
 
-Acceptance status: Implemented, pending manual runtime validation. Build and deterministic crop validation are required first; real Chrome `captureVisibleTab` validation is still required before marking Milestone 3C Completed.
+Acceptance status: Completed. Milestone 3C passed build and deterministic crop validation; real Chrome `captureVisibleTab` validation; activeTab action invocation; fully visible capture; partial visibility crop; oversized and clipping-ancestor crop; fractional crop; fully offscreen rejection; duplicate Confirm regression; dynamic-page and original-action prevention; wrong-tab protection; 100% and 125% zoom; and Console and extension-error checks.
 
 ## Milestone 4 - Personal Capture Library
 
