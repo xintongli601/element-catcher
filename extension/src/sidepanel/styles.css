@@ -126,7 +126,8 @@ h2 {
 }
 
 .notice-active,
-.notice-starting {
+.notice-starting,
+.notice-capturing {
   border-left-color: #0f766e;
   background: #ecfdf5;
   color: #134e4a;
@@ -196,6 +197,39 @@ h2 {
 
 .next-step-note {
   margin: 14px 0 0;
+  color: #42506a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.screenshot-result {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.screenshot-result h3 {
+  margin: 0;
+  color: #172033;
+  font-size: 14px;
+}
+
+.screenshot-thumbnail {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  border: 1px solid #d8dee8;
+  border-radius: 6px;
+  background: #ffffff;
+  object-fit: contain;
+}
+
+.screenshot-result dl {
+  gap: 8px;
+}
+
+.clip-note {
+  margin: 0;
   color: #42506a;
   font-size: 13px;
   line-height: 1.4;

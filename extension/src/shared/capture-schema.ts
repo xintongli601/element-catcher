@@ -176,6 +176,20 @@ export type ScreenshotAssetReference = {
   crop: SerializableRect;
 };
 
+export type ScreenshotCaptureResult = {
+  dataUrl: string;
+  mediaType: "image/png";
+  width: number;
+  height: number;
+  byteLength: number;
+  crop: SerializableRect;
+  sourceWidth: number;
+  sourceHeight: number;
+  scaleX: number;
+  scaleY: number;
+  wasClipped: boolean;
+};
+
 export type CaptureLibraryMetadata = {
   title?: string;
   componentType?: string;

@@ -24,6 +24,7 @@ export type SidePanelStatus =
   | "starting"
   | "active"
   | "locked"
+  | "capturing"
   | "selected"
   | "cancelled"
   | "error";
@@ -81,10 +82,17 @@ export type SelectionCancelledEvent = {
   type: "EC_SELECTION_CANCELLED";
 };
 
+export type SelectionPreparedForScreenshotEvent = {
+  type: "EC_SELECTION_PREPARED_FOR_SCREENSHOT";
+  selection: ElementSelection;
+  extraction: StructuredCaptureExtraction;
+};
+
 export type SelectionCompletedEvent = {
   type: "EC_SELECTION_COMPLETED";
   selection: ElementSelection;
   extraction: StructuredCaptureExtraction;
+  screenshotDataUrl: string;
 };
 
 export type SelectionErrorEvent = {
@@ -115,6 +123,7 @@ export type ExtensionMessage =
   | SelectionStartedEvent
   | SelectionLockedEvent
   | SelectionCancelledEvent
+  | SelectionPreparedForScreenshotEvent
   | SelectionCompletedEvent
   | SelectionErrorEvent;
 

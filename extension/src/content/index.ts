@@ -41,7 +41,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
   }
 
   if (message.type === "EC_CONTENT_CONFIRM_SELECTION") {
-    confirmLockedSelection();
+    void confirmLockedSelection();
     return false;
   }
 
@@ -79,7 +79,7 @@ function cancelSelectionMode() {
   chrome.runtime.sendMessage({ type: "EC_SELECTION_CANCELLED" } satisfies ExtensionMessage);
 }
 
-function confirmLockedSelection() {
+async function confirmLockedSelection() {
   if (!isSelectionActive || !lockedElement) {
     failSelection("No locked element is available. Start capture again and lock an element before confirming.");
     return;
@@ -101,8 +101,9 @@ function confirmLockedSelection() {
   }
 
   cleanupSelectionMode();
+  await waitForSelectionCleanupPaint();
   chrome.runtime.sendMessage({
-    type: "EC_SELECTION_COMPLETED",
+    type: "EC_SELECTION_PREPARED_FOR_SCREENSHOT",
     selection,
     extraction
   } satisfies ExtensionMessage);
@@ -428,6 +429,14 @@ function failSelection(message: string) {
     type: "EC_SELECTION_ERROR",
     message
   } satisfies ExtensionMessage);
+}
+
+function waitForSelectionCleanupPaint() {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
 }
 
 function isExtensionMessage(message: unknown): message is ExtensionMessage {

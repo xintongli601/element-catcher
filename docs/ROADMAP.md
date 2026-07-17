@@ -272,7 +272,7 @@ Acceptance status: Completed. Milestone 3A is accepted as the locked-selection r
 
 ### Milestone 3B - Structured Extraction Before Screenshots
 
-Status: Current
+Status: Completed
 
 Objective: Add the structured, privacy-aware capture-time data needed before screenshot capture and full `CaptureRecord v1` creation.
 
@@ -296,6 +296,8 @@ Acceptance criteria:
 - Milestone 3B.1 and 3B.2 are implemented and validated separately.
 - No complete `CaptureRecord v1` is created before screenshot asset data exists.
 - No screenshot placeholder is introduced.
+
+Acceptance status: Completed. Milestone 3B.1 and Milestone 3B.2 are both completed and accepted as the structured extraction baseline before screenshot capture.
 
 #### Milestone 3B.1 - CaptureRecord Types and Privacy-Safe DOM Extraction
 
@@ -377,6 +379,52 @@ Acceptance criteria:
 - No full computed-style explorer or visual CSS editor is introduced.
 
 Acceptance status: Completed. Milestone 3B.2 passed normalized style, Flex and Grid, pseudo-element safety, semantic summary, structured messaging, ordinary-page, dynamic-page, privacy, Console, and extension-error validation.
+
+### Milestone 3C - Screenshot Capture and Cropping
+
+Status: Implemented, pending manual runtime validation
+
+Objective: Capture one current-visible-tab PNG after confirmed selection cleanup, crop it to the selected element's visible viewport intersection, and show a temporary screenshot verification result without persistence.
+
+Included scope:
+
+- User-confirmed current-visible-tab PNG capture.
+- Background-service-worker capture coordination.
+- Overlay and label cleanup before screenshot capture.
+- CSS-to-image pixel coordinate conversion.
+- Browser zoom and device-pixel-ratio-safe scaling based on decoded screenshot dimensions.
+- Crop bounds for the selected element's visible viewport intersection.
+- Partial and oversized element behavior.
+- Temporary cropped screenshot result.
+- Minimal screenshot verification thumbnail.
+
+Explicitly excluded scope:
+
+- Full-page screenshot.
+- Screenshot stitching.
+- Offscreen reconstruction.
+- Stable asset storage key.
+- Screenshot persistence.
+- Complete `CaptureRecord v1` creation.
+- Full Capture Preview.
+- Save.
+- Local persistence.
+- Capture Library.
+- AI generation.
+
+Acceptance criteria:
+
+- Screenshot capture is requested only after explicit Confirm.
+- `chrome.tabs.captureVisibleTab` is called only from the background service worker.
+- Element Catcher overlay and label are removed before capture begins.
+- The cropped screenshot uses decoded image dimensions to derive `scaleX` and `scaleY`.
+- Partially visible and oversized elements crop only the currently visible viewport intersection.
+- Fully offscreen selections fail with a clear error.
+- The Side Panel shows only a temporary cropped screenshot verification result.
+- No screenshot data is persisted and no fake `storageKey` is created.
+- Ordinary-page, dynamic-page, zoom, partial-visibility, oversized-element, offscreen, Console, and extension-error checks must pass before this milestone subsection is marked Completed.
+
+Acceptance status: Implemented, pending manual runtime validation. Build and deterministic crop validation are required first; real Chrome `captureVisibleTab` validation is still required before marking Milestone 3C Completed.
 
 ## Milestone 4 - Personal Capture Library
 

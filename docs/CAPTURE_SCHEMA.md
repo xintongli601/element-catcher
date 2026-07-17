@@ -285,6 +285,8 @@ export type GeneratedComponentVersion = {
 };
 ```
 
+Milestone 3C uses a temporary cropped screenshot result before local asset storage exists. That intermediate result is not a persisted `ScreenshotAssetReference` and does not create a `storageKey`. In the persisted `ScreenshotAssetReference`, `width` and `height` represent encoded cropped-asset pixel dimensions, and `crop` represents the clamped viewport CSS-pixel rectangle used to create the crop. A stable `storageKey` is created only when the cropped screenshot is placed into a local asset store in a later stage.
+
 ## Example Shape
 
 ```ts

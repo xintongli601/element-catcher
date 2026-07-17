@@ -5,7 +5,8 @@ import type {
   ContentRefineParentRequest,
   ContentStartSelectionRequest,
   ExtensionMessage,
-  SelectionCommandResponse
+  SelectionCommandResponse,
+  SelectionPreparedForScreenshotEvent
 } from "../shared/messages";
 
 chrome.runtime.onInstalled.addListener(() => {
@@ -17,9 +18,14 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener(
   (
     message: ExtensionMessage,
-    _sender: chrome.runtime.MessageSender,
+    sender: chrome.runtime.MessageSender,
     sendResponse: (response: SelectionCommandResponse) => void
   ) => {
+    if (message.type === "EC_SELECTION_PREPARED_FOR_SCREENSHOT") {
+      void completeSelectionWithScreenshot(message, sender);
+      return false;
+    }
+
     if (!isSidePanelCommand(message)) {
       return false;
     }
@@ -28,6 +34,8 @@ chrome.runtime.onMessage.addListener(
     return true;
   }
 );
+
+const screenshotCapturesInFlight = new Set<number>();
 
 type SidePanelCommand =
   | "EC_START_SELECTION"
@@ -106,4 +114,80 @@ function toContentCommand(command: SidePanelCommand): ContentCommand {
   }
 
   return { type: "EC_CONTENT_CONFIRM_SELECTION" };
+}
+
+async function completeSelectionWithScreenshot(message: SelectionPreparedForScreenshotEvent, sender: chrome.runtime.MessageSender) {
+  try {
+    const tab = await validateScreenshotSender(message, sender);
+    const screenshotDataUrl = await captureVisibleTabPng(tab.windowId);
+
+    sendRuntimeEvent({
+      type: "EC_SELECTION_COMPLETED",
+      selection: message.selection,
+      extraction: message.extraction,
+      screenshotDataUrl
+    } satisfies ExtensionMessage);
+  } catch (error) {
+    sendRuntimeEvent({
+      type: "EC_SELECTION_ERROR",
+      message: error instanceof Error ? error.message : "Element Catcher could not capture the selected element screenshot."
+    } satisfies ExtensionMessage);
+  } finally {
+    if (typeof sender.tab?.id === "number") {
+      screenshotCapturesInFlight.delete(sender.tab.id);
+    }
+  }
+}
+
+async function validateScreenshotSender(
+  message: SelectionPreparedForScreenshotEvent,
+  sender: chrome.runtime.MessageSender
+) {
+  const tabId = sender.tab?.id;
+  const windowId = sender.tab?.windowId;
+  const senderUrl = sender.tab?.url;
+
+  if (typeof tabId !== "number" || typeof windowId !== "number") {
+    throw new Error("Element Catcher could not identify the source tab. Restart capture and try again.");
+  }
+
+  if (screenshotCapturesInFlight.has(tabId)) {
+    throw new Error("A screenshot capture is already in progress. Wait for it to finish and try again.");
+  }
+
+  if (!isSupportedPageUrl(senderUrl) || !isSupportedPageUrl(message.extraction.source.url)) {
+    throw new Error("Screenshot capture is only available on ordinary http and https webpages.");
+  }
+
+  screenshotCapturesInFlight.add(tabId);
+
+  const [activeTab] = await chrome.tabs.query({ active: true, windowId });
+  if (!activeTab?.id || activeTab.id !== tabId) {
+    throw new Error("The selected tab is no longer active. Restart capture before taking a screenshot.");
+  }
+
+  if (!activeTab.url || activeTab.url !== message.extraction.source.url) {
+    throw new Error("The selected page changed before screenshot capture. Restart capture and try again.");
+  }
+
+  return {
+    id: tabId,
+    windowId
+  };
+}
+
+async function captureVisibleTabPng(windowId: number) {
+  const dataUrl = await chrome.tabs.captureVisibleTab(windowId, { format: "png" });
+
+  if (!dataUrl.startsWith("data:image/png;base64,")) {
+    throw new Error("Element Catcher received an invalid screenshot format from Chrome.");
+  }
+
+  return dataUrl;
+}
+
+function sendRuntimeEvent(message: ExtensionMessage) {
+  void chrome.runtime.sendMessage(message).catch(() => {
+    // The side panel may be closed before the asynchronous screenshot flow finishes.
+  });
 }

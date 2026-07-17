@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { StructuredCaptureExtraction } from "../shared/capture-schema";
+import type { ScreenshotCaptureResult, StructuredCaptureExtraction } from "../shared/capture-schema";
 import type {
   ElementSelection,
   ExtensionMessage,
@@ -8,6 +8,7 @@ import type {
   SidePanelStatus
 } from "../shared/messages";
 import { isExtensionMessage } from "../shared/messages";
+import { cropScreenshotDataUrl } from "./crop-screenshot";
 
 const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
 
@@ -17,6 +18,7 @@ export function App() {
   const [selection, setSelection] = useState<ElementSelection | null>(null);
   const [lockedSelection, setLockedSelection] = useState<LockedSelectionState | null>(null);
   const [structuredExtraction, setStructuredExtraction] = useState<StructuredCaptureExtraction | null>(null);
+  const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
 
   useEffect(() => {
     const handleRuntimeMessage = (runtimeMessage: unknown) => {
@@ -29,6 +31,7 @@ export function App() {
         setSelection(null);
         setLockedSelection(null);
         setStructuredExtraction(null);
+        setScreenshotCapture(null);
         setMessage(activeInstruction);
       }
 
@@ -37,15 +40,12 @@ export function App() {
         setSelection(null);
         setLockedSelection(runtimeMessage.lockedSelection);
         setStructuredExtraction(null);
+        setScreenshotCapture(null);
         setMessage("Element locked. Refine with Parent or Child, then confirm the final element.");
       }
 
       if (runtimeMessage.type === "EC_SELECTION_COMPLETED") {
-        setStatus("selected");
-        setSelection(runtimeMessage.selection);
-        setLockedSelection(null);
-        setStructuredExtraction(runtimeMessage.extraction);
-        setMessage("Element selected. Structured DOM and style extraction is ready for the next capture stage.");
+        void handleSelectionCompleted(runtimeMessage);
       }
 
       if (runtimeMessage.type === "EC_SELECTION_CANCELLED") {
@@ -53,6 +53,7 @@ export function App() {
         setSelection(null);
         setLockedSelection(null);
         setStructuredExtraction(null);
+        setScreenshotCapture(null);
         setMessage("Selection cancelled. Normal page interaction has been restored.");
       }
 
@@ -61,7 +62,36 @@ export function App() {
         setSelection(null);
         setLockedSelection(null);
         setStructuredExtraction(null);
+        setScreenshotCapture(null);
         setMessage(runtimeMessage.message);
+      }
+    };
+
+    const handleSelectionCompleted = async (
+      runtimeMessage: Extract<ExtensionMessage, { type: "EC_SELECTION_COMPLETED" }>
+    ) => {
+      setStatus("capturing");
+      setSelection(null);
+      setLockedSelection(null);
+      setStructuredExtraction(null);
+      setScreenshotCapture(null);
+      setMessage("Capturing and cropping the visible element screenshot...");
+
+      try {
+        const croppedScreenshot = await cropScreenshotDataUrl(runtimeMessage.screenshotDataUrl, runtimeMessage.extraction);
+        setStatus("selected");
+        setSelection(runtimeMessage.selection);
+        setLockedSelection(null);
+        setStructuredExtraction(runtimeMessage.extraction);
+        setScreenshotCapture(croppedScreenshot);
+        setMessage("Element selected. Structured extraction and cropped screenshot are ready for the next capture stage.");
+      } catch (error) {
+        setStatus("error");
+        setSelection(null);
+        setLockedSelection(null);
+        setStructuredExtraction(null);
+        setScreenshotCapture(null);
+        setMessage(error instanceof Error ? error.message : "Element Catcher could not crop the screenshot.");
       }
     };
 
@@ -97,6 +127,7 @@ export function App() {
     setSelection(null);
     setLockedSelection(null);
     setStructuredExtraction(null);
+    setScreenshotCapture(null);
     setMessage("Starting selection mode on the active webpage...");
 
     const response = await sendCommand({ type: "EC_START_SELECTION" });
@@ -131,9 +162,13 @@ export function App() {
   };
 
   const handleConfirmSelection = async () => {
+    setStatus("capturing");
+    setMessage("Capturing and cropping the visible element screenshot...");
+
     const response = await sendCommand({ type: "EC_CONFIRM_SELECTION" });
     if (!response.ok) {
       setStatus("error");
+      setScreenshotCapture(null);
       setMessage(response.message);
     }
   };
@@ -151,7 +186,7 @@ export function App() {
             className="primary-action"
             type="button"
             onClick={handleStartCapture}
-            disabled={status === "starting" || status === "active" || status === "locked"}
+            disabled={status === "starting" || status === "active" || status === "locked" || status === "capturing"}
           >
             {status === "starting" ? "Starting..." : "Start Capture"}
           </button>
@@ -174,7 +209,13 @@ export function App() {
         />
       ) : null}
 
-      {selection ? <SelectionSummary selection={selection} hasStructuredExtraction={Boolean(structuredExtraction)} /> : null}
+      {selection ? (
+        <SelectionSummary
+          selection={selection}
+          hasStructuredExtraction={Boolean(structuredExtraction)}
+          screenshotCapture={screenshotCapture}
+        />
+      ) : null}
 
       <section className="saved-captures" aria-labelledby="saved-captures-heading">
         <div>
@@ -233,10 +274,12 @@ function LockedSelectionSummary({
 
 function SelectionSummary({
   selection,
-  hasStructuredExtraction
+  hasStructuredExtraction,
+  screenshotCapture
 }: {
   selection: ElementSelection;
   hasStructuredExtraction: boolean;
+  screenshotCapture: ScreenshotCaptureResult | null;
 }) {
   return (
     <section className="selection-summary" aria-labelledby="selection-summary-heading">
@@ -244,9 +287,40 @@ function SelectionSummary({
       <SelectionDetails selection={selection} />
       <p className="next-step-note">
         {hasStructuredExtraction
-          ? "Structured DOM and style extraction is ready. Screenshot capture will be implemented in a later Milestone 3 stage."
+          ? "Structured DOM, style extraction, and cropped screenshot are ready. Save and Capture Preview will be implemented in a later Milestone 3 stage."
           : "Screenshot capture will be implemented in Milestone 3."}
       </p>
+      {screenshotCapture ? <ScreenshotResult screenshotCapture={screenshotCapture} /> : null}
+    </section>
+  );
+}
+
+function ScreenshotResult({ screenshotCapture }: { screenshotCapture: ScreenshotCaptureResult }) {
+  return (
+    <section className="screenshot-result" aria-labelledby="screenshot-result-heading">
+      <h3 id="screenshot-result-heading">Cropped screenshot</h3>
+      <img
+        src={screenshotCapture.dataUrl}
+        alt="Cropped screenshot of the selected visible webpage element"
+        className="screenshot-thumbnail"
+      />
+      <dl>
+        <div>
+          <dt>Image size</dt>
+          <dd>
+            {screenshotCapture.width} x {screenshotCapture.height} px
+          </dd>
+        </div>
+        <div>
+          <dt>Crop size</dt>
+          <dd>
+            {Math.round(screenshotCapture.crop.width)} x {Math.round(screenshotCapture.crop.height)} CSS px
+          </dd>
+        </div>
+      </dl>
+      {screenshotCapture.wasClipped ? (
+        <p className="clip-note">Only the visible viewport portion of this element was captured.</p>
+      ) : null}
     </section>
   );
 }

@@ -4,7 +4,7 @@ Element Catcher is a local-first Chrome extension project for capturing UI inspi
 
 The refined positioning is: "Capture UI inspiration. Rebuild it as reusable code." Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are useful supporting capabilities, but the product's core direction is the full workflow: Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse.
 
-Milestone 3A supports a focused locked-selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking locks the highlighted element, Parent and Child controls refine along a deterministic path, and Confirm returns the final selected metadata. Milestone 3B.1 adds a privacy-safe intermediate DOM extraction package for confirmed selections, and Milestone 3B.2 adds bounded normalized style extraction and semantic summaries. Screenshot capture, local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
+Milestone 3A supports a focused locked-selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking locks the highlighted element, Parent and Child controls refine along a deterministic path, and Confirm returns the final selected metadata. Milestone 3B.1 adds a privacy-safe intermediate DOM extraction package for confirmed selections, Milestone 3B.2 adds bounded normalized style extraction and semantic summaries, and Milestone 3C adds current-viewport screenshot capture with bounded element cropping. Screenshots are still temporary; local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
 
 ## Prerequisites
 
@@ -61,7 +61,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
 Open the Element Catcher side panel and click `Start Capture` on an ordinary webpage. Move the pointer across page elements to preview the current target with a temporary overlay, then click the highlighted element to lock it. Use `Parent` or `Child` to refine the locked target along the deterministic refinement path, then click `Confirm` to select the final element. Press `Escape` or use the side panel `Cancel` button to leave selection mode without selecting anything.
 
-Selection mode records only in-memory capture metadata for this stage: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, optional class names, optional semantic role, and a privacy-safe intermediate DOM extraction package after Confirm. It does not save captures locally.
+Selection mode records only in-memory capture metadata for this stage: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, optional class names, optional semantic role, a privacy-safe intermediate DOM/style extraction package after Confirm, and a temporary cropped screenshot of the currently visible viewport area. It does not save captures locally.
 
 ## Capture Architecture
 
@@ -97,8 +97,8 @@ The normalized `CaptureRecord` is planned as the source of truth for Capture Pre
 
 ## Intentionally Unimplemented
 
-- Screenshot capture and cropping
 - Complete `CaptureRecord` creation
+- Stable screenshot asset storage
 - Capture preview
 - Local capture library storage
 - Capture Library search and organization
