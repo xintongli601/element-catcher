@@ -137,7 +137,7 @@ function createPseudoElementSnapshot(
   }
 
   const rawContent = readStyle(style, "content");
-  const content = sanitizePseudoContent(rawContent);
+  const content = sanitizePseudoContent(rawContent, element);
   const display = readStyle(style, "display");
   const backgroundColor = readStyle(style, "backgroundColor");
   const width = readStyle(style, "width");
@@ -325,7 +325,7 @@ function normalizeStyleValue(value: string) {
   return normalized ? normalized.slice(0, MAX_STYLE_VALUE_LENGTH) : undefined;
 }
 
-function sanitizePseudoContent(content: string | undefined) {
+function sanitizePseudoContent(content: string | undefined, element: Element) {
   if (!content || content === "none" || content === "normal") {
     return undefined;
   }
@@ -336,7 +336,11 @@ function sanitizePseudoContent(content: string | undefined) {
   }
 
   const unquoted = unquoteCssString(content);
-  return unquoted ? unquoted.slice(0, MAX_PSEUDO_CONTENT_LENGTH) : undefined;
+  if (!unquoted || isSensitivePseudoContent(unquoted, element)) {
+    return undefined;
+  }
+
+  return unquoted.slice(0, MAX_PSEUDO_CONTENT_LENGTH);
 }
 
 function unquoteCssString(value: string) {
@@ -349,6 +353,14 @@ function unquoteCssString(value: string) {
   }
 
   return value.trim();
+}
+
+function isSensitivePseudoContent(value: string, element: Element) {
+  if (/token|secret|password|credential|session|auth/i.test(value)) {
+    return true;
+  }
+
+  return Array.from(element.attributes).some((attribute) => attribute.value.trim() === value);
 }
 
 function hasPositiveCssLength(value: string | undefined) {
