@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { DomCaptureExtraction } from "../shared/capture-schema";
 import type {
   ElementSelection,
   ExtensionMessage,
@@ -15,6 +16,7 @@ export function App() {
   const [message, setMessage] = useState("Ready to select an element on the active webpage.");
   const [selection, setSelection] = useState<ElementSelection | null>(null);
   const [lockedSelection, setLockedSelection] = useState<LockedSelectionState | null>(null);
+  const [domExtraction, setDomExtraction] = useState<DomCaptureExtraction | null>(null);
 
   useEffect(() => {
     const handleRuntimeMessage = (runtimeMessage: unknown) => {
@@ -26,6 +28,7 @@ export function App() {
         setStatus("active");
         setSelection(null);
         setLockedSelection(null);
+        setDomExtraction(null);
         setMessage(activeInstruction);
       }
 
@@ -33,6 +36,7 @@ export function App() {
         setStatus("locked");
         setSelection(null);
         setLockedSelection(runtimeMessage.lockedSelection);
+        setDomExtraction(null);
         setMessage("Element locked. Refine with Parent or Child, then confirm the final element.");
       }
 
@@ -40,13 +44,19 @@ export function App() {
         setStatus("selected");
         setSelection(runtimeMessage.selection);
         setLockedSelection(null);
-        setMessage("Element selected. Screenshot capture will be implemented in Milestone 3.");
+        setDomExtraction(runtimeMessage.extraction ?? null);
+        setMessage(
+          runtimeMessage.extraction
+            ? "Element selected. Structured DOM extraction is ready for the next capture stage."
+            : "Element selected. Screenshot capture will be implemented in Milestone 3."
+        );
       }
 
       if (runtimeMessage.type === "EC_SELECTION_CANCELLED") {
         setStatus("cancelled");
         setSelection(null);
         setLockedSelection(null);
+        setDomExtraction(null);
         setMessage("Selection cancelled. Normal page interaction has been restored.");
       }
 
@@ -54,6 +64,7 @@ export function App() {
         setStatus("error");
         setSelection(null);
         setLockedSelection(null);
+        setDomExtraction(null);
         setMessage(runtimeMessage.message);
       }
     };
@@ -89,6 +100,7 @@ export function App() {
     setStatus("starting");
     setSelection(null);
     setLockedSelection(null);
+    setDomExtraction(null);
     setMessage("Starting selection mode on the active webpage...");
 
     const response = await sendCommand({ type: "EC_START_SELECTION" });
@@ -166,7 +178,7 @@ export function App() {
         />
       ) : null}
 
-      {selection ? <SelectionSummary selection={selection} /> : null}
+      {selection ? <SelectionSummary selection={selection} hasDomExtraction={Boolean(domExtraction)} /> : null}
 
       <section className="saved-captures" aria-labelledby="saved-captures-heading">
         <div>
@@ -223,12 +235,22 @@ function LockedSelectionSummary({
   );
 }
 
-function SelectionSummary({ selection }: { selection: ElementSelection }) {
+function SelectionSummary({
+  selection,
+  hasDomExtraction
+}: {
+  selection: ElementSelection;
+  hasDomExtraction: boolean;
+}) {
   return (
     <section className="selection-summary" aria-labelledby="selection-summary-heading">
       <h2 id="selection-summary-heading">Selected element</h2>
       <SelectionDetails selection={selection} />
-      <p className="next-step-note">Screenshot capture will be implemented in Milestone 3.</p>
+      <p className="next-step-note">
+        {hasDomExtraction
+          ? "Structured DOM extraction is ready. Screenshot capture will be implemented in a later Milestone 3 stage."
+          : "Screenshot capture will be implemented in Milestone 3."}
+      </p>
     </section>
   );
 }

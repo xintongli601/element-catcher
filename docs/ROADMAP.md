@@ -270,6 +270,106 @@ Acceptance criteria:
 
 Acceptance status: Completed. Milestone 3A is accepted as the locked-selection refinement stage.
 
+### Milestone 3B - Structured Extraction Before Screenshots
+
+Status: Current
+
+Objective: Add the structured, privacy-aware capture-time data needed before screenshot capture and full `CaptureRecord v1` creation.
+
+Included scope:
+
+- Milestone 3B.1: `CaptureRecord v1` TypeScript types and privacy-safe DOM extraction.
+- Milestone 3B.2: normalized styles, pseudo-elements, and semantic summaries.
+
+Explicitly excluded scope:
+
+- Screenshot capture.
+- Screenshot asset storage.
+- Complete `CaptureRecord v1` construction.
+- Local persistence.
+- Capture Preview.
+- Capture Library.
+- AI generation.
+
+Acceptance criteria:
+
+- Milestone 3B.1 and 3B.2 are implemented and validated separately.
+- No complete `CaptureRecord v1` is created before screenshot asset data exists.
+- No screenshot placeholder is introduced.
+
+#### Milestone 3B.1 - CaptureRecord Types and Privacy-Safe DOM Extraction
+
+Status: Implemented, pending manual runtime validation
+
+Objective: Extract a limited, serializable, privacy-aware DOM data package when the user confirms a locked element.
+
+Included scope:
+
+- Authoritative `CaptureRecord v1` TypeScript types matching `docs/CAPTURE_SCHEMA.md`.
+- Explicitly intermediate `DomCaptureExtraction` type.
+- Source URL and page title capture.
+- Viewport and device pixel ratio capture.
+- Confirmed selected-element identity.
+- Privacy-safe sanitized DOM snapshot.
+- Limited direct child summaries.
+- Reusable deterministic semantic-role helper.
+- JSON compatibility validation before extension messaging.
+- Confirm-time typed message integration.
+
+Explicitly excluded scope:
+
+- Complete `CaptureRecord v1` construction.
+- Screenshot placeholders.
+- Screenshot capture.
+- Normalized computed CSS extraction.
+- `::before` or `::after` extraction.
+- Typography, color, layout, or spacing summaries.
+- Component-type inference.
+- Local persistence.
+- Capture Preview.
+- Capture Library.
+- AI generation.
+
+Acceptance criteria:
+
+- Production build passes.
+- Runtime regression passes on ordinary supported webpages.
+- Serialized extraction crosses extension messaging without `DataCloneError`.
+- Privacy-oriented extraction payload is inspected.
+- Password values, input values, textarea values, hidden content, script text, style text, inline event handlers, arbitrary secret data attributes, raw `href`, and raw `src` are confirmed absent.
+- Console and extension error checks are completed where required.
+- Milestone 3B.1 must not be marked Completed until required runtime and privacy validation is actually performed.
+
+#### Milestone 3B.2 - Normalized Styles, Pseudo-elements and Semantic Summaries
+
+Status: Planned
+
+Objective: Add deterministic style extraction and summaries after DOM extraction is validated.
+
+Included scope:
+
+- Normalized computed CSS extraction.
+- Optional `::before` and `::after` snapshots.
+- Typography summary.
+- Color summary.
+- Layout summary.
+- Spacing summary.
+- Optional deterministic component type.
+
+Explicitly excluded scope:
+
+- Screenshot capture.
+- Complete `CaptureRecord v1` construction.
+- Local persistence.
+- Capture Preview.
+- Capture Library.
+- AI generation.
+
+Acceptance criteria:
+
+- Style extraction and semantic summaries are added without mutating the original DOM extraction contract.
+- No full computed-style explorer or visual CSS editor is introduced.
+
 ## Milestone 4 - Personal Capture Library
 
 Status: Planned

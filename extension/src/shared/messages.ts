@@ -1,17 +1,11 @@
-export type SelectionRect = {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-  top: number;
-  right: number;
-  bottom: number;
-  left: number;
-};
+import type { DomCaptureExtraction, SerializableRect } from "./capture-schema";
+
+export type SelectionRect = SerializableRect;
+export type { DomCaptureExtraction, SerializableRect };
 
 export type ElementSelection = {
   tagName: string;
-  rect: SelectionRect;
+  rect: SerializableRect;
   pageUrl: string;
   textPreview?: string;
   id?: string;
@@ -90,6 +84,7 @@ export type SelectionCancelledEvent = {
 export type SelectionCompletedEvent = {
   type: "EC_SELECTION_COMPLETED";
   selection: ElementSelection;
+  extraction?: DomCaptureExtraction;
 };
 
 export type SelectionErrorEvent = {

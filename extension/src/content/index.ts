@@ -1,9 +1,10 @@
 import type {
   ElementSelection,
   ExtensionMessage,
-  LockedSelectionState,
-  SelectionRect
+  LockedSelectionState
 } from "../shared/messages";
+import { createDomCaptureExtraction, getElementTextPreview, toSerializableRect } from "./capture-dom";
+import { getSemanticRole } from "./semantic-role";
 
 let isSelectionActive = false;
 let highlightedElement: Element | null = null;
@@ -87,11 +88,22 @@ function confirmLockedSelection() {
     return;
   }
 
-  const selection = createSelection(lockedElement);
+  let selection: ElementSelection;
+  let extraction;
+
+  try {
+    selection = createSelection(lockedElement);
+    extraction = createDomCaptureExtraction(lockedElement);
+  } catch {
+    failSelection("Element Catcher could not safely extract this element. Start capture again and select another element.");
+    return;
+  }
+
   cleanupSelectionMode();
   chrome.runtime.sendMessage({
     type: "EC_SELECTION_COMPLETED",
-    selection
+    selection,
+    extraction
   } satisfies ExtensionMessage);
 }
 
@@ -378,81 +390,20 @@ function createLockedSelectionState(element: Element): LockedSelectionState {
 }
 
 function createSelection(element: Element): ElementSelection {
-  const rect = element.getBoundingClientRect();
-  const textPreview = getTextPreview(element);
+  const textPreview = getElementTextPreview(element);
   const id = element instanceof HTMLElement && element.id ? element.id : undefined;
   const classNames = element instanceof HTMLElement ? Array.from(element.classList).slice(0, 8) : undefined;
   const semanticRole = getSemanticRole(element);
 
   return {
     tagName: element.tagName.toLowerCase(),
-    rect: toSelectionRect(rect),
+    rect: toSerializableRect(element.getBoundingClientRect()),
     pageUrl: window.location.href,
     ...(textPreview ? { textPreview } : {}),
     ...(id ? { id } : {}),
     ...(classNames && classNames.length > 0 ? { classNames } : {}),
     ...(semanticRole ? { semanticRole } : {})
   };
-}
-
-function toSelectionRect(rect: DOMRect): SelectionRect {
-  return {
-    x: Math.round(rect.x),
-    y: Math.round(rect.y),
-    width: Math.round(rect.width),
-    height: Math.round(rect.height),
-    top: Math.round(rect.top),
-    right: Math.round(rect.right),
-    bottom: Math.round(rect.bottom),
-    left: Math.round(rect.left)
-  };
-}
-
-function getTextPreview(element: Element) {
-  if (element.matches("input, textarea, select, option")) {
-    return undefined;
-  }
-
-  const text = element.textContent?.replace(/\s+/g, " ").trim();
-  return text ? text.slice(0, 120) : undefined;
-}
-
-function getSemanticRole(element: Element) {
-  if (element instanceof HTMLElement || element instanceof SVGElement) {
-    const explicitRole = element.getAttribute("role")?.trim();
-    if (explicitRole && /^[a-zA-Z][\w-]*$/.test(explicitRole)) {
-      return explicitRole.toLowerCase();
-    }
-  }
-
-  const tagName = element.tagName.toLowerCase();
-
-  if (tagName === "a" && element instanceof HTMLAnchorElement && element.href) {
-    return "link";
-  }
-
-  if (tagName === "input" && element instanceof HTMLInputElement) {
-    if (element.type === "button" || element.type === "submit" || element.type === "reset") {
-      return "button";
-    }
-
-    return "textbox";
-  }
-
-  const nativeRoles: Record<string, string> = {
-    aside: "complementary",
-    button: "button",
-    footer: "contentinfo",
-    form: "form",
-    header: "banner",
-    img: "img",
-    main: "main",
-    nav: "navigation",
-    select: "combobox",
-    textarea: "textbox"
-  };
-
-  return nativeRoles[tagName];
 }
 
 function notifyStarted() {
