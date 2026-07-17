@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ScreenshotCaptureResult, StructuredCaptureExtraction } from "../shared/capture-schema";
 import type {
   ElementSelection,
@@ -19,6 +19,7 @@ export function App() {
   const [lockedSelection, setLockedSelection] = useState<LockedSelectionState | null>(null);
   const [structuredExtraction, setStructuredExtraction] = useState<StructuredCaptureExtraction | null>(null);
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
+  const captureRequestInFlightRef = useRef(false);
 
   useEffect(() => {
     const handleRuntimeMessage = (runtimeMessage: unknown) => {
@@ -27,6 +28,7 @@ export function App() {
       }
 
       if (runtimeMessage.type === "EC_SELECTION_STARTED") {
+        captureRequestInFlightRef.current = false;
         setStatus("active");
         setSelection(null);
         setLockedSelection(null);
@@ -49,6 +51,7 @@ export function App() {
       }
 
       if (runtimeMessage.type === "EC_SELECTION_CANCELLED") {
+        captureRequestInFlightRef.current = false;
         setStatus("cancelled");
         setSelection(null);
         setLockedSelection(null);
@@ -58,6 +61,7 @@ export function App() {
       }
 
       if (runtimeMessage.type === "EC_SELECTION_ERROR") {
+        captureRequestInFlightRef.current = false;
         setStatus("error");
         setSelection(null);
         setLockedSelection(null);
@@ -84,8 +88,10 @@ export function App() {
         setLockedSelection(null);
         setStructuredExtraction(runtimeMessage.extraction);
         setScreenshotCapture(croppedScreenshot);
+        captureRequestInFlightRef.current = false;
         setMessage("Element selected. Structured extraction and cropped screenshot are ready for the next capture stage.");
       } catch (error) {
+        captureRequestInFlightRef.current = false;
         setStatus("error");
         setSelection(null);
         setLockedSelection(null);
@@ -123,6 +129,7 @@ export function App() {
   }, [status]);
 
   const handleStartCapture = async () => {
+    captureRequestInFlightRef.current = false;
     setStatus("starting");
     setSelection(null);
     setLockedSelection(null);
@@ -162,11 +169,18 @@ export function App() {
   };
 
   const handleConfirmSelection = async () => {
+    if (captureRequestInFlightRef.current) {
+      return;
+    }
+
+    captureRequestInFlightRef.current = true;
     setStatus("capturing");
+    setLockedSelection(null);
     setMessage("Capturing and cropping the visible element screenshot...");
 
     const response = await sendCommand({ type: "EC_CONFIRM_SELECTION" });
     if (!response.ok) {
+      captureRequestInFlightRef.current = false;
       setStatus("error");
       setScreenshotCapture(null);
       setMessage(response.message);
