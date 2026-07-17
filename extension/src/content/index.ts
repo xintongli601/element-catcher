@@ -1,7 +1,8 @@
 import type {
   ElementSelection,
   ExtensionMessage,
-  LockedSelectionState
+  LockedSelectionState,
+  SerializableRect
 } from "../shared/messages";
 import { getElementTextPreview, toSerializableRect } from "./capture-dom";
 import { createStructuredCaptureExtraction } from "./capture-style";
@@ -98,6 +99,11 @@ async function confirmLockedSelection() {
 
   let selection: ElementSelection;
   let extraction;
+  const screenshotCropRect = getVisibleElementScreenshotRect(lockedElement);
+  if (!screenshotCropRect) {
+    failSelection("The selected element is outside the visible viewport. Start capture again with a visible element.");
+    return;
+  }
 
   try {
     selection = createSelection(lockedElement);
@@ -112,7 +118,8 @@ async function confirmLockedSelection() {
   chrome.runtime.sendMessage({
     type: "EC_SELECTION_PREPARED_FOR_SCREENSHOT",
     selection,
-    extraction
+    extraction,
+    screenshotCropRect
   } satisfies ExtensionMessage);
 }
 
@@ -285,7 +292,7 @@ function updateOverlayPosition() {
     return;
   }
 
-  const visibleRect = getViewportIntersection(rect);
+  const visibleRect = getVisibleElementRect(target);
   if (!visibleRect) {
     hideOverlay();
     return;
@@ -314,11 +321,57 @@ function updateOverlayPosition() {
   labelElement.textContent = `${lockedElement ? "Locked: " : ""}${target.tagName.toLowerCase()} ${Math.round(rect.width)} x ${Math.round(rect.height)}`;
 }
 
-function getViewportIntersection(rect: DOMRect): ViewportIntersection | null {
+function getVisibleElementRect(element: Element): ViewportIntersection | null {
+  const rect = element.getBoundingClientRect();
   const visibleLeft = Math.max(0, rect.left);
   const visibleTop = Math.max(0, rect.top);
   const visibleRight = Math.min(window.innerWidth, rect.right);
   const visibleBottom = Math.min(window.innerHeight, rect.bottom);
+
+  return intersectClippingAncestors(element, visibleLeft, visibleTop, visibleRight, visibleBottom);
+}
+
+function intersectClippingAncestors(
+  element: Element,
+  initialLeft: number,
+  initialTop: number,
+  initialRight: number,
+  initialBottom: number
+): ViewportIntersection | null {
+  let visibleLeft = initialLeft;
+  let visibleTop = initialTop;
+  let visibleRight = initialRight;
+  let visibleBottom = initialBottom;
+
+  for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (ancestor === document.body || ancestor === document.documentElement) {
+      continue;
+    }
+
+    const style = window.getComputedStyle(ancestor);
+    const clipsX = clipsOverflow(style.overflowX);
+    const clipsY = clipsOverflow(style.overflowY);
+
+    if (!clipsX && !clipsY) {
+      continue;
+    }
+
+    const ancestorRect = ancestor.getBoundingClientRect();
+
+    if (clipsX) {
+      visibleLeft = Math.max(visibleLeft, ancestorRect.left);
+      visibleRight = Math.min(visibleRight, ancestorRect.right);
+    }
+
+    if (clipsY) {
+      visibleTop = Math.max(visibleTop, ancestorRect.top);
+      visibleBottom = Math.min(visibleBottom, ancestorRect.bottom);
+    }
+
+    if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
+      return null;
+    }
+  }
 
   if (visibleRight <= visibleLeft || visibleBottom <= visibleTop) {
     return null;
@@ -330,6 +383,38 @@ function getViewportIntersection(rect: DOMRect): ViewportIntersection | null {
     width: visibleRight - visibleLeft,
     height: visibleBottom - visibleTop
   };
+}
+
+function clipsOverflow(value: string) {
+  return value === "hidden" || value === "clip" || value === "auto" || value === "scroll";
+}
+
+function toSerializableRectFromVisibleRect(rect: ViewportIntersection): SerializableRect {
+  const left = Math.round(rect.left);
+  const top = Math.round(rect.top);
+  const right = Math.round(rect.left + rect.width);
+  const bottom = Math.round(rect.top + rect.height);
+
+  return {
+    x: left,
+    y: top,
+    width: right - left,
+    height: bottom - top,
+    top,
+    right,
+    bottom,
+    left
+  };
+}
+
+function getVisibleElementScreenshotRect(element: Element): SerializableRect | null {
+  const visibleRect = getVisibleElementRect(element);
+
+  if (!visibleRect) {
+    return null;
+  }
+
+  return toSerializableRectFromVisibleRect(visibleRect);
 }
 
 function hideOverlay() {

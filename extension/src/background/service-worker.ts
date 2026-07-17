@@ -158,6 +158,7 @@ async function completeSelectionWithScreenshot(message: SelectionPreparedForScre
       type: "EC_SELECTION_COMPLETED",
       selection: message.selection,
       extraction: message.extraction,
+      screenshotCropRect: message.screenshotCropRect,
       screenshotDataUrl
     } satisfies ExtensionMessage);
   } catch (error) {

@@ -86,12 +86,14 @@ export type SelectionPreparedForScreenshotEvent = {
   type: "EC_SELECTION_PREPARED_FOR_SCREENSHOT";
   selection: ElementSelection;
   extraction: StructuredCaptureExtraction;
+  screenshotCropRect: SerializableRect;
 };
 
 export type SelectionCompletedEvent = {
   type: "EC_SELECTION_COMPLETED";
   selection: ElementSelection;
   extraction: StructuredCaptureExtraction;
+  screenshotCropRect: SerializableRect;
   screenshotDataUrl: string;
 };
 

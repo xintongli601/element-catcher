@@ -1,9 +1,10 @@
-import type { ScreenshotCaptureResult, StructuredCaptureExtraction } from "../shared/capture-schema";
+import type { ScreenshotCaptureResult, SerializableRect, StructuredCaptureExtraction } from "../shared/capture-schema";
 import { calculateScreenshotCropGeometry } from "../shared/screenshot-crop";
 
 export async function cropScreenshotDataUrl(
   screenshotDataUrl: string,
-  extraction: StructuredCaptureExtraction
+  extraction: StructuredCaptureExtraction,
+  screenshotCropRect: SerializableRect
 ): Promise<ScreenshotCaptureResult> {
   if (!screenshotDataUrl.startsWith("data:image/png;base64,")) {
     throw new Error("Element Catcher received an invalid screenshot format from Chrome.");
@@ -18,7 +19,7 @@ export async function cropScreenshotDataUrl(
   }
 
   const geometry = calculateScreenshotCropGeometry({
-    rect: extraction.element.rect,
+    rect: screenshotCropRect,
     viewportWidth: extraction.environment.viewport.width,
     viewportHeight: extraction.environment.viewport.height,
     sourceWidth,

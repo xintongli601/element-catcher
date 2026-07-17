@@ -82,7 +82,11 @@ export function App() {
       setMessage("Capturing and cropping the visible element screenshot...");
 
       try {
-        const croppedScreenshot = await cropScreenshotDataUrl(runtimeMessage.screenshotDataUrl, runtimeMessage.extraction);
+        const croppedScreenshot = await cropScreenshotDataUrl(
+          runtimeMessage.screenshotDataUrl,
+          runtimeMessage.extraction,
+          runtimeMessage.screenshotCropRect
+        );
         setStatus("selected");
         setSelection(runtimeMessage.selection);
         setLockedSelection(null);
