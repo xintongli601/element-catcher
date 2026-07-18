@@ -20,6 +20,7 @@ export type StoredScreenshotAsset = {
 export type StoredRecordEntry = {
   id: string;
   value: JsonObject;
+  savedAt?: string;
 };
 
 export type PersistenceBundle = {
@@ -74,6 +75,51 @@ export async function readRecordEntry(id: string) {
     requestResult<StoredRecordEntry | undefined>(
       database.transaction(CAPTURE_RECORD_STORE_NAME, "readonly").objectStore(CAPTURE_RECORD_STORE_NAME).get(id)
     )
+  );
+}
+
+export async function readLatestSavedRecordEntry() {
+  return withDatabase(
+    (database) =>
+      new Promise<StoredRecordEntry | undefined>((resolve, reject) => {
+        const transaction = database.transaction(CAPTURE_RECORD_STORE_NAME, "readonly");
+        const store = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const request = store.openCursor();
+        let latest: StoredRecordEntry | undefined;
+        let requestError: DOMException | null = null;
+
+        request.onsuccess = () => {
+          const cursor = request.result;
+
+          if (!cursor) {
+            return;
+          }
+
+          const entry = cursor.value as StoredRecordEntry;
+          if (entry.savedAt !== undefined) {
+            try {
+              validateRecordEntry(entry);
+            } catch (error) {
+              requestError = error instanceof DOMException ? error : null;
+              transaction.abort();
+              reject(toPersistenceError(error, "validation"));
+              return;
+            }
+
+            if (!latest || entry.savedAt > latest.savedAt!) {
+              latest = entry;
+            }
+          }
+
+          cursor.continue();
+        };
+
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(latest);
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+      })
   );
 }
 
@@ -203,4 +249,17 @@ function validateRecordEntry(record: StoredRecordEntry) {
   }
 
   assertJsonCompatible(record.value);
+
+  if (record.savedAt !== undefined && !isNormalizedIsoTimestamp(record.savedAt)) {
+    throw new PersistenceError("validation", "Invalid savedAt timestamp.");
+  }
+}
+
+function isNormalizedIsoTimestamp(value: unknown) {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString() === value;
 }

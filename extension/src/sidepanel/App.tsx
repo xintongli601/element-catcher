@@ -14,14 +14,12 @@ import {
   createCaptureRecordTimestamp
 } from "../capture/capture-record-v1";
 import {
-  runCaptureRecordAssemblyCheck,
-  type CaptureRecordAssemblyCheckResult
-} from "../storage/capture-record-assembly-check";
-import {
-  runPersistenceFoundationCheck,
-  type PersistenceFoundationCheckResult
-} from "../storage/persistence-foundation-check";
+  loadLatestSavedCapture,
+  saveCaptureRecordV1,
+  type SavedCaptureReadModel
+} from "../storage/capture-save";
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
+import { CapturePreview, SavedCapturePreview } from "./CapturePreview";
 import { cropScreenshotDataUrl } from "./crop-screenshot";
 
 const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
@@ -34,7 +32,26 @@ export function App() {
   const [structuredExtraction, setStructuredExtraction] = useState<StructuredCaptureExtraction | null>(null);
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
   const [captureRecordCandidate, setCaptureRecordCandidate] = useState<CaptureRecord | null>(null);
+  const [latestSavedCapture, setLatestSavedCapture] = useState<LatestSavedCaptureState>({ status: "loading" });
   const captureRequestInFlightRef = useRef(false);
+
+  const loadLatestSaved = async () => {
+    setLatestSavedCapture({ status: "loading" });
+
+    try {
+      const savedCapture = await loadLatestSavedCapture();
+      setLatestSavedCapture(savedCapture ? { status: "loaded", savedCapture } : { status: "empty" });
+    } catch (error) {
+      setLatestSavedCapture({
+        status: "failed",
+        message: getSafePersistenceMessage(error)
+      });
+    }
+  };
+
+  useEffect(() => {
+    void loadLatestSaved();
+  }, []);
 
   useEffect(() => {
     const handleRuntimeMessage = (runtimeMessage: unknown) => {
@@ -120,7 +137,7 @@ export function App() {
         setScreenshotCapture(croppedScreenshot);
         setCaptureRecordCandidate(candidate);
         captureRequestInFlightRef.current = false;
-        setMessage("Element selected. A complete CaptureRecord v1 candidate is ready for validation.");
+        setMessage("Element selected. Review the Capture Preview, then save it locally when ready.");
       } catch (error) {
         captureRequestInFlightRef.current = false;
         setStatus("error");
@@ -257,21 +274,18 @@ export function App() {
         />
       ) : null}
 
-      {selection ? (
-        <SelectionSummary
+      {selection && screenshotCapture && captureRecordCandidate ? (
+        <CurrentCaptureWorkflow
           selection={selection}
-          hasStructuredExtraction={Boolean(structuredExtraction)}
           screenshotCapture={screenshotCapture}
           captureRecordCandidate={captureRecordCandidate}
+          onSaved={(savedCapture) => setLatestSavedCapture({ status: "loaded", savedCapture })}
         />
+      ) : selection ? (
+        <SelectedElementPending selection={selection} hasStructuredExtraction={Boolean(structuredExtraction)} />
       ) : null}
 
-      <section className="saved-captures" aria-labelledby="saved-captures-heading">
-        <div>
-          <h2 id="saved-captures-heading">Saved captures</h2>
-          <p>No captures yet. Local capture storage is planned for a later milestone.</p>
-        </div>
-      </section>
+      <LatestSavedCaptureSection latestSavedCapture={latestSavedCapture} onRetry={loadLatestSaved} />
     </main>
   );
 }
@@ -321,16 +335,12 @@ function LockedSelectionSummary({
   );
 }
 
-function SelectionSummary({
+function SelectedElementPending({
   selection,
-  hasStructuredExtraction,
-  screenshotCapture,
-  captureRecordCandidate
+  hasStructuredExtraction
 }: {
   selection: ElementSelection;
   hasStructuredExtraction: boolean;
-  screenshotCapture: ScreenshotCaptureResult | null;
-  captureRecordCandidate: CaptureRecord | null;
 }) {
   return (
     <section className="selection-summary" aria-labelledby="selection-summary-heading">
@@ -338,231 +348,182 @@ function SelectionSummary({
       <SelectionDetails selection={selection} />
       <p className="next-step-note">
         {hasStructuredExtraction
-          ? "Structured DOM, style extraction, cropped screenshot, and a CaptureRecord v1 candidate are ready. Save and Capture Preview will be implemented in a later Milestone 3 stage."
-          : "Screenshot capture will be implemented in Milestone 3."}
+          ? "Preparing the Capture Preview..."
+          : "Screenshot capture is being prepared for this selection."}
       </p>
-      {screenshotCapture && captureRecordCandidate ? (
-        <ScreenshotResult screenshotCapture={screenshotCapture} captureRecordCandidate={captureRecordCandidate} />
+    </section>
+  );
+}
+
+type SaveState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "saving";
+    }
+  | {
+      status: "saved";
+      savedAt: string;
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
+type LatestSavedCaptureState =
+  | {
+      status: "loading";
+    }
+  | {
+      status: "empty";
+    }
+  | {
+      status: "loaded";
+      savedCapture: SavedCaptureReadModel;
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
+function CurrentCaptureWorkflow({
+  selection,
+  screenshotCapture,
+  captureRecordCandidate,
+  onSaved
+}: {
+  selection: ElementSelection;
+  screenshotCapture: ScreenshotCaptureResult;
+  captureRecordCandidate: CaptureRecord;
+  onSaved: (savedCapture: SavedCaptureReadModel) => void;
+}) {
+  const [saveState, setSaveState] = useState<SaveState>({ status: "idle" });
+  const saveInFlightRef = useRef(false);
+
+  useEffect(() => {
+    saveInFlightRef.current = false;
+    setSaveState({ status: "idle" });
+  }, [captureRecordCandidate.id]);
+
+  const handleSaveCapture = async () => {
+    if (saveInFlightRef.current || saveState.status === "saved") {
+      return;
+    }
+
+    saveInFlightRef.current = true;
+    setSaveState({ status: "saving" });
+
+    try {
+      const savedCapture = await saveCaptureRecordV1(captureRecordCandidate, screenshotCapture);
+      onSaved(savedCapture);
+      setSaveState({ status: "saved", savedAt: savedCapture.savedAt });
+    } catch (error) {
+      setSaveState({
+        status: "failed",
+        message: getSafePersistenceMessage(error)
+      });
+    } finally {
+      saveInFlightRef.current = false;
+    }
+  };
+
+  return (
+    <section className="current-capture" aria-labelledby="current-capture-heading">
+      <h2 id="current-capture-heading">Current capture</h2>
+      <SelectionDetails selection={selection} />
+      <CapturePreview
+        record={captureRecordCandidate}
+        imageSrc={screenshotCapture.dataUrl}
+        heading={saveState.status === "saved" ? "Saved capture" : "Unsaved capture"}
+        statusText={saveState.status === "saved" ? "Saved locally" : "Previewed but unsaved"}
+      />
+      {screenshotCapture.wasClipped ? (
+        <p className="clip-note">Only the visible viewport portion of this element was captured.</p>
+      ) : null}
+      <section className="save-panel" aria-labelledby="save-capture-heading">
+        <h3 id="save-capture-heading">Local save</h3>
+        <p>
+          {saveState.status === "saved"
+            ? "This capture and its screenshot asset are stored locally."
+            : "This preview is not saved yet. Use Save capture to store one CaptureRecord and one referenced screenshot asset locally."}
+        </p>
+        <button
+          className="primary-action"
+          type="button"
+          onClick={handleSaveCapture}
+          disabled={saveState.status === "saving" || saveState.status === "saved"}
+        >
+          {getSaveButtonLabel(saveState)}
+        </button>
+        {saveState.status === "idle" ? (
+          <p className="save-state save-state-idle">Previewed but unsaved.</p>
+        ) : null}
+        {saveState.status === "saving" ? (
+          <p className="save-state save-state-saving">Saving and verifying local read-back...</p>
+        ) : null}
+        {saveState.status === "saved" ? (
+          <p className="save-state save-state-saved" role="status">
+            Saved locally. The CaptureRecord and screenshot asset were verified after read-back.
+          </p>
+        ) : null}
+        {saveState.status === "failed" ? (
+          <p className="save-state save-state-failed" role="alert">
+            Save failed. {saveState.message}
+          </p>
+        ) : null}
+      </section>
+    </section>
+  );
+}
+
+function LatestSavedCaptureSection({
+  latestSavedCapture,
+  onRetry
+}: {
+  latestSavedCapture: LatestSavedCaptureState;
+  onRetry: () => void;
+}) {
+  return (
+    <section className="latest-saved" aria-labelledby="latest-saved-heading">
+      <div className="latest-saved-header">
+        <h2 id="latest-saved-heading">Latest saved capture</h2>
+        {latestSavedCapture.status === "failed" ? (
+          <button className="secondary-action compact-action" type="button" onClick={onRetry}>
+            Retry loading
+          </button>
+        ) : null}
+      </div>
+      {latestSavedCapture.status === "loading" ? <p className="empty-note">Loading local saved capture...</p> : null}
+      {latestSavedCapture.status === "empty" ? (
+        <p className="empty-note">No explicitly saved capture yet.</p>
+      ) : null}
+      {latestSavedCapture.status === "failed" ? (
+        <p className="save-state save-state-failed" role="alert">
+          Could not load the latest saved capture. {latestSavedCapture.message}
+        </p>
+      ) : null}
+      {latestSavedCapture.status === "loaded" ? (
+        <SavedCapturePreview savedCapture={latestSavedCapture.savedCapture} />
       ) : null}
     </section>
   );
 }
 
-type PersistenceDiagnosticState =
-  | {
-      status: "idle";
-    }
-  | {
-      status: "checking";
-    }
-  | {
-      status: "passed";
-      result: PersistenceFoundationCheckResult;
-    }
-  | {
-      status: "failed";
-      message: string;
-    };
+function getSaveButtonLabel(saveState: SaveState) {
+  if (saveState.status === "saving") {
+    return "Saving...";
+  }
 
-type CaptureRecordDiagnosticState =
-  | {
-      status: "idle";
-    }
-  | {
-      status: "checking";
-    }
-  | {
-      status: "passed";
-      result: CaptureRecordAssemblyCheckResult;
-    }
-  | {
-      status: "failed";
-      message: string;
-    };
+  if (saveState.status === "saved") {
+    return "Saved locally";
+  }
 
-function ScreenshotResult({
-  screenshotCapture,
-  captureRecordCandidate
-}: {
-  screenshotCapture: ScreenshotCaptureResult;
-  captureRecordCandidate: CaptureRecord;
-}) {
-  const [diagnostic, setDiagnostic] = useState<PersistenceDiagnosticState>({ status: "idle" });
-  const [recordDiagnostic, setRecordDiagnostic] = useState<CaptureRecordDiagnosticState>({ status: "idle" });
-  const persistenceDiagnosticInFlightRef = useRef(false);
-  const recordDiagnosticInFlightRef = useRef(false);
+  if (saveState.status === "failed") {
+    return "Retry Save";
+  }
 
-  useEffect(() => {
-    persistenceDiagnosticInFlightRef.current = false;
-    recordDiagnosticInFlightRef.current = false;
-    setDiagnostic({ status: "idle" });
-    setRecordDiagnostic({ status: "idle" });
-  }, [captureRecordCandidate.id]);
-
-  const handlePersistenceDiagnostic = async () => {
-    if (persistenceDiagnosticInFlightRef.current) {
-      return;
-    }
-
-    persistenceDiagnosticInFlightRef.current = true;
-    setDiagnostic({ status: "checking" });
-
-    try {
-      const result = await runPersistenceFoundationCheck(screenshotCapture);
-      setDiagnostic({ status: "passed", result });
-    } catch (error) {
-      setDiagnostic({
-        status: "failed",
-        message: getSafePersistenceMessage(error)
-      });
-    } finally {
-      persistenceDiagnosticInFlightRef.current = false;
-    }
-  };
-
-  const handleCaptureRecordDiagnostic = async () => {
-    if (recordDiagnosticInFlightRef.current) {
-      return;
-    }
-
-    recordDiagnosticInFlightRef.current = true;
-    setRecordDiagnostic({ status: "checking" });
-
-    try {
-      const result = await runCaptureRecordAssemblyCheck(captureRecordCandidate, screenshotCapture);
-      setRecordDiagnostic({ status: "passed", result });
-    } catch (error) {
-      setRecordDiagnostic({
-        status: "failed",
-        message: getSafePersistenceMessage(error)
-      });
-    } finally {
-      recordDiagnosticInFlightRef.current = false;
-    }
-  };
-
-  return (
-    <section className="screenshot-result" aria-labelledby="screenshot-result-heading">
-      <h3 id="screenshot-result-heading">Cropped screenshot</h3>
-      <img
-        src={screenshotCapture.dataUrl}
-        alt="Cropped screenshot of the selected visible webpage element"
-        className="screenshot-thumbnail"
-      />
-      <dl>
-        <div>
-          <dt>Image size</dt>
-          <dd>
-            {screenshotCapture.width} x {screenshotCapture.height} px
-          </dd>
-        </div>
-        <div>
-          <dt>Crop size</dt>
-          <dd>
-            {Math.round(screenshotCapture.crop.width)} x {Math.round(screenshotCapture.crop.height)} CSS px
-          </dd>
-        </div>
-      </dl>
-      {screenshotCapture.wasClipped ? (
-        <p className="clip-note">Only the visible viewport portion of this element was captured.</p>
-      ) : null}
-      <section className="persistence-diagnostic" aria-labelledby="capture-record-diagnostic-heading">
-        <div>
-          <h4 id="capture-record-diagnostic-heading">CaptureRecord v1 assembly check</h4>
-          <p>
-            A complete CaptureRecord v1 candidate has been assembled for Milestone 3D.2 validation. This does not save
-            the current capture; temporary record and asset data are deleted after the check, and the final Save workflow
-            comes later.
-          </p>
-        </div>
-        <dl className="diagnostic-metadata">
-          <div>
-            <dt>Schema version</dt>
-            <dd>{captureRecordCandidate.schemaVersion}</dd>
-          </div>
-          <div>
-            <dt>Record id</dt>
-            <dd>{captureRecordCandidate.id}</dd>
-          </div>
-          <div>
-            <dt>Created at</dt>
-            <dd>{captureRecordCandidate.createdAt}</dd>
-          </div>
-          <div>
-            <dt>Storage key</dt>
-            <dd>{captureRecordCandidate.assets.screenshot.storageKey}</dd>
-          </div>
-        </dl>
-        <button
-          className="secondary-action"
-          type="button"
-          onClick={handleCaptureRecordDiagnostic}
-          disabled={recordDiagnostic.status === "checking"}
-        >
-          {recordDiagnostic.status === "checking" ? "Checking..." : "Verify CaptureRecord v1"}
-        </button>
-        {recordDiagnostic.status === "idle" ? (
-          <p className="diagnostic-state">Ready. The current capture has not been saved.</p>
-        ) : null}
-        {recordDiagnostic.status === "passed" ? (
-          <div className="diagnostic-result diagnostic-result-passed" role="status">
-            <p>CaptureRecord v1 check passed. The current capture was not saved.</p>
-            <ul>
-              <li>Schema version {recordDiagnostic.result.schemaVersion} confirmed.</li>
-              <li>Required field groups present.</li>
-              <li>JSON compatibility passed.</li>
-              <li>JSON serialization round trip passed.</li>
-              <li>Screenshot dataUrl excluded.</li>
-              <li>Screenshot reference matched persisted asset.</li>
-              <li>CaptureRecord IndexedDB read-back passed.</li>
-              <li>Screenshot digest read-back passed.</li>
-              <li>Temporary cleanup passed.</li>
-            </ul>
-          </div>
-        ) : null}
-        {recordDiagnostic.status === "failed" ? (
-          <p className="diagnostic-result diagnostic-result-failed" role="alert">
-            CaptureRecord v1 check failed. {recordDiagnostic.message}
-          </p>
-        ) : null}
-      </section>
-      <section className="persistence-diagnostic" aria-labelledby="persistence-diagnostic-heading">
-        <div>
-          <h4 id="persistence-diagnostic-heading">Local persistence foundation check</h4>
-          <p>
-            This verifies the local IndexedDB foundation only. It does not save the current capture, and temporary
-            probe data is removed after the check.
-          </p>
-        </div>
-        <button
-          className="secondary-action"
-          type="button"
-          onClick={handlePersistenceDiagnostic}
-          disabled={diagnostic.status === "checking"}
-        >
-          {diagnostic.status === "checking" ? "Checking..." : "Verify local persistence"}
-        </button>
-        {diagnostic.status === "passed" ? (
-          <div className="diagnostic-result diagnostic-result-passed" role="status">
-            <p>Local persistence check passed. The current capture was not saved.</p>
-            <ul>
-              <li>Database opened: {diagnostic.result.databaseName} v{diagnostic.result.databaseVersion}</li>
-              <li>Object stores exist: {diagnostic.result.stores.join(", ")}.</li>
-              <li>PNG asset integrity passed.</li>
-              <li>JSON record read-back passed.</li>
-              <li>Atomic rollback passed.</li>
-              <li>Temporary probe cleanup passed.</li>
-            </ul>
-          </div>
-        ) : null}
-        {diagnostic.status === "failed" ? (
-          <p className="diagnostic-result diagnostic-result-failed" role="alert">
-            Local persistence check failed. {diagnostic.message}
-          </p>
-        ) : null}
-      </section>
-    </section>
-  );
+  return "Save capture";
 }
 
 function SelectionDetails({ selection }: { selection: ElementSelection }) {
