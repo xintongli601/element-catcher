@@ -156,9 +156,17 @@ async function withDatabase<T>(operation: (database: IDBDatabase) => Promise<T> 
 
 function waitForTransaction(transaction: IDBTransaction, fallbackCode: "transaction" | "cleanup" = "transaction") {
   return new Promise<void>((resolve, reject) => {
+    let requestError: DOMException | null = null;
+
     transaction.oncomplete = () => resolve();
-    transaction.onabort = () => reject(toPersistenceError(transaction.error, fallbackCode));
-    transaction.onerror = () => reject(toPersistenceError(transaction.error, fallbackCode));
+    transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, fallbackCode));
+    transaction.onerror = (event) => {
+      const target = event.target;
+
+      if (!requestError && target instanceof IDBRequest && target.error) {
+        requestError = target.error;
+      }
+    };
   });
 }
 

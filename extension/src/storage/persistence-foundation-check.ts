@@ -30,13 +30,16 @@ export type PersistenceFoundationCheckResult = {
 };
 
 const PROBE_KIND = "milestone-3d1-persistence-probe";
+const PNG_DATA_URL_PREFIX = "data:image/png;base64,";
+const MAX_PERSISTENCE_PROBE_PNG_BYTES = 60_000_000;
+const MAX_PERSISTENCE_PROBE_BASE64_LENGTH = Math.ceil(MAX_PERSISTENCE_PROBE_PNG_BYTES / 3) * 4;
 
 export async function runPersistenceFoundationCheck(screenshotCapture: ScreenshotCaptureResult) {
   const probeId = createProbeId();
   const rollbackRecordId = createProbeId();
   const storageKey = createScreenshotStorageKey(probeId);
   const rollbackStorageKey = createScreenshotStorageKey(createProbeId());
-  const blob = await pngDataUrlToBlob(screenshotCapture.dataUrl);
+  const blob = await pngDataUrlToBlob(screenshotCapture.dataUrl, screenshotCapture.byteLength);
   const digest = await digestBlob(blob);
   const asset = createScreenshotAsset(storageKey, blob, screenshotCapture);
   const record = createProbeRecord(probeId, storageKey, screenshotCapture);
@@ -88,19 +91,52 @@ function verifyDatabaseInfo(databaseInfo: { version: number; stores: string[] })
   }
 }
 
-async function pngDataUrlToBlob(dataUrl: string) {
-  if (!dataUrl.startsWith("data:image/png;base64,")) {
-    throw new PersistenceError("encoding", "Invalid PNG data URL.");
-  }
+async function pngDataUrlToBlob(dataUrl: string, expectedByteLength: number) {
+  verifyExpectedPngByteLength(expectedByteLength);
+  getBoundedPngBase64Payload(dataUrl);
 
   const response = await fetch(dataUrl);
   const blob = await response.blob();
 
-  if (blob.type !== "image/png" || blob.size <= 0) {
+  if (
+    blob.type !== "image/png" ||
+    blob.size <= 0 ||
+    blob.size !== expectedByteLength ||
+    blob.size > MAX_PERSISTENCE_PROBE_PNG_BYTES
+  ) {
     throw new PersistenceError("encoding", "Invalid PNG blob.");
   }
 
   return blob;
+}
+
+function verifyExpectedPngByteLength(byteLength: number) {
+  if (!Number.isSafeInteger(byteLength) || byteLength <= 0) {
+    throw new PersistenceError("encoding", "Invalid PNG byte length.");
+  }
+
+  if (byteLength > MAX_PERSISTENCE_PROBE_PNG_BYTES) {
+    throw new PersistenceError("encoding", "PNG asset exceeds the persistence probe byte limit.");
+  }
+}
+
+function getBoundedPngBase64Payload(dataUrl: string) {
+  if (!dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
+    throw new PersistenceError("encoding", "Invalid PNG data URL.");
+  }
+
+  const payload = dataUrl.slice(PNG_DATA_URL_PREFIX.length);
+
+  if (
+    payload.length <= 0 ||
+    payload.length > MAX_PERSISTENCE_PROBE_BASE64_LENGTH ||
+    payload.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(payload)
+  ) {
+    throw new PersistenceError("encoding", "Invalid PNG data URL.");
+  }
+
+  return payload;
 }
 
 function createProbeId() {
@@ -163,10 +199,7 @@ async function verifyStoredBundle(asset: StoredScreenshotAsset, record: StoredRe
     storedAsset.width !== asset.width ||
     storedAsset.height !== asset.height ||
     storedAsset.byteLength !== asset.byteLength ||
-    storedAsset.crop.width !== asset.crop.width ||
-    storedAsset.crop.height !== asset.crop.height ||
-    storedAsset.crop.left !== asset.crop.left ||
-    storedAsset.crop.top !== asset.crop.top
+    !rectsMatch(storedAsset.crop, asset.crop)
   ) {
     throw new PersistenceError("readback", "Stored screenshot asset metadata did not match.");
   }
@@ -266,4 +299,17 @@ function toJsonRect(rect: SerializableRect): JsonObject {
     bottom: rect.bottom,
     left: rect.left
   };
+}
+
+function rectsMatch(left: SerializableRect, right: SerializableRect) {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    left.left === right.left
+  );
 }
