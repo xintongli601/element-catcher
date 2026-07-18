@@ -11,6 +11,7 @@ import {
   deletePersistenceBundle,
   readLatestSavedRecordEntry,
   readRecordEntry,
+  readSavedRecordEntries,
   readScreenshotAsset,
   type StoredRecordEntry,
   type StoredScreenshotAsset
@@ -88,6 +89,17 @@ export async function loadLatestSavedCapture(): Promise<SavedCaptureReadModel | 
   }
 }
 
+export async function loadSavedCaptureLibrary(): Promise<SavedCaptureReadModel[]> {
+  try {
+    const entries = await readSavedRecordEntries();
+    const readModels = await Promise.all(entries.map(readSavedCaptureEntry));
+
+    return readModels.sort(compareSavedCapturesNewestFirst);
+  } catch (error) {
+    throw toPersistenceError(error);
+  }
+}
+
 async function verifySavedCaptureReadback({
   expectedRecord,
   expectedAsset,
@@ -160,6 +172,14 @@ async function readSavedCaptureEntry(entry: StoredRecordEntry): Promise<SavedCap
     asset,
     savedAt: entry.savedAt
   };
+}
+
+function compareSavedCapturesNewestFirst(left: SavedCaptureReadModel, right: SavedCaptureReadModel) {
+  if (left.savedAt !== right.savedAt) {
+    return right.savedAt.localeCompare(left.savedAt);
+  }
+
+  return left.record.id.localeCompare(right.record.id);
 }
 
 function verifyScreenshotReference(captureRecord: CaptureRecord, expectedAsset: StoredScreenshotAsset) {

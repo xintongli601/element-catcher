@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import type { CaptureRecord } from "../shared/capture-schema";
 import type { SavedCaptureReadModel } from "../storage/capture-save";
+import { boundText, formatNumber, formatSourceLocation, formatTimestamp } from "./display-format";
 
-const MAX_PREVIEW_TEXT_LENGTH = 180;
-const MAX_SOURCE_LENGTH = 160;
 const MAX_CHILDREN = 5;
 
 export function CapturePreview({
@@ -187,32 +186,4 @@ function summarizeValue(value: unknown): string {
 
 function formatLabel(value: string) {
   return value.replace(/[A-Z]/g, (match) => ` ${match.toLowerCase()}`);
-}
-
-function formatSourceLocation(value: string) {
-  try {
-    const url = new URL(value);
-    url.username = "";
-    url.password = "";
-    url.search = "";
-    url.hash = "";
-    return boundText(`${url.origin}${url.pathname}`, MAX_SOURCE_LENGTH);
-  } catch {
-    return boundText(value, MAX_SOURCE_LENGTH);
-  }
-}
-
-function formatTimestamp(value: string) {
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short"
-  }).format(new Date(value));
-}
-
-function formatNumber(value: number) {
-  return Number.isInteger(value) ? String(value) : value.toFixed(2);
-}
-
-function boundText(value: string, maxLength = MAX_PREVIEW_TEXT_LENGTH) {
-  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }

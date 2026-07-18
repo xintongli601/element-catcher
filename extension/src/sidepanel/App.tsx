@@ -14,12 +14,13 @@ import {
   createCaptureRecordTimestamp
 } from "../capture/capture-record-v1";
 import {
-  loadLatestSavedCapture,
+  loadSavedCaptureLibrary,
   saveCaptureRecordV1,
   type SavedCaptureReadModel
 } from "../storage/capture-save";
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
-import { CapturePreview, SavedCapturePreview } from "./CapturePreview";
+import { CaptureLibrary, type CaptureLibraryState } from "./CaptureLibrary";
+import { CapturePreview } from "./CapturePreview";
 import { cropScreenshotDataUrl } from "./crop-screenshot";
 
 const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
@@ -32,17 +33,28 @@ export function App() {
   const [structuredExtraction, setStructuredExtraction] = useState<StructuredCaptureExtraction | null>(null);
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
   const [captureRecordCandidate, setCaptureRecordCandidate] = useState<CaptureRecord | null>(null);
-  const [latestSavedCapture, setLatestSavedCapture] = useState<LatestSavedCaptureState>({ status: "loading" });
+  const [captureLibrary, setCaptureLibrary] = useState<CaptureLibraryState>({ status: "loading" });
   const captureRequestInFlightRef = useRef(false);
+  const libraryLoadSequenceRef = useRef(0);
 
-  const loadLatestSaved = async () => {
-    setLatestSavedCapture({ status: "loading" });
+  const loadLibrary = async () => {
+    const sequence = libraryLoadSequenceRef.current + 1;
+    libraryLoadSequenceRef.current = sequence;
+    setCaptureLibrary({ status: "loading" });
 
     try {
-      const savedCapture = await loadLatestSavedCapture();
-      setLatestSavedCapture(savedCapture ? { status: "loaded", savedCapture } : { status: "empty" });
+      const savedCaptures = await loadSavedCaptureLibrary();
+      if (libraryLoadSequenceRef.current !== sequence) {
+        return;
+      }
+
+      setCaptureLibrary(savedCaptures.length ? { status: "loaded", savedCaptures } : { status: "empty" });
     } catch (error) {
-      setLatestSavedCapture({
+      if (libraryLoadSequenceRef.current !== sequence) {
+        return;
+      }
+
+      setCaptureLibrary({
         status: "failed",
         message: getSafePersistenceMessage(error)
       });
@@ -50,7 +62,7 @@ export function App() {
   };
 
   useEffect(() => {
-    void loadLatestSaved();
+    void loadLibrary();
   }, []);
 
   useEffect(() => {
@@ -279,13 +291,13 @@ export function App() {
           selection={selection}
           screenshotCapture={screenshotCapture}
           captureRecordCandidate={captureRecordCandidate}
-          onSaved={(savedCapture) => setLatestSavedCapture({ status: "loaded", savedCapture })}
+          onSaved={() => void loadLibrary()}
         />
       ) : selection ? (
         <SelectedElementPending selection={selection} hasStructuredExtraction={Boolean(structuredExtraction)} />
       ) : null}
 
-      <LatestSavedCaptureSection latestSavedCapture={latestSavedCapture} onRetry={loadLatestSaved} />
+      <CaptureLibrary libraryState={captureLibrary} onRetry={loadLibrary} />
     </main>
   );
 }
@@ -365,22 +377,6 @@ type SaveState =
   | {
       status: "saved";
       savedAt: string;
-    }
-  | {
-      status: "failed";
-      message: string;
-    };
-
-type LatestSavedCaptureState =
-  | {
-      status: "loading";
-    }
-  | {
-      status: "empty";
-    }
-  | {
-      status: "loaded";
-      savedCapture: SavedCaptureReadModel;
     }
   | {
       status: "failed";
@@ -473,39 +469,6 @@ function CurrentCaptureWorkflow({
           </p>
         ) : null}
       </section>
-    </section>
-  );
-}
-
-function LatestSavedCaptureSection({
-  latestSavedCapture,
-  onRetry
-}: {
-  latestSavedCapture: LatestSavedCaptureState;
-  onRetry: () => void;
-}) {
-  return (
-    <section className="latest-saved" aria-labelledby="latest-saved-heading">
-      <div className="latest-saved-header">
-        <h2 id="latest-saved-heading">Latest saved capture</h2>
-        {latestSavedCapture.status === "failed" ? (
-          <button className="secondary-action compact-action" type="button" onClick={onRetry}>
-            Retry loading
-          </button>
-        ) : null}
-      </div>
-      {latestSavedCapture.status === "loading" ? <p className="empty-note">Loading local saved capture...</p> : null}
-      {latestSavedCapture.status === "empty" ? (
-        <p className="empty-note">No explicitly saved capture yet.</p>
-      ) : null}
-      {latestSavedCapture.status === "failed" ? (
-        <p className="save-state save-state-failed" role="alert">
-          Could not load the latest saved capture. {latestSavedCapture.message}
-        </p>
-      ) : null}
-      {latestSavedCapture.status === "loaded" ? (
-        <SavedCapturePreview savedCapture={latestSavedCapture.savedCapture} />
-      ) : null}
     </section>
   );
 }

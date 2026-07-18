@@ -123,6 +123,58 @@ export async function readLatestSavedRecordEntry() {
   );
 }
 
+export async function readSavedRecordEntries() {
+  return withDatabase(
+    (database) =>
+      new Promise<StoredRecordEntry[]>((resolve, reject) => {
+        const transaction = database.transaction(CAPTURE_RECORD_STORE_NAME, "readonly");
+        const store = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const request = store.openCursor();
+        const entries: StoredRecordEntry[] = [];
+        let requestError: DOMException | null = null;
+        let settled = false;
+
+        request.onsuccess = () => {
+          const cursor = request.result;
+
+          if (!cursor) {
+            return;
+          }
+
+          const entry = cursor.value as StoredRecordEntry;
+          if (entry.savedAt !== undefined) {
+            try {
+              validateRecordEntry(entry);
+              entries.push(entry);
+            } catch (error) {
+              settled = true;
+              requestError = error instanceof DOMException ? error : null;
+              transaction.abort();
+              reject(toPersistenceError(error, "validation"));
+              return;
+            }
+          }
+
+          cursor.continue();
+        };
+
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => {
+          if (!settled) {
+            resolve(entries);
+          }
+        };
+        transaction.onabort = () => {
+          if (!settled) {
+            reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
 export async function deleteRecordEntry(id: string) {
   await withDatabase(async (database) => {
     const transaction = database.transaction(CAPTURE_RECORD_STORE_NAME, "readwrite");
