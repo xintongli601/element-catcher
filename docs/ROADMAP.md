@@ -614,6 +614,236 @@ Acceptance criteria:
 - Users can search and filter captures by useful metadata such as title, tags, component type, source URL, and summaries.
 - Library behavior remains local-first.
 
+### Milestone 4A - Library Read Model and Capture List Foundation
+
+Status: Current
+
+Objective: Establish a validated local-library repository/read model and show all explicitly saved `CaptureRecord` entries in a basic capture list.
+
+Included scope:
+
+- Read all explicitly saved record wrappers that contain valid `savedAt`.
+- Ignore diagnostic or temporary entries without `savedAt`.
+- Parse and validate each `CaptureRecord v1`.
+- Load and verify each referenced persisted screenshot asset.
+- Use deterministic newest-first ordering by `savedAt`, with a deterministic tie-breaker for equal timestamps.
+- Add a reusable saved-capture list/read model instead of putting raw IndexedDB operations directly into UI components.
+- Add a basic Side Panel Capture Library list.
+- Show persisted Blob-backed thumbnails or previews.
+- Create and revoke object URLs correctly.
+- Use a safe fallback label when `library.title` is absent.
+- Refresh the Library automatically after a newly completed Save.
+- Restore the Library after closing and reopening the Side Panel.
+- Show clear loading, empty, and safe failure states.
+- Retain the existing Capture, Confirm, Preview, and Save workflow.
+
+Explicitly excluded scope:
+
+- Opening a selected list entry in a dedicated detail view.
+- Editing metadata.
+- Deleting captures.
+- Search or filter controls.
+- AI generation.
+- Cloud sync.
+- Authentication.
+- Collaboration.
+- Payment.
+- IndexedDB version changes, new stores, or indexes.
+- New permissions or dependencies.
+
+Acceptance criteria:
+
+- All valid explicitly saved captures are listed.
+- Multiple saved captures remain available and are ordered newest first.
+- Entries without `savedAt` are not shown as user captures.
+- Each displayed screenshot comes from the persisted Blob, not an inline `CaptureRecord` data URL.
+- Object URLs are revoked on item removal, replacement, and component unmount.
+- A newly saved capture appears without requiring the Side Panel to close and reopen.
+- Closing and reopening the Side Panel restores the full list.
+- Invalid persistence data produces a safe error rather than exposing raw payloads or falsely reporting success.
+- Database version 1 and the existing two stores remain unchanged.
+- Existing capture and save behavior passes regression.
+- Production build and real Chrome runtime validation are required before Milestone 4A can later be marked Completed.
+
+### Milestone 4B - Saved Capture Detail and Reopen Navigation
+
+Status: Planned
+
+Objective: Allow a user to select any saved list item and reopen it as a persisted capture detail view.
+
+Included scope:
+
+- Select a saved capture from the Library list.
+- Display a full detail view from the persisted `CaptureRecord` and persisted screenshot Blob.
+- Reuse or cleanly extend the existing Capture Preview presentation.
+- Navigate back to the Library list.
+- Manage the object URL lifecycle correctly when switching captures or leaving the detail view.
+- Show clear not-found, invalid-record, and missing-asset states.
+- Preserve access to the existing Start Capture and Save workflow.
+
+Explicitly excluded scope:
+
+- Re-running extraction against the source webpage.
+- Automatically reopening or navigating the source URL.
+- Editing metadata.
+- Deleting captures.
+- Search or filtering.
+- AI generation.
+- Database migration or new permissions.
+
+Acceptance criteria:
+
+- Any valid saved capture can be opened from the list.
+- The detail view uses persisted data rather than current webpage runtime state.
+- Returning to the Library does not delete or mutate the capture.
+- Switching between captures does not leak object URLs.
+- Side Panel close/reopen still permits reopening any saved capture from the restored list.
+- Existing capture and save behavior passes regression.
+- Production build and real Chrome runtime validation are required before Milestone 4B can later be marked Completed.
+
+### Milestone 4C - User-Managed Library Metadata Editing
+
+Status: Planned
+
+Objective: Let users edit only the user-managed `CaptureRecord v1` library metadata.
+
+Included scope:
+
+- Edit `library.title`.
+- Edit `library.componentType`.
+- Edit `library.tags`.
+- Edit `library.notes`.
+- Validate and normalize user-entered metadata.
+- Persist the updated `CaptureRecord` wrapper.
+- Preserve the wrapper `id` and original `savedAt`.
+- Revalidate the complete `CaptureRecord v1` before commit.
+- Perform read-back verification before reporting success.
+- Update list and detail UI after a successful edit.
+- Show safe saving, success, failure, and retry states.
+
+Explicitly excluded scope:
+
+- Editing `source`.
+- Editing `environment`.
+- Editing `element`.
+- Editing `dom`.
+- Editing `styles`.
+- Editing `summaries`, including heuristic `summaries.componentType`.
+- Editing `assets`.
+- Editing `generatedVersions`.
+- Replacing or rewriting the screenshot asset.
+- Adding `modifiedAt` or changing `CaptureRecord v1`.
+- AI generation or cloud features.
+
+Acceptance criteria:
+
+- Only the four `library.*` fields can change.
+- All non-library `CaptureRecord` fields remain unchanged.
+- The referenced screenshot asset remains unchanged.
+- The original `savedAt` remains unchanged.
+- The updated record continues to pass the `CaptureRecord v1` validator.
+- Failed validation or persistence does not falsely report success.
+- Successful edits persist across Side Panel close/reopen.
+- List and detail views reflect successful edits.
+- Production build and real Chrome runtime validation are required before Milestone 4C can later be marked Completed.
+
+### Milestone 4D - Atomic Capture Deletion
+
+Status: Planned
+
+Objective: Delete one saved capture and its referenced screenshot asset atomically without leaving orphaned local data.
+
+Included scope:
+
+- Provide a deliberate user delete action from an opened saved capture.
+- Require a clear confirmation step.
+- Read and validate the target before deletion.
+- Delete the record and referenced screenshot asset in one IndexedDB transaction.
+- Perform post-delete read-back verification that both keys are absent.
+- Remove the deleted item from list and detail state.
+- Clean up object URLs correctly.
+- Show safe deleting, success, and failure states.
+- Retain all unrelated captures.
+
+Explicitly excluded scope:
+
+- Bulk deletion.
+- Delete-all.
+- Automatic deletion based on age or storage limits.
+- Cloud deletion.
+- Undo history or Trash unless separately approved.
+- Database migration, new indexes, permissions, or dependencies.
+
+Acceptance criteria:
+
+- Confirmed deletion removes exactly the selected record and referenced asset.
+- No orphan record or screenshot asset remains after successful deletion.
+- Other captures remain intact.
+- Cancelling confirmation performs no write.
+- Failed deletion does not falsely report success.
+- The deleted capture disappears from the list immediately.
+- Deleting the currently opened detail returns the UI safely to the Library.
+- Deletion remains correct after Side Panel close/reopen.
+- Production build and real Chrome runtime validation are required before Milestone 4D can later be marked Completed.
+
+### Milestone 4E - Search, Filtering, and Milestone 4 Regression
+
+Status: Planned
+
+Objective: Add privacy-safe in-memory search and filtering, then complete final Milestone 4 regression and runtime acceptance.
+
+Included scope:
+
+- Case-insensitive text search over safe persisted metadata.
+- Search fields include `library.title`, `library.tags`, `library.componentType`, `source.url`, `source.pageTitle`, and safe semantic and design summaries.
+- Filter by user-visible component type.
+- Filter by tag.
+- Show clear active-filter state.
+- Show a clear no-results state distinct from an empty Library.
+- Run search and filters over the already loaded local read model.
+- Avoid network requests.
+- Complete final Milestone 4 regression across list, reopen, edit, delete, save refresh, close/reopen restoration, and multiple captures.
+- Check Console, extension errors, permissions, object URLs, privacy, and classic content-script build regression.
+- Keep search and filtering over stored privacy-safe `CaptureRecord` fields.
+- Keep simple Library search and filtering in memory; this stage does not justify an IndexedDB version upgrade or indexes.
+
+Search and filtering must not expose or search:
+
+- Raw DOM objects.
+- Raw IndexedDB wrappers.
+- Screenshot Blob contents.
+- Inline image data.
+- Form values.
+- Password values.
+- Raw hidden content.
+- Arbitrary sensitive attributes.
+- Unsanitized payloads.
+
+Explicitly excluded scope:
+
+- Full-text database indexing.
+- IndexedDB schema upgrades or indexes.
+- Fuzzy search libraries.
+- Embeddings or semantic vector search.
+- AI generation.
+- Cloud sync.
+- Authentication.
+- Team collaboration.
+- Payment.
+
+Acceptance criteria:
+
+- Search returns matching captures across the approved safe fields.
+- Component-type and tag filters work independently and together.
+- Search and filtering are deterministic and case-insensitive.
+- Clearing controls restores the complete Library.
+- No-results and empty-Library states are distinct.
+- Search/filter actions do not mutate persisted records.
+- No database version change, index, permission, or dependency is introduced.
+- All Milestone 4 functions pass real Chrome runtime validation.
+- Existing Milestone 3 Capture, Confirm, screenshot, Preview, Save, failure/retry, privacy, and classic content-script behavior remains intact.
+- Milestone 4 must not be marked Completed until Milestones 4A through 4E have each been implemented, independently reviewed, runtime validated, and marked Completed through later documentation-only commits.
+
 ## Milestone 5 - AI React + Tailwind Reconstruction
 
 Status: Planned
