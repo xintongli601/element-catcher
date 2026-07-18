@@ -484,7 +484,7 @@ Explicitly excluded from all Milestone 3D subsections:
 
 #### Milestone 3D.1 - Local Persistence Foundation
 
-Status: Current
+Status: Completed
 
 Objective: Create the versioned local database, screenshot asset repository, `CaptureRecord` repository, transaction boundaries, and typed persistence errors without yet adding full Capture Preview or Capture Library behavior.
 
@@ -512,9 +512,11 @@ Acceptance criteria:
 - No Capture Library UI is added.
 - Real Chrome runtime validation is required before completion.
 
+Acceptance status: Completed. Milestone 3D.1 passed production build validation; classic content-script bundling validation; real Chrome extension-origin IndexedDB creation; screenshot asset write, digest-based read-back, and cleanup; JSON probe record read-back; deterministic failed-transaction rollback; duplicate diagnostic protection; existing capture regression checks; Console checks; and extension-error checks. The diagnostic confirmed that no real user capture was saved.
+
 #### Milestone 3D.2 - Complete CaptureRecord v1 Assembly
 
-Status: Planned
+Status: Current
 
 Objective: Assemble the accepted structured extraction and persisted screenshot reference into one complete `CaptureRecord v1` matching `docs/CAPTURE_SCHEMA.md`.
 
