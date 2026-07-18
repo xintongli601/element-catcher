@@ -161,7 +161,7 @@ Acceptance status: Completed. Milestone 2.5 is accepted as a documentation and a
 
 ## Milestone 3 - Reliable Element Capture
 
-Status: Current
+Status: Completed
 
 Objective: Convert a selected webpage element into one complete, local-first `CaptureRecord v1` with visual reference, source context, sanitized structure, normalized styles, semantic summaries, Capture Preview, and local persistence.
 
@@ -219,6 +219,8 @@ Acceptance criteria:
 - One valid `CaptureRecord v1` is created.
 - The `CaptureRecord` is locally persisted.
 - Sensitive fields are omitted or redacted according to policy.
+
+Acceptance status: Completed. Milestone 3 passed locked-selection and parent/child refinement; privacy-safe DOM and normalized style extraction; pseudo-element and semantic-summary validation; current-visible-tab screenshot capture and viewport/clipping-aware cropping; complete `CaptureRecord v1` assembly and validation; stable screenshot asset reference; atomic local IndexedDB persistence; Capture Preview; explicit Save, duplicate-submission prevention, failure and retry behavior; persisted record and screenshot read-back after Side Panel reopen; privacy-boundary, Console, permission, and extension-error checks.
 
 ### Milestone 3A - Locked Selection and Parent/Child Refinement
 
@@ -428,7 +430,7 @@ Acceptance status: Completed. Milestone 3C passed build and deterministic crop v
 
 ### Milestone 3D - CaptureRecord Assembly, Preview and Local Persistence
 
-Status: Current
+Status: Completed
 
 Objective: Convert the accepted temporary structured extraction and cropped screenshot result into one complete, locally persisted `CaptureRecord v1` with a stable screenshot asset reference and a useful Side Panel Capture Preview.
 
@@ -481,6 +483,8 @@ Explicitly excluded from all Milestone 3D subsections:
 - Schema v2.
 - Migration implementation beyond reserving a database version.
 - Any modification to the completed Milestone 3C behavior unless a real regression is found.
+
+Acceptance status: Completed. Milestone 3D delivered the versioned IndexedDB foundation, separate screenshot and `CaptureRecord` stores, complete `CaptureRecord v1` assembly, stable screenshot storage references, Capture Preview, explicit local Save, saving/saved/failed/retry states, verified atomic persistence, latest explicitly saved capture lookup, persisted Blob rendering, and Side Panel close/reopen read-back. Real Chrome runtime validation confirmed that temporary diagnostics were not treated as saved captures and that ordinary Save persisted exactly one record and one referenced screenshot asset.
 
 #### Milestone 3D.1 - Local Persistence Foundation
 
@@ -546,7 +550,7 @@ Acceptance status: Completed. Milestone 3D.2 passed production build and classic
 
 #### Milestone 3D.3 - Capture Preview and Explicit Save Integration
 
-Status: Current
+Status: Completed
 
 Objective: Replace the temporary screenshot verification result with a useful Capture Preview and explicit local Save workflow.
 
@@ -571,9 +575,11 @@ Acceptance criteria:
 - No list, search, filter, edit, delete, or Capture Library management UI is introduced.
 - Real Chrome runtime and Console validation are required.
 
+Acceptance status: Completed. Milestone 3D.3 passed unsaved Capture Preview validation; safe source, element, summary, and limited sanitized-structure display; explicit Save and synchronous duplicate-submission protection; exact one-record and one-asset persistence; savedAt storage-wrapper separation; persisted record, screenshot-reference, decoded-image, and digest read-back; post-commit cleanup behavior; deterministic conflicting-record failure and Retry Save; latest-saved lookup; Side Panel close/reopen restoration; multiple-save retention; continued capture, Cancel, and Escape regression; privacy, Console, permission, object-URL, and extension-error checks.
+
 ## Milestone 4 - Personal Capture Library
 
-Status: Planned
+Status: Current
 
 Objective: Let users manage saved local `CaptureRecord` entries as reusable inspiration assets rather than screenshot history.
 
