@@ -67,27 +67,20 @@ export function CaptureLibrary({
 }
 
 function CaptureLibraryItem({ savedCapture }: { savedCapture: SavedCaptureReadModel }) {
-  const [objectUrlState, setObjectUrlState] = useState<
-    | {
-        status: "preparing";
-      }
-    | {
-        status: "ready";
-        objectUrl: string;
-      }
-    | {
-        status: "failed";
-      }
-  >({ status: "preparing" });
+  const currentBlob = savedCapture.asset.blob;
+  const [objectUrlState, setObjectUrlState] = useState<ObjectUrlState>({
+    status: "preparing",
+    blob: currentBlob
+  });
 
   useEffect(() => {
     let nextObjectUrl: string | null = null;
 
     try {
-      nextObjectUrl = URL.createObjectURL(savedCapture.asset.blob);
-      setObjectUrlState({ status: "ready", objectUrl: nextObjectUrl });
+      nextObjectUrl = URL.createObjectURL(currentBlob);
+      setObjectUrlState({ status: "ready", blob: currentBlob, objectUrl: nextObjectUrl });
     } catch {
-      setObjectUrlState({ status: "failed" });
+      setObjectUrlState({ status: "failed", blob: currentBlob });
     }
 
     return () => {
@@ -95,27 +88,29 @@ function CaptureLibraryItem({ savedCapture }: { savedCapture: SavedCaptureReadMo
         URL.revokeObjectURL(nextObjectUrl);
       }
     };
-  }, [savedCapture.asset.blob]);
+  }, [currentBlob]);
 
   const displayTitle = getLibraryDisplayTitle(savedCapture);
-  const componentType = normalizedOptionalText(
-    savedCapture.record.library.componentType ?? savedCapture.record.summaries.componentType
-  );
+  const componentType =
+    normalizedOptionalText(savedCapture.record.library.componentType) ??
+    normalizedOptionalText(savedCapture.record.summaries.componentType);
+  const currentObjectUrlState: ObjectUrlRenderState =
+    objectUrlState.blob === currentBlob ? objectUrlState : { status: "preparing" };
 
   return (
     <li className="capture-library-item">
       <div className="library-thumbnail-frame">
-        {objectUrlState.status === "ready" ? (
+        {currentObjectUrlState.status === "ready" ? (
           <img
             className="library-thumbnail"
-            src={objectUrlState.objectUrl}
+            src={currentObjectUrlState.objectUrl}
             alt={`Saved screenshot preview for ${displayTitle}`}
           />
         ) : null}
-        {objectUrlState.status === "preparing" ? (
+        {currentObjectUrlState.status === "preparing" ? (
           <span className="library-thumbnail-note">Preparing preview...</span>
         ) : null}
-        {objectUrlState.status === "failed" ? (
+        {currentObjectUrlState.status === "failed" ? (
           <span className="library-thumbnail-note">Preview unavailable</span>
         ) : null}
       </div>
@@ -129,6 +124,23 @@ function CaptureLibraryItem({ savedCapture }: { savedCapture: SavedCaptureReadMo
     </li>
   );
 }
+
+type ObjectUrlState =
+  | {
+      status: "preparing";
+      blob: Blob;
+    }
+  | {
+      status: "ready";
+      blob: Blob;
+      objectUrl: string;
+    }
+  | {
+      status: "failed";
+      blob: Blob;
+    };
+
+type ObjectUrlRenderState = ObjectUrlState | { status: "preparing" };
 
 function getLibraryDisplayTitle(savedCapture: SavedCaptureReadModel) {
   const record = savedCapture.record;
