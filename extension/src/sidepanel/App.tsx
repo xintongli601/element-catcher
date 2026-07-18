@@ -8,6 +8,11 @@ import type {
   SidePanelStatus
 } from "../shared/messages";
 import { isExtensionMessage } from "../shared/messages";
+import {
+  runPersistenceFoundationCheck,
+  type PersistenceFoundationCheckResult
+} from "../storage/persistence-foundation-check";
+import { getSafePersistenceMessage } from "../storage/persistence-errors";
 import { cropScreenshotDataUrl } from "./crop-screenshot";
 
 const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
@@ -313,7 +318,43 @@ function SelectionSummary({
   );
 }
 
+type PersistenceDiagnosticState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "checking";
+    }
+  | {
+      status: "passed";
+      result: PersistenceFoundationCheckResult;
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
 function ScreenshotResult({ screenshotCapture }: { screenshotCapture: ScreenshotCaptureResult }) {
+  const [diagnostic, setDiagnostic] = useState<PersistenceDiagnosticState>({ status: "idle" });
+
+  const handlePersistenceDiagnostic = async () => {
+    if (diagnostic.status === "checking") {
+      return;
+    }
+
+    setDiagnostic({ status: "checking" });
+
+    try {
+      const result = await runPersistenceFoundationCheck(screenshotCapture);
+      setDiagnostic({ status: "passed", result });
+    } catch (error) {
+      setDiagnostic({
+        status: "failed",
+        message: getSafePersistenceMessage(error)
+      });
+    }
+  };
+
   return (
     <section className="screenshot-result" aria-labelledby="screenshot-result-heading">
       <h3 id="screenshot-result-heading">Cropped screenshot</h3>
@@ -339,6 +380,41 @@ function ScreenshotResult({ screenshotCapture }: { screenshotCapture: Screenshot
       {screenshotCapture.wasClipped ? (
         <p className="clip-note">Only the visible viewport portion of this element was captured.</p>
       ) : null}
+      <section className="persistence-diagnostic" aria-labelledby="persistence-diagnostic-heading">
+        <div>
+          <h4 id="persistence-diagnostic-heading">Local persistence foundation check</h4>
+          <p>
+            This verifies the local IndexedDB foundation only. It does not save the current capture, and temporary
+            probe data is removed after the check.
+          </p>
+        </div>
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={handlePersistenceDiagnostic}
+          disabled={diagnostic.status === "checking"}
+        >
+          {diagnostic.status === "checking" ? "Checking..." : "Verify local persistence"}
+        </button>
+        {diagnostic.status === "passed" ? (
+          <div className="diagnostic-result diagnostic-result-passed" role="status">
+            <p>Local persistence check passed. The current capture was not saved.</p>
+            <ul>
+              <li>Database opened: {diagnostic.result.databaseName} v{diagnostic.result.databaseVersion}</li>
+              <li>Object stores exist: {diagnostic.result.stores.join(", ")}.</li>
+              <li>PNG asset integrity passed.</li>
+              <li>JSON record read-back passed.</li>
+              <li>Atomic rollback passed.</li>
+              <li>Temporary probe cleanup passed.</li>
+            </ul>
+          </div>
+        ) : null}
+        {diagnostic.status === "failed" ? (
+          <p className="diagnostic-result diagnostic-result-failed" role="alert">
+            Local persistence check failed. {diagnostic.message}
+          </p>
+        ) : null}
+      </section>
     </section>
   );
 }

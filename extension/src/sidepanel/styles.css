@@ -235,6 +235,50 @@ h2 {
   line-height: 1.4;
 }
 
+.persistence-diagnostic {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
+.persistence-diagnostic h4 {
+  margin: 0 0 6px;
+  color: #172033;
+  font-size: 13px;
+}
+
+.persistence-diagnostic p {
+  margin: 0;
+  color: #42506a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.diagnostic-result {
+  border-radius: 6px;
+  padding: 10px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.diagnostic-result-passed {
+  background: #ecfdf5;
+  color: #14532d;
+}
+
+.diagnostic-result-failed {
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.diagnostic-result ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
 .refinement-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
