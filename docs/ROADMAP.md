@@ -516,7 +516,7 @@ Acceptance status: Completed. Milestone 3D.1 passed production build validation;
 
 #### Milestone 3D.2 - Complete CaptureRecord v1 Assembly
 
-Status: Current
+Status: Completed
 
 Objective: Assemble the accepted structured extraction and persisted screenshot reference into one complete `CaptureRecord v1` matching `docs/CAPTURE_SCHEMA.md`.
 
@@ -542,9 +542,11 @@ Acceptance criteria:
 - Privacy safeguards remain intact.
 - No Library management UI or AI generation is added.
 
+Acceptance status: Completed. Milestone 3D.2 passed production build and classic content-script validation; complete `CaptureRecord v1` assembly; general schema and new-candidate invariant validation; JSON compatibility and serialization round-trip validation; screenshot dataUrl and runtime-object exclusion; atomic screenshot-asset and record persistence; screenshot-reference, IndexedDB read-back, SHA-256 digest, repeat-verification, duplicate-activation, candidate-lifecycle, cleanup, privacy-boundary, Console, and extension-error checks. The validation workflow confirmed that no real user capture was saved.
+
 #### Milestone 3D.3 - Capture Preview and Explicit Save Integration
 
-Status: Planned
+Status: Current
 
 Objective: Replace the temporary screenshot verification result with a useful Capture Preview and explicit local Save workflow.
 
