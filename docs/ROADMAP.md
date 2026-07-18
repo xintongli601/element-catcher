@@ -426,6 +426,147 @@ Acceptance criteria:
 
 Acceptance status: Completed. Milestone 3C passed build and deterministic crop validation; real Chrome `captureVisibleTab` validation; activeTab action invocation; fully visible capture; partial visibility crop; oversized and clipping-ancestor crop; fractional crop; fully offscreen rejection; duplicate Confirm regression; dynamic-page and original-action prevention; wrong-tab protection; 100% and 125% zoom; and Console and extension-error checks.
 
+### Milestone 3D - CaptureRecord Assembly, Preview and Local Persistence
+
+Status: Current
+
+Objective: Convert the accepted temporary structured extraction and cropped screenshot result into one complete, locally persisted `CaptureRecord v1` with a stable screenshot asset reference and a useful Side Panel Capture Preview.
+
+This stage completes Milestone 3 once all Milestone 3D subsections pass implementation and real runtime validation. The parent Milestone 3 remains Current until every Milestone 3D subsection is completed and accepted.
+
+Included scope:
+
+- Versioned local extension database.
+- Separate local storage for screenshot assets and `CaptureRecord` metadata.
+- Stable `ScreenshotAssetReference.storageKey`.
+- Cropped PNG asset persistence.
+- Complete `CaptureRecord v1` assembly.
+- `schemaVersion: 1`.
+- Unique capture id.
+- ISO `createdAt` timestamp.
+- Existing source, environment, element, DOM, style, pseudo-element, and summary extraction.
+- `assets.screenshot` reference using persisted screenshot metadata.
+- Default library metadata appropriate for a new capture.
+- Empty `generatedVersions` array.
+- JSON compatibility validation.
+- Side Panel Capture Preview.
+- Explicit Save action.
+- Save success, failure, and retry states.
+- Read-back validation after Side Panel close and reopen.
+- Local-first behavior.
+
+Storage architecture decision:
+
+- Prefer a versioned IndexedDB database under the extension origin.
+- Keep `CaptureRecord` metadata and screenshot assets in separate object stores in the same database.
+- Allow both stores to be written in one transaction when saving a capture.
+- Do not place the screenshot data URL inside `CaptureRecord`.
+- Do not add the `chrome.storage` permission for this stage unless later proven technically necessary through an independently reviewed change.
+- Do not request `unlimitedStorage` in this stage.
+
+Explicitly excluded from all Milestone 3D subsections:
+
+- Capture Library list.
+- Capture Library search or filtering.
+- Editing title, tags, notes, or component type after save.
+- Deleting captures through Library UI.
+- AI generation.
+- Generated component versions.
+- Cloud sync.
+- Authentication.
+- Payment.
+- Figma or GitHub export.
+- `chrome.storage.sync`.
+- Full-page screenshot or stitching.
+- Schema v2.
+- Migration implementation beyond reserving a database version.
+- Any modification to the completed Milestone 3C behavior unless a real regression is found.
+
+#### Milestone 3D.1 - Local Persistence Foundation
+
+Status: Current
+
+Objective: Create the versioned local database, screenshot asset repository, `CaptureRecord` repository, transaction boundaries, and typed persistence errors without yet adding full Capture Preview or Capture Library behavior.
+
+Included scope:
+
+- Database open and upgrade handling.
+- Explicit database version.
+- Screenshot asset object store.
+- `CaptureRecord` object store.
+- Stable screenshot storage key strategy.
+- Save, read, and delete primitives needed for transaction rollback or cleanup.
+- Typed JSON-compatible metadata boundaries.
+- Clear quota, encoding, transaction, and read-back errors.
+- No user-facing Capture Library.
+
+Acceptance criteria:
+
+- Production build passes.
+- Database can be created in the extension origin.
+- A cropped PNG asset can be written and read back without corruption.
+- A JSON-compatible test record can be written and read back.
+- Failed writes do not leave an orphaned final record.
+- Existing selection, extraction, and screenshot behavior does not regress.
+- No new manifest permission is added.
+- No Capture Library UI is added.
+- Real Chrome runtime validation is required before completion.
+
+#### Milestone 3D.2 - Complete CaptureRecord v1 Assembly
+
+Status: Planned
+
+Objective: Assemble the accepted structured extraction and persisted screenshot reference into one complete `CaptureRecord v1` matching `docs/CAPTURE_SCHEMA.md`.
+
+Included scope:
+
+- `schemaVersion: 1`.
+- Unique id.
+- ISO `createdAt`.
+- Existing source, environment, element, dom, styles, and summaries.
+- Persisted `assets.screenshot` reference.
+- Default library metadata with `tags` initialized to an empty array.
+- `generatedVersions` initialized to an empty array.
+- JSON compatibility assertion.
+- Validation that no screenshot data URL, DOM runtime object, storage implementation object, or unsafe raw page object enters `CaptureRecord`.
+
+Acceptance criteria:
+
+- One complete `CaptureRecord v1` is produced.
+- Required fields are present.
+- Optional fields remain optional.
+- Screenshot reference points to a readable persisted asset.
+- Record survives serialization and read-back.
+- Privacy safeguards remain intact.
+- No Library management UI or AI generation is added.
+
+#### Milestone 3D.3 - Capture Preview and Explicit Save Integration
+
+Status: Planned
+
+Objective: Replace the temporary screenshot verification result with a useful Capture Preview and explicit local Save workflow.
+
+Included scope:
+
+- Preview of screenshot, source, selected-element identity, dimensions, semantic role, summaries, and limited sanitized structure information.
+- Explicit Save control.
+- Saving, saved, failed, and retry states.
+- Prevention of duplicate Save submissions.
+- Ability to start another capture after save or cancellation.
+- Read-back validation after closing and reopening the Side Panel.
+- Clear local persistence errors.
+
+Acceptance criteria:
+
+- Preview accurately represents the completed capture.
+- Save produces exactly one persisted `CaptureRecord` and one referenced screenshot asset.
+- Duplicate Save does not create duplicate records.
+- Reopening the Side Panel can read back the saved capture.
+- Failure states do not falsely report success.
+- Existing `CaptureRecord` privacy boundaries remain intact.
+- No list, search, filter, edit, delete, or Capture Library management UI is introduced.
+- Real Chrome runtime and Console validation are required.
+
 ## Milestone 4 - Personal Capture Library
 
 Status: Planned
