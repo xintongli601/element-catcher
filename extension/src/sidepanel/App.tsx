@@ -389,17 +389,22 @@ function ScreenshotResult({
 }) {
   const [diagnostic, setDiagnostic] = useState<PersistenceDiagnosticState>({ status: "idle" });
   const [recordDiagnostic, setRecordDiagnostic] = useState<CaptureRecordDiagnosticState>({ status: "idle" });
+  const persistenceDiagnosticInFlightRef = useRef(false);
+  const recordDiagnosticInFlightRef = useRef(false);
 
   useEffect(() => {
+    persistenceDiagnosticInFlightRef.current = false;
+    recordDiagnosticInFlightRef.current = false;
     setDiagnostic({ status: "idle" });
     setRecordDiagnostic({ status: "idle" });
   }, [captureRecordCandidate.id]);
 
   const handlePersistenceDiagnostic = async () => {
-    if (diagnostic.status === "checking") {
+    if (persistenceDiagnosticInFlightRef.current) {
       return;
     }
 
+    persistenceDiagnosticInFlightRef.current = true;
     setDiagnostic({ status: "checking" });
 
     try {
@@ -410,14 +415,17 @@ function ScreenshotResult({
         status: "failed",
         message: getSafePersistenceMessage(error)
       });
+    } finally {
+      persistenceDiagnosticInFlightRef.current = false;
     }
   };
 
   const handleCaptureRecordDiagnostic = async () => {
-    if (recordDiagnostic.status === "checking") {
+    if (recordDiagnosticInFlightRef.current) {
       return;
     }
 
+    recordDiagnosticInFlightRef.current = true;
     setRecordDiagnostic({ status: "checking" });
 
     try {
@@ -428,6 +436,8 @@ function ScreenshotResult({
         status: "failed",
         message: getSafePersistenceMessage(error)
       });
+    } finally {
+      recordDiagnosticInFlightRef.current = false;
     }
   };
 

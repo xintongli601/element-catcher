@@ -3,7 +3,7 @@ import {
   jsonValuesEqual,
   parseCaptureRecordV1,
   serializeCaptureRecordV1,
-  validateCaptureRecordV1
+  validateNewCaptureRecordV1Candidate
 } from "../capture/capture-record-v1";
 import {
   addPersistenceBundle,
@@ -47,7 +47,7 @@ export async function runCaptureRecordAssemblyCheck(
   const storageKey = captureRecord.assets.screenshot.storageKey;
 
   try {
-    validateCaptureRecordV1(captureRecord);
+    validateNewCaptureRecordV1Candidate(captureRecord);
     const blob = await screenshotCaptureResultToBlob(screenshotCapture);
     const asset = screenshotCaptureResultToStoredAsset(storageKey, blob, screenshotCapture);
     verifyScreenshotReference(captureRecord, asset);
@@ -55,6 +55,7 @@ export async function runCaptureRecordAssemblyCheck(
     const expectedDigest = await digestBlob(blob);
     const serializedRecord = serializeCaptureRecordV1(captureRecord);
     const serializedRoundTripRecord = parseCaptureRecordV1(serializedRecord);
+    validateNewCaptureRecordV1Candidate(serializedRoundTripRecord);
     verifyRecordsEqual(captureRecord, serializedRoundTripRecord, "Serialized CaptureRecord did not match.");
 
     const storedRecordEntry: StoredRecordEntry = {
@@ -118,6 +119,7 @@ async function verifyReadback(
   }
 
   const parsedStoredRecord = parseCaptureRecordV1(storedRecord.value);
+  validateNewCaptureRecordV1Candidate(parsedStoredRecord);
   verifyRecordsEqual(captureRecord, parsedStoredRecord, "Stored CaptureRecord did not match the assembled record.");
 
   if (!jsonValuesEqual(serializedRecord, storedRecord.value)) {

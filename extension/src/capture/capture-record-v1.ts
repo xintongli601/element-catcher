@@ -14,8 +14,10 @@ import { createScreenshotStorageKey } from "../storage/indexed-db";
 import { PersistenceError } from "../storage/persistence-errors";
 
 const CAPTURE_SCHEMA_VERSION = 1 satisfies CaptureSchemaVersion;
-const CAPTURE_ID_PATTERN = /^capture-[0-9a-f]{32}$|^capture-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const CAPTURE_ID_PATTERN =
+  /^capture-[0-9a-f]{32}$|^capture-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const FORBIDDEN_PAYLOAD_KEYS = new Set(["dataUrl", "blob", "arrayBuffer"]);
+const SCREENSHOT_MEDIA_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
 const STYLE_STRING_KEYS = new Set([
   "display",
   "position",
@@ -124,14 +126,14 @@ export function assembleCaptureRecordV1({
     generatedVersions: []
   };
 
-  validateCaptureRecordV1(record);
+  validateNewCaptureRecordV1Candidate(record);
   return record;
 }
 
 export function validateCaptureRecordV1(value: unknown): asserts value is CaptureRecord {
   assertPlainObject(value, "$");
   assertNoForbiddenPayload(value, "$", new WeakSet<object>());
-  assertJsonCompatible(value);
+  assertCaptureRecordJsonCompatible(value);
 
   const record = value as Record<string, unknown>;
   expectExactKeys(record, "$", [
@@ -153,7 +155,7 @@ export function validateCaptureRecordV1(value: unknown): asserts value is Captur
     throwValidation("schemaVersion must be exactly 1.");
   }
 
-  assertCaptureRecordId(record.id, "$.id");
+  assertBoundedRecordId(record.id, "$.id");
   assertNormalizedIsoTimestamp(record.createdAt, "$.createdAt");
   validateSource(record.source, "$.source");
   validateEnvironment(record.environment, "$.environment");
@@ -161,11 +163,37 @@ export function validateCaptureRecordV1(value: unknown): asserts value is Captur
   validateDom(record.dom, "$.dom");
   validateStyles(record.styles, "$.styles");
   validateSummaries(record.summaries, "$.summaries");
-  validateAssets(record.assets, record.id, "$.assets");
+  validateAssets(record.assets, "$.assets");
   validateLibrary(record.library, "$.library");
+  validateGeneratedVersions(record.generatedVersions, "$.generatedVersions");
+}
 
-  if (!Array.isArray(record.generatedVersions) || record.generatedVersions.length !== 0) {
-    throwValidation("generatedVersions must be an empty array for a new CaptureRecord.");
+export function validateNewCaptureRecordV1Candidate(value: unknown): asserts value is CaptureRecord {
+  validateCaptureRecordV1(value);
+
+  const record = value as CaptureRecord;
+  if (!CAPTURE_ID_PATTERN.test(record.id)) {
+    throwValidation("$.id is not a valid generated capture id.");
+  }
+
+  const screenshot = record.assets.screenshot;
+  const expectedStorageKey = createScreenshotStorageKey(record.id);
+  if (screenshot.storageKey !== expectedStorageKey) {
+    throwValidation("$.assets.screenshot.storageKey must match the generated CaptureRecord id.");
+  }
+
+  if (screenshot.mediaType !== "image/png") {
+    throwValidation("$.assets.screenshot.mediaType must be image/png for a new CaptureRecord candidate.");
+  }
+
+  assertPositiveSafeInteger(screenshot.byteLength, "$.assets.screenshot.byteLength");
+
+  if (record.library.tags.length !== 0) {
+    throwValidation("$.library.tags must initialize as an empty array for a new CaptureRecord candidate.");
+  }
+
+  if (record.generatedVersions.length !== 0) {
+    throwValidation("$.generatedVersions must initialize as an empty array for a new CaptureRecord candidate.");
   }
 }
 
@@ -188,6 +216,7 @@ export function serializeCaptureRecordV1(record: CaptureRecord): JsonObject {
 
 export function parseCaptureRecordV1(value: unknown) {
   try {
+    validateCaptureRecordV1(value);
     const serialized = JSON.stringify(value);
     const parsed = JSON.parse(serialized) as unknown;
     validateCaptureRecordV1(parsed);
@@ -339,8 +368,8 @@ function validatePseudoElementStyle(value: unknown, path: string) {
   assertPlainObject(value, path);
   expectAllowedKeys(value, path, ["exists", "content", "display", "color", "backgroundColor", "width", "height"]);
 
-  if (value.exists !== true) {
-    throwValidation(`${path}.exists must be true when a pseudo-element snapshot is present.`);
+  if (typeof value.exists !== "boolean") {
+    throwValidation(`${path}.exists must be a boolean.`);
   }
 
   assertOptionalString(value.content, `${path}.content`);
@@ -440,24 +469,33 @@ function validateBoxEdges(value: unknown, path: string) {
   assertString(value.left, `${path}.left`);
 }
 
-function validateAssets(value: unknown, recordId: unknown, path: string) {
+function validateAssets(value: unknown, path: string) {
   assertPlainObject(value, path);
   expectExactKeys(value, path, ["screenshot"]);
   assertPlainObject(value.screenshot, `${path}.screenshot`);
-  expectExactKeys(value.screenshot, `${path}.screenshot`, ["storageKey", "mediaType", "width", "height", "byteLength", "crop"]);
+  expectRequiredAndAllowedKeys(value.screenshot, `${path}.screenshot`, [
+    "storageKey",
+    "mediaType",
+    "width",
+    "height",
+    "crop"
+  ], [
+    "byteLength"
+  ]);
 
-  const expectedStorageKey = createScreenshotStorageKey(String(recordId));
-  if (value.screenshot.storageKey !== expectedStorageKey) {
-    throwValidation(`${path}.screenshot.storageKey must match the CaptureRecord id.`);
-  }
+  assertNonEmptyString(value.screenshot.storageKey, `${path}.screenshot.storageKey`);
 
-  if (value.screenshot.mediaType !== "image/png") {
-    throwValidation(`${path}.screenshot.mediaType must be image/png.`);
+  if (typeof value.screenshot.mediaType !== "string" || !SCREENSHOT_MEDIA_TYPES.has(value.screenshot.mediaType)) {
+    throwValidation(`${path}.screenshot.mediaType is invalid.`);
   }
 
   assertPositiveSafeInteger(value.screenshot.width, `${path}.screenshot.width`);
   assertPositiveSafeInteger(value.screenshot.height, `${path}.screenshot.height`);
-  assertPositiveSafeInteger(value.screenshot.byteLength, `${path}.screenshot.byteLength`);
+
+  if (value.screenshot.byteLength !== undefined) {
+    assertPositiveSafeInteger(value.screenshot.byteLength, `${path}.screenshot.byteLength`);
+  }
+
   validateRect(value.screenshot.crop, `${path}.screenshot.crop`);
 }
 
@@ -468,9 +506,54 @@ function validateLibrary(value: unknown, path: string) {
   assertOptionalString(value.componentType, `${path}.componentType`);
   assertOptionalString(value.notes, `${path}.notes`);
 
-  if (!Array.isArray(value.tags) || value.tags.length !== 0) {
-    throwValidation(`${path}.tags must be an empty array for a new CaptureRecord.`);
+  assertStringArray(value.tags, `${path}.tags`);
+}
+
+function validateGeneratedVersions(value: unknown, path: string) {
+  if (!Array.isArray(value)) {
+    throwValidation(`${path} must be an array.`);
   }
+
+  value.forEach((version, index) => validateGeneratedVersion(version, `${path}[${index}]`));
+}
+
+function validateGeneratedVersion(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, [
+    "id",
+    "createdAt",
+    "generator",
+    "model",
+    "componentName",
+    "framework",
+    "styling",
+    "code",
+    "summary",
+    "approximationNotes",
+    "userInstruction"
+  ]);
+  assertString(value.id, `${path}.id`);
+  assertNormalizedIsoTimestamp(value.createdAt, `${path}.createdAt`);
+
+  if (value.generator !== "placeholder" && value.generator !== "ai") {
+    throwValidation(`${path}.generator is invalid.`);
+  }
+
+  assertOptionalString(value.model, `${path}.model`);
+  assertString(value.componentName, `${path}.componentName`);
+
+  if (value.framework !== "react") {
+    throwValidation(`${path}.framework must be react.`);
+  }
+
+  if (value.styling !== "tailwind") {
+    throwValidation(`${path}.styling must be tailwind.`);
+  }
+
+  assertString(value.code, `${path}.code`);
+  assertString(value.summary, `${path}.summary`);
+  assertOptionalString(value.approximationNotes, `${path}.approximationNotes`);
+  assertOptionalString(value.userInstruction, `${path}.userInstruction`);
 }
 
 function validateRect(value: unknown, path: string) {
@@ -507,6 +590,10 @@ function assertNoForbiddenPayload(value: unknown, path: string, seen: WeakSet<ob
   if (Array.isArray(value)) {
     value.forEach((item, index) => assertNoForbiddenPayload(item, `${path}[${index}]`, seen));
   } else {
+    if (typeof (value as { toJSON?: unknown }).toJSON === "function") {
+      throwValidation(`${path}.toJSON is not allowed in CaptureRecord v1.`);
+    }
+
     for (const [key, childValue] of Object.entries(value)) {
       if (FORBIDDEN_PAYLOAD_KEYS.has(key)) {
         throwValidation(`${path}.${key} is not allowed in CaptureRecord v1.`);
@@ -517,6 +604,14 @@ function assertNoForbiddenPayload(value: unknown, path: string, seen: WeakSet<ob
   }
 
   seen.delete(value);
+}
+
+function assertCaptureRecordJsonCompatible(value: unknown) {
+  try {
+    assertJsonCompatible(value);
+  } catch (error) {
+    throwValidation(error instanceof Error ? error.message : "CaptureRecord must be JSON-compatible.");
+  }
 }
 
 function copyRect(rect: SerializableRect): SerializableRect {
@@ -554,11 +649,11 @@ function copyJsonObject<T extends JsonObject>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function assertCaptureRecordId(value: unknown, path: string) {
+function assertBoundedRecordId(value: unknown, path: string) {
   assertNonEmptyString(value, path);
 
-  if (value.length > 80 || !CAPTURE_ID_PATTERN.test(value)) {
-    throwValidation(`${path} is not a valid generated capture id.`);
+  if (value.length > 200) {
+    throwValidation(`${path} is too long.`);
   }
 }
 
@@ -599,6 +694,26 @@ function expectAllowedKeys(value: Record<string, unknown>, path: string, keys: s
   const allowed = new Set(keys);
   const unknownKey = Object.keys(value).find((key) => !allowed.has(key));
 
+  if (unknownKey) {
+    throwValidation(`${path}.${unknownKey} is not part of CaptureRecord v1.`);
+  }
+}
+
+function expectRequiredAndAllowedKeys(
+  value: Record<string, unknown>,
+  path: string,
+  requiredKeys: string[],
+  optionalKeys: string[]
+) {
+  const allowed = new Set([...requiredKeys, ...optionalKeys]);
+  const actualKeys = Object.keys(value);
+  const missingKey = requiredKeys.find((key) => !actualKeys.includes(key));
+
+  if (missingKey) {
+    throwValidation(`${path}.${missingKey} is required by CaptureRecord v1.`);
+  }
+
+  const unknownKey = actualKeys.find((key) => !allowed.has(key));
   if (unknownKey) {
     throwValidation(`${path}.${unknownKey} is not part of CaptureRecord v1.`);
   }
