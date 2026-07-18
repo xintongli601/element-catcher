@@ -279,6 +279,21 @@ h2 {
   padding-left: 18px;
 }
 
+.diagnostic-metadata {
+  gap: 8px;
+  border: 1px solid #d8dee8;
+  border-radius: 6px;
+  padding: 10px;
+  background: #ffffff;
+}
+
+.diagnostic-state {
+  margin: 0;
+  color: #42506a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .refinement-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;

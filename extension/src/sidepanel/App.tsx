@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { ScreenshotCaptureResult, StructuredCaptureExtraction } from "../shared/capture-schema";
+import type { CaptureRecord, ScreenshotCaptureResult, StructuredCaptureExtraction } from "../shared/capture-schema";
 import type {
   ElementSelection,
   ExtensionMessage,
@@ -8,6 +8,15 @@ import type {
   SidePanelStatus
 } from "../shared/messages";
 import { isExtensionMessage } from "../shared/messages";
+import {
+  assembleCaptureRecordV1,
+  createCaptureRecordId,
+  createCaptureRecordTimestamp
+} from "../capture/capture-record-v1";
+import {
+  runCaptureRecordAssemblyCheck,
+  type CaptureRecordAssemblyCheckResult
+} from "../storage/capture-record-assembly-check";
 import {
   runPersistenceFoundationCheck,
   type PersistenceFoundationCheckResult
@@ -24,6 +33,7 @@ export function App() {
   const [lockedSelection, setLockedSelection] = useState<LockedSelectionState | null>(null);
   const [structuredExtraction, setStructuredExtraction] = useState<StructuredCaptureExtraction | null>(null);
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
+  const [captureRecordCandidate, setCaptureRecordCandidate] = useState<CaptureRecord | null>(null);
   const captureRequestInFlightRef = useRef(false);
 
   useEffect(() => {
@@ -39,6 +49,7 @@ export function App() {
         setLockedSelection(null);
         setStructuredExtraction(null);
         setScreenshotCapture(null);
+        setCaptureRecordCandidate(null);
         setMessage(activeInstruction);
       }
 
@@ -48,6 +59,7 @@ export function App() {
         setLockedSelection(runtimeMessage.lockedSelection);
         setStructuredExtraction(null);
         setScreenshotCapture(null);
+        setCaptureRecordCandidate(null);
         setMessage("Element locked. Refine with Parent or Child, then confirm the final element.");
       }
 
@@ -62,6 +74,7 @@ export function App() {
         setLockedSelection(null);
         setStructuredExtraction(null);
         setScreenshotCapture(null);
+        setCaptureRecordCandidate(null);
         setMessage("Selection cancelled. Normal page interaction has been restored.");
       }
 
@@ -72,6 +85,7 @@ export function App() {
         setLockedSelection(null);
         setStructuredExtraction(null);
         setScreenshotCapture(null);
+        setCaptureRecordCandidate(null);
         setMessage(runtimeMessage.message);
       }
     };
@@ -84,6 +98,7 @@ export function App() {
       setLockedSelection(null);
       setStructuredExtraction(null);
       setScreenshotCapture(null);
+      setCaptureRecordCandidate(null);
       setMessage("Capturing and cropping the visible element screenshot...");
 
       try {
@@ -92,13 +107,20 @@ export function App() {
           runtimeMessage.extraction,
           runtimeMessage.screenshotCropRect
         );
+        const candidate = assembleCaptureRecordV1({
+          extraction: runtimeMessage.extraction,
+          screenshotCapture: croppedScreenshot,
+          id: createCaptureRecordId(),
+          createdAt: createCaptureRecordTimestamp()
+        });
         setStatus("selected");
         setSelection(runtimeMessage.selection);
         setLockedSelection(null);
         setStructuredExtraction(runtimeMessage.extraction);
         setScreenshotCapture(croppedScreenshot);
+        setCaptureRecordCandidate(candidate);
         captureRequestInFlightRef.current = false;
-        setMessage("Element selected. Structured extraction and cropped screenshot are ready for the next capture stage.");
+        setMessage("Element selected. A complete CaptureRecord v1 candidate is ready for validation.");
       } catch (error) {
         captureRequestInFlightRef.current = false;
         setStatus("error");
@@ -106,6 +128,7 @@ export function App() {
         setLockedSelection(null);
         setStructuredExtraction(null);
         setScreenshotCapture(null);
+        setCaptureRecordCandidate(null);
         setMessage(error instanceof Error ? error.message : "Element Catcher could not crop the screenshot.");
       }
     };
@@ -144,6 +167,7 @@ export function App() {
     setLockedSelection(null);
     setStructuredExtraction(null);
     setScreenshotCapture(null);
+    setCaptureRecordCandidate(null);
     setMessage("Starting selection mode on the active webpage...");
 
     const response = await sendCommand({ type: "EC_START_SELECTION" });
@@ -192,6 +216,7 @@ export function App() {
       captureRequestInFlightRef.current = false;
       setStatus("error");
       setScreenshotCapture(null);
+      setCaptureRecordCandidate(null);
       setMessage(response.message);
     }
   };
@@ -237,6 +262,7 @@ export function App() {
           selection={selection}
           hasStructuredExtraction={Boolean(structuredExtraction)}
           screenshotCapture={screenshotCapture}
+          captureRecordCandidate={captureRecordCandidate}
         />
       ) : null}
 
@@ -298,11 +324,13 @@ function LockedSelectionSummary({
 function SelectionSummary({
   selection,
   hasStructuredExtraction,
-  screenshotCapture
+  screenshotCapture,
+  captureRecordCandidate
 }: {
   selection: ElementSelection;
   hasStructuredExtraction: boolean;
   screenshotCapture: ScreenshotCaptureResult | null;
+  captureRecordCandidate: CaptureRecord | null;
 }) {
   return (
     <section className="selection-summary" aria-labelledby="selection-summary-heading">
@@ -310,10 +338,12 @@ function SelectionSummary({
       <SelectionDetails selection={selection} />
       <p className="next-step-note">
         {hasStructuredExtraction
-          ? "Structured DOM, style extraction, and cropped screenshot are ready. Save and Capture Preview will be implemented in a later Milestone 3 stage."
+          ? "Structured DOM, style extraction, cropped screenshot, and a CaptureRecord v1 candidate are ready. Save and Capture Preview will be implemented in a later Milestone 3 stage."
           : "Screenshot capture will be implemented in Milestone 3."}
       </p>
-      {screenshotCapture ? <ScreenshotResult screenshotCapture={screenshotCapture} /> : null}
+      {screenshotCapture && captureRecordCandidate ? (
+        <ScreenshotResult screenshotCapture={screenshotCapture} captureRecordCandidate={captureRecordCandidate} />
+      ) : null}
     </section>
   );
 }
@@ -334,8 +364,36 @@ type PersistenceDiagnosticState =
       message: string;
     };
 
-function ScreenshotResult({ screenshotCapture }: { screenshotCapture: ScreenshotCaptureResult }) {
+type CaptureRecordDiagnosticState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "checking";
+    }
+  | {
+      status: "passed";
+      result: CaptureRecordAssemblyCheckResult;
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
+function ScreenshotResult({
+  screenshotCapture,
+  captureRecordCandidate
+}: {
+  screenshotCapture: ScreenshotCaptureResult;
+  captureRecordCandidate: CaptureRecord;
+}) {
   const [diagnostic, setDiagnostic] = useState<PersistenceDiagnosticState>({ status: "idle" });
+  const [recordDiagnostic, setRecordDiagnostic] = useState<CaptureRecordDiagnosticState>({ status: "idle" });
+
+  useEffect(() => {
+    setDiagnostic({ status: "idle" });
+    setRecordDiagnostic({ status: "idle" });
+  }, [captureRecordCandidate.id]);
 
   const handlePersistenceDiagnostic = async () => {
     if (diagnostic.status === "checking") {
@@ -349,6 +407,24 @@ function ScreenshotResult({ screenshotCapture }: { screenshotCapture: Screenshot
       setDiagnostic({ status: "passed", result });
     } catch (error) {
       setDiagnostic({
+        status: "failed",
+        message: getSafePersistenceMessage(error)
+      });
+    }
+  };
+
+  const handleCaptureRecordDiagnostic = async () => {
+    if (recordDiagnostic.status === "checking") {
+      return;
+    }
+
+    setRecordDiagnostic({ status: "checking" });
+
+    try {
+      const result = await runCaptureRecordAssemblyCheck(captureRecordCandidate, screenshotCapture);
+      setRecordDiagnostic({ status: "passed", result });
+    } catch (error) {
+      setRecordDiagnostic({
         status: "failed",
         message: getSafePersistenceMessage(error)
       });
@@ -380,6 +456,66 @@ function ScreenshotResult({ screenshotCapture }: { screenshotCapture: Screenshot
       {screenshotCapture.wasClipped ? (
         <p className="clip-note">Only the visible viewport portion of this element was captured.</p>
       ) : null}
+      <section className="persistence-diagnostic" aria-labelledby="capture-record-diagnostic-heading">
+        <div>
+          <h4 id="capture-record-diagnostic-heading">CaptureRecord v1 assembly check</h4>
+          <p>
+            A complete CaptureRecord v1 candidate has been assembled for Milestone 3D.2 validation. This does not save
+            the current capture; temporary record and asset data are deleted after the check, and the final Save workflow
+            comes later.
+          </p>
+        </div>
+        <dl className="diagnostic-metadata">
+          <div>
+            <dt>Schema version</dt>
+            <dd>{captureRecordCandidate.schemaVersion}</dd>
+          </div>
+          <div>
+            <dt>Record id</dt>
+            <dd>{captureRecordCandidate.id}</dd>
+          </div>
+          <div>
+            <dt>Created at</dt>
+            <dd>{captureRecordCandidate.createdAt}</dd>
+          </div>
+          <div>
+            <dt>Storage key</dt>
+            <dd>{captureRecordCandidate.assets.screenshot.storageKey}</dd>
+          </div>
+        </dl>
+        <button
+          className="secondary-action"
+          type="button"
+          onClick={handleCaptureRecordDiagnostic}
+          disabled={recordDiagnostic.status === "checking"}
+        >
+          {recordDiagnostic.status === "checking" ? "Checking..." : "Verify CaptureRecord v1"}
+        </button>
+        {recordDiagnostic.status === "idle" ? (
+          <p className="diagnostic-state">Ready. The current capture has not been saved.</p>
+        ) : null}
+        {recordDiagnostic.status === "passed" ? (
+          <div className="diagnostic-result diagnostic-result-passed" role="status">
+            <p>CaptureRecord v1 check passed. The current capture was not saved.</p>
+            <ul>
+              <li>Schema version {recordDiagnostic.result.schemaVersion} confirmed.</li>
+              <li>Required field groups present.</li>
+              <li>JSON compatibility passed.</li>
+              <li>JSON serialization round trip passed.</li>
+              <li>Screenshot dataUrl excluded.</li>
+              <li>Screenshot reference matched persisted asset.</li>
+              <li>CaptureRecord IndexedDB read-back passed.</li>
+              <li>Screenshot digest read-back passed.</li>
+              <li>Temporary cleanup passed.</li>
+            </ul>
+          </div>
+        ) : null}
+        {recordDiagnostic.status === "failed" ? (
+          <p className="diagnostic-result diagnostic-result-failed" role="alert">
+            CaptureRecord v1 check failed. {recordDiagnostic.message}
+          </p>
+        ) : null}
+      </section>
       <section className="persistence-diagnostic" aria-labelledby="persistence-diagnostic-heading">
         <div>
           <h4 id="persistence-diagnostic-heading">Local persistence foundation check</h4>

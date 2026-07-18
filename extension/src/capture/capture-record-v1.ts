@@ -1,0 +1,661 @@
+import type {
+  CaptureRecord,
+  CaptureSchemaVersion,
+  ChildElementSummary,
+  JsonObject,
+  JsonValue,
+  SanitizedDomNode,
+  ScreenshotCaptureResult,
+  SerializableRect,
+  StructuredCaptureExtraction
+} from "../shared/capture-schema";
+import { assertJsonCompatible } from "../shared/json";
+import { createScreenshotStorageKey } from "../storage/indexed-db";
+import { PersistenceError } from "../storage/persistence-errors";
+
+const CAPTURE_SCHEMA_VERSION = 1 satisfies CaptureSchemaVersion;
+const CAPTURE_ID_PATTERN = /^capture-[0-9a-f]{32}$|^capture-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const FORBIDDEN_PAYLOAD_KEYS = new Set(["dataUrl", "blob", "arrayBuffer"]);
+const STYLE_STRING_KEYS = new Set([
+  "display",
+  "position",
+  "boxSizing",
+  "width",
+  "height",
+  "color",
+  "backgroundColor",
+  "fontFamily",
+  "fontSize",
+  "fontWeight",
+  "lineHeight",
+  "letterSpacing",
+  "textAlign",
+  "border",
+  "borderRadius",
+  "boxShadow",
+  "gap",
+  "flexDirection",
+  "alignItems",
+  "justifyContent",
+  "gridTemplateColumns",
+  "gridTemplateRows"
+]);
+
+export function createCaptureRecordId() {
+  const randomId = typeof crypto.randomUUID === "function" ? crypto.randomUUID() : fallbackRandomId();
+  return `capture-${randomId}`;
+}
+
+export function createCaptureRecordTimestamp() {
+  return new Date().toISOString();
+}
+
+function fallbackRandomId() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+export function assembleCaptureRecordV1({
+  extraction,
+  screenshotCapture,
+  id,
+  createdAt
+}: {
+  extraction: StructuredCaptureExtraction;
+  screenshotCapture: ScreenshotCaptureResult;
+  id: string;
+  createdAt: string;
+}) {
+  const storageKey = createScreenshotStorageKey(id);
+  const record: CaptureRecord = {
+    schemaVersion: CAPTURE_SCHEMA_VERSION,
+    id,
+    createdAt,
+    source: {
+      url: extraction.source.url,
+      pageTitle: extraction.source.pageTitle,
+      ...(extraction.source.faviconUrl ? { faviconUrl: extraction.source.faviconUrl } : {})
+    },
+    environment: {
+      viewport: {
+        width: extraction.environment.viewport.width,
+        height: extraction.environment.viewport.height
+      },
+      devicePixelRatio: extraction.environment.devicePixelRatio
+    },
+    element: {
+      tagName: extraction.element.tagName,
+      rect: copyRect(extraction.element.rect),
+      ...(extraction.element.semanticRole ? { semanticRole: extraction.element.semanticRole } : {}),
+      ...(extraction.element.textPreview ? { textPreview: extraction.element.textPreview } : {}),
+      ...(extraction.element.id ? { id: extraction.element.id } : {}),
+      ...(extraction.element.classNames ? { classNames: [...extraction.element.classNames] } : {})
+    },
+    dom: {
+      sanitizedSnapshot: copySanitizedDomNode(extraction.dom.sanitizedSnapshot),
+      childSummary: extraction.dom.childSummary.map(copyChildSummary)
+    },
+    styles: {
+      computed: copyJsonObject(extraction.styles.computed),
+      ...(extraction.styles.before ? { before: copyJsonObject(extraction.styles.before) } : {}),
+      ...(extraction.styles.after ? { after: copyJsonObject(extraction.styles.after) } : {})
+    },
+    summaries: {
+      ...(extraction.summaries.componentType ? { componentType: extraction.summaries.componentType } : {}),
+      typography: copyJsonObject(extraction.summaries.typography),
+      colors: copyJsonObject(extraction.summaries.colors),
+      layout: copyJsonObject(extraction.summaries.layout),
+      spacing: copyJsonObject(extraction.summaries.spacing)
+    },
+    assets: {
+      screenshot: {
+        storageKey,
+        mediaType: "image/png",
+        width: screenshotCapture.width,
+        height: screenshotCapture.height,
+        byteLength: screenshotCapture.byteLength,
+        crop: copyRect(screenshotCapture.crop)
+      }
+    },
+    library: {
+      tags: []
+    },
+    generatedVersions: []
+  };
+
+  validateCaptureRecordV1(record);
+  return record;
+}
+
+export function validateCaptureRecordV1(value: unknown): asserts value is CaptureRecord {
+  assertPlainObject(value, "$");
+  assertNoForbiddenPayload(value, "$", new WeakSet<object>());
+  assertJsonCompatible(value);
+
+  const record = value as Record<string, unknown>;
+  expectExactKeys(record, "$", [
+    "schemaVersion",
+    "id",
+    "createdAt",
+    "source",
+    "environment",
+    "element",
+    "dom",
+    "styles",
+    "summaries",
+    "assets",
+    "library",
+    "generatedVersions"
+  ]);
+
+  if (record.schemaVersion !== CAPTURE_SCHEMA_VERSION) {
+    throwValidation("schemaVersion must be exactly 1.");
+  }
+
+  assertCaptureRecordId(record.id, "$.id");
+  assertNormalizedIsoTimestamp(record.createdAt, "$.createdAt");
+  validateSource(record.source, "$.source");
+  validateEnvironment(record.environment, "$.environment");
+  validateElement(record.element, "$.element");
+  validateDom(record.dom, "$.dom");
+  validateStyles(record.styles, "$.styles");
+  validateSummaries(record.summaries, "$.summaries");
+  validateAssets(record.assets, record.id, "$.assets");
+  validateLibrary(record.library, "$.library");
+
+  if (!Array.isArray(record.generatedVersions) || record.generatedVersions.length !== 0) {
+    throwValidation("generatedVersions must be an empty array for a new CaptureRecord.");
+  }
+}
+
+export function serializeCaptureRecordV1(record: CaptureRecord): JsonObject {
+  validateCaptureRecordV1(record);
+
+  try {
+    const serialized = JSON.stringify(record);
+    const parsed = JSON.parse(serialized) as unknown;
+    validateCaptureRecordV1(parsed);
+    return parsed as JsonObject;
+  } catch (error) {
+    if (error instanceof PersistenceError) {
+      throw error;
+    }
+
+    throw new PersistenceError("serialization", "CaptureRecord JSON serialization failed.", error);
+  }
+}
+
+export function parseCaptureRecordV1(value: unknown) {
+  try {
+    const serialized = JSON.stringify(value);
+    const parsed = JSON.parse(serialized) as unknown;
+    validateCaptureRecordV1(parsed);
+    return parsed;
+  } catch (error) {
+    if (error instanceof PersistenceError) {
+      throw error;
+    }
+
+    throw new PersistenceError("serialization", "CaptureRecord JSON parse validation failed.", error);
+  }
+}
+
+export function jsonValuesEqual(left: JsonValue, right: JsonValue): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((item, index) => jsonValuesEqual(item, right[index]));
+  }
+
+  if (isPlainObject(left) || isPlainObject(right)) {
+    if (!isPlainObject(left) || !isPlainObject(right)) {
+      return false;
+    }
+
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every((key, index) => key === rightKeys[index] && jsonValuesEqual(left[key], right[key]))
+    );
+  }
+
+  return false;
+}
+
+function validateSource(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["url", "pageTitle", "faviconUrl"]);
+  assertString(value.url, `${path}.url`);
+  assertString(value.pageTitle, `${path}.pageTitle`);
+  assertOptionalString(value.faviconUrl, `${path}.faviconUrl`);
+}
+
+function validateEnvironment(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectExactKeys(value, path, ["viewport", "devicePixelRatio"]);
+  assertPlainObject(value.viewport, `${path}.viewport`);
+  expectExactKeys(value.viewport, `${path}.viewport`, ["width", "height"]);
+  assertPositiveFiniteNumber(value.viewport.width, `${path}.viewport.width`);
+  assertPositiveFiniteNumber(value.viewport.height, `${path}.viewport.height`);
+  assertPositiveFiniteNumber(value.devicePixelRatio, `${path}.devicePixelRatio`);
+}
+
+function validateElement(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["tagName", "rect", "semanticRole", "textPreview", "id", "classNames"]);
+  assertNonEmptyString(value.tagName, `${path}.tagName`);
+  validateRect(value.rect, `${path}.rect`);
+  assertOptionalString(value.semanticRole, `${path}.semanticRole`);
+  assertOptionalString(value.textPreview, `${path}.textPreview`);
+  assertOptionalString(value.id, `${path}.id`);
+
+  if (value.classNames !== undefined) {
+    assertStringArray(value.classNames, `${path}.classNames`);
+  }
+}
+
+function validateDom(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectExactKeys(value, path, ["sanitizedSnapshot", "childSummary"]);
+  validateSanitizedDomNode(value.sanitizedSnapshot, `${path}.sanitizedSnapshot`);
+
+  if (!Array.isArray(value.childSummary)) {
+    throwValidation(`${path}.childSummary must be an array.`);
+  }
+
+  value.childSummary.forEach((child, index) => validateChildSummary(child, `${path}.childSummary[${index}]`));
+}
+
+function validateSanitizedDomNode(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["tagName", "attributes", "textPreview", "children"]);
+  assertNonEmptyString(value.tagName, `${path}.tagName`);
+  assertPlainObject(value.attributes, `${path}.attributes`);
+
+  for (const [key, attributeValue] of Object.entries(value.attributes)) {
+    assertNonEmptyString(key, `${path}.attributes key`);
+    assertString(attributeValue, `${path}.attributes.${key}`);
+  }
+
+  assertOptionalString(value.textPreview, `${path}.textPreview`);
+
+  if (!Array.isArray(value.children)) {
+    throwValidation(`${path}.children must be an array.`);
+  }
+
+  value.children.forEach((child, index) => validateSanitizedDomNode(child, `${path}.children[${index}]`));
+}
+
+function validateChildSummary(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["tagName", "semanticRole", "textPreview", "childCount"]);
+  assertNonEmptyString(value.tagName, `${path}.tagName`);
+  assertOptionalString(value.semanticRole, `${path}.semanticRole`);
+  assertOptionalString(value.textPreview, `${path}.textPreview`);
+  assertNonNegativeSafeInteger(value.childCount, `${path}.childCount`);
+}
+
+function validateStyles(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["computed", "before", "after"]);
+  validateNormalizedStyle(value.computed, `${path}.computed`);
+
+  if (value.before !== undefined) {
+    validatePseudoElementStyle(value.before, `${path}.before`);
+  }
+
+  if (value.after !== undefined) {
+    validatePseudoElementStyle(value.after, `${path}.after`);
+  }
+}
+
+function validateNormalizedStyle(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, [
+    ...STYLE_STRING_KEYS,
+    "padding",
+    "margin"
+  ]);
+
+  for (const [key, childValue] of Object.entries(value)) {
+    if (key === "padding" || key === "margin") {
+      validateBoxEdges(childValue, `${path}.${key}`);
+    } else {
+      assertString(childValue, `${path}.${key}`);
+    }
+  }
+}
+
+function validatePseudoElementStyle(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["exists", "content", "display", "color", "backgroundColor", "width", "height"]);
+
+  if (value.exists !== true) {
+    throwValidation(`${path}.exists must be true when a pseudo-element snapshot is present.`);
+  }
+
+  assertOptionalString(value.content, `${path}.content`);
+  assertOptionalString(value.display, `${path}.display`);
+  assertOptionalString(value.color, `${path}.color`);
+  assertOptionalString(value.backgroundColor, `${path}.backgroundColor`);
+  assertOptionalString(value.width, `${path}.width`);
+  assertOptionalString(value.height, `${path}.height`);
+}
+
+function validateSummaries(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["componentType", "typography", "colors", "layout", "spacing"]);
+  assertOptionalString(value.componentType, `${path}.componentType`);
+  validateTypographySummary(value.typography, `${path}.typography`);
+  validateColorSummary(value.colors, `${path}.colors`);
+  validateLayoutSummary(value.layout, `${path}.layout`);
+  validateSpacingSummary(value.spacing, `${path}.spacing`);
+}
+
+function validateTypographySummary(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["primaryFont", "scale", "weights", "notes"]);
+  assertOptionalString(value.primaryFont, `${path}.primaryFont`);
+  assertOptionalString(value.notes, `${path}.notes`);
+
+  if (value.scale !== undefined) {
+    assertStringArray(value.scale, `${path}.scale`);
+  }
+
+  if (value.weights !== undefined) {
+    assertStringArray(value.weights, `${path}.weights`);
+  }
+}
+
+function validateColorSummary(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["foreground", "background", "accent", "border", "roles"]);
+  assertOptionalString(value.foreground, `${path}.foreground`);
+  assertOptionalString(value.background, `${path}.background`);
+  assertOptionalString(value.accent, `${path}.accent`);
+  assertOptionalString(value.border, `${path}.border`);
+
+  if (value.roles !== undefined) {
+    if (!Array.isArray(value.roles)) {
+      throwValidation(`${path}.roles must be an array.`);
+    }
+
+    value.roles.forEach((role, index) => {
+      assertPlainObject(role, `${path}.roles[${index}]`);
+      expectExactKeys(role, `${path}.roles[${index}]`, ["role", "value"]);
+      assertString(role.role, `${path}.roles[${index}].role`);
+      assertString(role.value, `${path}.roles[${index}].value`);
+    });
+  }
+}
+
+function validateLayoutSummary(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["display", "direction", "alignment", "density", "notes"]);
+  assertOptionalString(value.display, `${path}.display`);
+  assertOptionalString(value.direction, `${path}.direction`);
+  assertOptionalString(value.alignment, `${path}.alignment`);
+  assertOptionalString(value.notes, `${path}.notes`);
+
+  if (
+    value.density !== undefined &&
+    value.density !== "compact" &&
+    value.density !== "comfortable" &&
+    value.density !== "spacious"
+  ) {
+    throwValidation(`${path}.density is invalid.`);
+  }
+}
+
+function validateSpacingSummary(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["padding", "margin", "gap", "notes"]);
+  assertOptionalString(value.gap, `${path}.gap`);
+  assertOptionalString(value.notes, `${path}.notes`);
+
+  if (value.padding !== undefined) {
+    validateBoxEdges(value.padding, `${path}.padding`);
+  }
+
+  if (value.margin !== undefined) {
+    validateBoxEdges(value.margin, `${path}.margin`);
+  }
+}
+
+function validateBoxEdges(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectExactKeys(value, path, ["top", "right", "bottom", "left"]);
+  assertString(value.top, `${path}.top`);
+  assertString(value.right, `${path}.right`);
+  assertString(value.bottom, `${path}.bottom`);
+  assertString(value.left, `${path}.left`);
+}
+
+function validateAssets(value: unknown, recordId: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectExactKeys(value, path, ["screenshot"]);
+  assertPlainObject(value.screenshot, `${path}.screenshot`);
+  expectExactKeys(value.screenshot, `${path}.screenshot`, ["storageKey", "mediaType", "width", "height", "byteLength", "crop"]);
+
+  const expectedStorageKey = createScreenshotStorageKey(String(recordId));
+  if (value.screenshot.storageKey !== expectedStorageKey) {
+    throwValidation(`${path}.screenshot.storageKey must match the CaptureRecord id.`);
+  }
+
+  if (value.screenshot.mediaType !== "image/png") {
+    throwValidation(`${path}.screenshot.mediaType must be image/png.`);
+  }
+
+  assertPositiveSafeInteger(value.screenshot.width, `${path}.screenshot.width`);
+  assertPositiveSafeInteger(value.screenshot.height, `${path}.screenshot.height`);
+  assertPositiveSafeInteger(value.screenshot.byteLength, `${path}.screenshot.byteLength`);
+  validateRect(value.screenshot.crop, `${path}.screenshot.crop`);
+}
+
+function validateLibrary(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectAllowedKeys(value, path, ["title", "componentType", "tags", "notes"]);
+  assertOptionalString(value.title, `${path}.title`);
+  assertOptionalString(value.componentType, `${path}.componentType`);
+  assertOptionalString(value.notes, `${path}.notes`);
+
+  if (!Array.isArray(value.tags) || value.tags.length !== 0) {
+    throwValidation(`${path}.tags must be an empty array for a new CaptureRecord.`);
+  }
+}
+
+function validateRect(value: unknown, path: string) {
+  assertPlainObject(value, path);
+  expectExactKeys(value, path, ["x", "y", "width", "height", "top", "right", "bottom", "left"]);
+  assertFiniteNumber(value.x, `${path}.x`);
+  assertFiniteNumber(value.y, `${path}.y`);
+  assertFiniteNumber(value.width, `${path}.width`);
+  assertFiniteNumber(value.height, `${path}.height`);
+  assertFiniteNumber(value.top, `${path}.top`);
+  assertFiniteNumber(value.right, `${path}.right`);
+  assertFiniteNumber(value.bottom, `${path}.bottom`);
+  assertFiniteNumber(value.left, `${path}.left`);
+}
+
+function assertNoForbiddenPayload(value: unknown, path: string, seen: WeakSet<object>) {
+  if (typeof value === "string") {
+    if (value.startsWith("data:image/")) {
+      throwValidation(`${path} must not contain inline image data.`);
+    }
+    return;
+  }
+
+  if (!value || typeof value !== "object") {
+    return;
+  }
+
+  if (seen.has(value)) {
+    throwValidation(`${path} contains a circular reference.`);
+  }
+
+  seen.add(value);
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoForbiddenPayload(item, `${path}[${index}]`, seen));
+  } else {
+    for (const [key, childValue] of Object.entries(value)) {
+      if (FORBIDDEN_PAYLOAD_KEYS.has(key)) {
+        throwValidation(`${path}.${key} is not allowed in CaptureRecord v1.`);
+      }
+
+      assertNoForbiddenPayload(childValue, `${path}.${key}`, seen);
+    }
+  }
+
+  seen.delete(value);
+}
+
+function copyRect(rect: SerializableRect): SerializableRect {
+  return {
+    x: rect.x,
+    y: rect.y,
+    width: rect.width,
+    height: rect.height,
+    top: rect.top,
+    right: rect.right,
+    bottom: rect.bottom,
+    left: rect.left
+  };
+}
+
+function copySanitizedDomNode(node: SanitizedDomNode): SanitizedDomNode {
+  return {
+    tagName: node.tagName,
+    attributes: { ...node.attributes },
+    ...(node.textPreview ? { textPreview: node.textPreview } : {}),
+    children: node.children.map(copySanitizedDomNode)
+  };
+}
+
+function copyChildSummary(summary: ChildElementSummary): ChildElementSummary {
+  return {
+    tagName: summary.tagName,
+    ...(summary.semanticRole ? { semanticRole: summary.semanticRole } : {}),
+    ...(summary.textPreview ? { textPreview: summary.textPreview } : {}),
+    childCount: summary.childCount
+  };
+}
+
+function copyJsonObject<T extends JsonObject>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function assertCaptureRecordId(value: unknown, path: string) {
+  assertNonEmptyString(value, path);
+
+  if (value.length > 80 || !CAPTURE_ID_PATTERN.test(value)) {
+    throwValidation(`${path} is not a valid generated capture id.`);
+  }
+}
+
+function assertNormalizedIsoTimestamp(value: unknown, path: string) {
+  assertString(value, path);
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString() !== value) {
+    throwValidation(`${path} must be a normalized ISO timestamp.`);
+  }
+}
+
+function assertPlainObject(value: unknown, path: string): asserts value is Record<string, unknown> {
+  if (!isPlainObject(value)) {
+    throwValidation(`${path} must be a plain JSON object.`);
+  }
+}
+
+function isPlainObject(value: unknown): value is JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function expectExactKeys(value: Record<string, unknown>, path: string, keys: string[]) {
+  const expected = new Set(keys);
+  const actualKeys = Object.keys(value);
+
+  if (actualKeys.length !== expected.size || actualKeys.some((key) => !expected.has(key))) {
+    throwValidation(`${path} does not match the required CaptureRecord v1 fields.`);
+  }
+}
+
+function expectAllowedKeys(value: Record<string, unknown>, path: string, keys: string[]) {
+  const allowed = new Set(keys);
+  const unknownKey = Object.keys(value).find((key) => !allowed.has(key));
+
+  if (unknownKey) {
+    throwValidation(`${path}.${unknownKey} is not part of CaptureRecord v1.`);
+  }
+}
+
+function assertString(value: unknown, path: string): asserts value is string {
+  if (typeof value !== "string") {
+    throwValidation(`${path} must be a string.`);
+  }
+}
+
+function assertNonEmptyString(value: unknown, path: string): asserts value is string {
+  assertString(value, path);
+
+  if (!value) {
+    throwValidation(`${path} must not be empty.`);
+  }
+}
+
+function assertOptionalString(value: unknown, path: string) {
+  if (value !== undefined) {
+    assertString(value, path);
+  }
+}
+
+function assertStringArray(value: unknown, path: string) {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+    throwValidation(`${path} must be an array of strings.`);
+  }
+}
+
+function assertFiniteNumber(value: unknown, path: string): asserts value is number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throwValidation(`${path} must be a finite number.`);
+  }
+}
+
+function assertPositiveFiniteNumber(value: unknown, path: string) {
+  assertFiniteNumber(value, path);
+
+  if (value <= 0) {
+    throwValidation(`${path} must be positive.`);
+  }
+}
+
+function assertPositiveSafeInteger(value: unknown, path: string) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
+    throwValidation(`${path} must be a positive safe integer.`);
+  }
+}
+
+function assertNonNegativeSafeInteger(value: unknown, path: string) {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throwValidation(`${path} must be a non-negative safe integer.`);
+  }
+}
+
+function throwValidation(message: string): never {
+  throw new PersistenceError("validation", message);
+}

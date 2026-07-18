@@ -6,6 +6,9 @@ export type PersistenceErrorCode =
   | "encoding"
   | "constraint"
   | "transaction"
+  | "validation"
+  | "serialization"
+  | "reference-mismatch"
   | "readback"
   | "not-found"
   | "cleanup"
@@ -19,6 +22,9 @@ const USER_MESSAGES: Record<PersistenceErrorCode, string> = {
   encoding: "Element Catcher could not prepare the screenshot asset for local persistence.",
   constraint: "Element Catcher detected a duplicate local persistence key.",
   transaction: "Element Catcher could not complete the local persistence transaction.",
+  validation: "Element Catcher could not validate the CaptureRecord.",
+  serialization: "Element Catcher could not serialize the CaptureRecord.",
+  "reference-mismatch": "Element Catcher detected a screenshot reference mismatch.",
   readback: "Element Catcher could not verify the saved local persistence data.",
   "not-found": "Element Catcher could not find the expected local persistence data.",
   cleanup: "Element Catcher could not clean up temporary local persistence data.",
