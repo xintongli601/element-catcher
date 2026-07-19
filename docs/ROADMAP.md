@@ -616,7 +616,7 @@ Acceptance criteria:
 
 ### Milestone 4A - Library Read Model and Capture List Foundation
 
-Status: Current
+Status: Completed
 
 Objective: Establish a validated local-library repository/read model and show all explicitly saved `CaptureRecord` entries in a basic capture list.
 
@@ -665,9 +665,11 @@ Acceptance criteria:
 - Existing capture and save behavior passes regression.
 - Production build and real Chrome runtime validation are required before Milestone 4A can later be marked Completed.
 
+Acceptance status: Completed. Milestone 4A passed production build and classic content-script validation; reusable all-saved-capture read-model validation; complete explicitly saved capture listing; persisted Blob-backed thumbnail rendering; same-session Library refresh after Save; newest-first ordering with deterministic record-id tie-breaking; Side Panel close/reopen restoration; database-version-1 and existing-two-store checks; no-savedAt diagnostic exclusion; safe malformed-savedAt, wrapper-id-mismatch, and missing-asset failure and Retry recovery; title, component-type, tag fallback, bounded-text, and source-sanitization checks; persisted-Blob object-URL creation and replacement cleanup with no missing revoke events; existing Cancel, Escape, Parent, Child, Confirm, Capture Preview, Save, duplicate-save-prevention, and repeated-capture regression; non-interactive list-only scope with no detail, edit, delete, search, filter, source-navigation, or AI controls; final Side Panel, service-worker, and extension-error checks; diagnostic cleanup; and a final normal runtime state of seven capture records and seven screenshot assets. User-facing errors did not expose raw payloads, internal identifiers, screenshot storage keys, or secret source values.
+
 ### Milestone 4B - Saved Capture Detail and Reopen Navigation
 
-Status: Planned
+Status: Current
 
 Objective: Allow a user to select any saved list item and reopen it as a persisted capture detail view.
 
