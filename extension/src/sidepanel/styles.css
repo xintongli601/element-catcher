@@ -338,7 +338,8 @@ h2 {
 }
 
 .preview-section h3,
-.save-panel h3 {
+.save-panel h3,
+.library-metadata-panel h3 {
   margin: 0;
   color: #172033;
   font-size: 14px;
@@ -559,6 +560,89 @@ h2 {
 .saved-detail-actions {
   display: flex;
   justify-content: start;
+}
+
+.library-metadata-panel {
+  display: grid;
+  gap: 12px;
+  border-top: 1px solid #e4e9f2;
+  padding-top: 12px;
+}
+
+.library-metadata-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metadata-form {
+  display: grid;
+  gap: 12px;
+}
+
+.metadata-field {
+  display: grid;
+  gap: 6px;
+}
+
+.metadata-field label {
+  color: #172033;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.metadata-field input,
+.metadata-field textarea {
+  width: 100%;
+  border: 1px solid #bac4d5;
+  border-radius: 6px;
+  padding: 9px 10px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.metadata-field textarea {
+  resize: vertical;
+}
+
+.metadata-field input:disabled,
+.metadata-field textarea:disabled {
+  background: #f1f4f8;
+  color: #63728a;
+}
+
+.metadata-field input:focus-visible,
+.metadata-field textarea:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.metadata-help,
+.metadata-error {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.metadata-help {
+  color: #63728a;
+}
+
+.metadata-error {
+  color: #991b1b;
+}
+
+.metadata-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.metadata-notes-value {
+  white-space: pre-wrap;
 }
 
 .library-count {

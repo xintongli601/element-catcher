@@ -183,6 +183,84 @@ export async function deleteRecordEntry(id: string) {
   });
 }
 
+export async function replaceSavedRecordEntry({
+  replacement,
+  expectedSavedAt
+}: {
+  replacement: StoredRecordEntry;
+  expectedSavedAt: string;
+}) {
+  validateRecordEntry(replacement);
+  if (replacement.savedAt !== expectedSavedAt) {
+    throw new PersistenceError("validation", "Replacement savedAt must match the expected savedAt.");
+  }
+
+  await withDatabase(
+    (database) =>
+      new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(CAPTURE_RECORD_STORE_NAME, "readwrite");
+        const store = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const readRequest = store.get(replacement.id);
+        let requestError: DOMException | null = null;
+        let settled = false;
+
+        const failAndAbort = (error: PersistenceError) => {
+          settled = true;
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may already be inactive after a request error.
+          }
+          reject(error);
+        };
+
+        readRequest.onsuccess = () => {
+          const current = readRequest.result as StoredRecordEntry | undefined;
+
+          if (!current) {
+            failAndAbort(new PersistenceError("not-found", "Saved CaptureRecord was not found."));
+            return;
+          }
+
+          try {
+            validateRecordEntry(current);
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "validation"));
+            return;
+          }
+
+          if (current.savedAt !== expectedSavedAt) {
+            failAndAbort(new PersistenceError("readback", "Saved CaptureRecord changed before metadata update."));
+            return;
+          }
+
+          store.put(replacement);
+        };
+
+        readRequest.onerror = () => {
+          requestError = readRequest.error;
+        };
+        transaction.onerror = (event) => {
+          const target = event.target;
+
+          if (!requestError && target instanceof IDBRequest && target.error) {
+            requestError = target.error;
+          }
+        };
+        transaction.oncomplete = () => {
+          if (!settled) {
+            resolve();
+          }
+        };
+        transaction.onabort = () => {
+          if (!settled) {
+            reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
 export async function addPersistenceBundle(bundle: PersistenceBundle) {
   validateScreenshotAsset(bundle.asset);
   validateRecordEntry(bundle.record);

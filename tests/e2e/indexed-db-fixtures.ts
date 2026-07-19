@@ -102,12 +102,22 @@ export async function readRecordWrapper(page: Page, recordId: string) {
   return runDatabaseOperation<{ recordId: string }, unknown>(page, "readRecordWrapper", { recordId });
 }
 
+export async function readScreenshotAssetSnapshot(page: Page, storageKey: string) {
+  return runDatabaseOperation<{ storageKey: string }, ScreenshotAssetSnapshot>(page, "readScreenshotAssetSnapshot", {
+    storageKey
+  });
+}
+
 export async function deleteRecordWrapper(page: Page, recordId: string) {
   await runDatabaseOperation(page, "deleteRecordWrapper", { recordId });
 }
 
 export async function restoreRecordWrapper(page: Page, wrapper: unknown) {
   await runDatabaseOperation(page, "restoreRecordWrapper", { wrapper });
+}
+
+export async function replaceWrapperSavedAt(page: Page, recordId: string, savedAt: string) {
+  await runDatabaseOperation(page, "replaceWrapperSavedAt", { recordId, savedAt });
 }
 
 export async function deleteScreenshotAsset(page: Page, storageKey: string) {
@@ -266,6 +276,16 @@ type PersistenceCounts = {
   screenshotAssets: number;
 };
 
+type ScreenshotAssetSnapshot = {
+  storageKey: string;
+  mediaType: string;
+  width: number;
+  height: number;
+  byteLength: number;
+  crop: SerializableRect;
+  digest: string;
+};
+
 async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string, arg: TArg) {
   return page.evaluate(
     async ({ operation, arg, constants }) => {
@@ -355,12 +375,63 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
             database.close();
           }
         },
+        readScreenshotAssetSnapshot: async (value) => {
+          const { storageKey } = value as { storageKey: string };
+          const database = await openDatabase();
+
+          try {
+            const asset = await getValue(database, screenshotAssetStoreName, storageKey) as {
+              storageKey: string;
+              blob: Blob;
+              mediaType: string;
+              width: number;
+              height: number;
+              byteLength: number;
+              crop: SerializableRect;
+            } | undefined;
+
+            if (!asset) {
+              return undefined;
+            }
+
+            return {
+              storageKey: asset.storageKey,
+              mediaType: asset.mediaType,
+              width: asset.width,
+              height: asset.height,
+              byteLength: asset.byteLength,
+              crop: asset.crop,
+              digest: await digestBlob(asset.blob)
+            };
+          } finally {
+            database.close();
+          }
+        },
         deleteRecordWrapper: async (value) => {
           const { recordId } = value as { recordId: string };
           const database = await openDatabase();
 
           try {
             await deleteValue(database, captureRecordStoreName, recordId);
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        replaceWrapperSavedAt: async (value) => {
+          const { recordId, savedAt } = value as { recordId: string; savedAt: string };
+          const database = await openDatabase();
+
+          try {
+            const wrapper = await getValue(database, captureRecordStoreName, recordId) as Record<string, unknown> | undefined;
+            if (!wrapper) {
+              throw new Error("Could not alter missing wrapper savedAt.");
+            }
+
+            await putValue(database, captureRecordStoreName, {
+              ...wrapper,
+              savedAt
+            });
             return undefined;
           } finally {
             database.close();
@@ -523,6 +594,12 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         }
 
         return blob;
+      }
+
+      async function digestBlob(blob: Blob) {
+        const buffer = await blob.arrayBuffer();
+        const digest = await crypto.subtle.digest("SHA-256", buffer);
+        return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
       }
 
       function getFixtureDisplayTitle(record: CaptureRecord) {

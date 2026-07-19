@@ -227,7 +227,7 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     await reopened.close();
   });
 
-  test("J/K - saved detail scope boundaries and persistence integrity exclude Milestone 4C+ controls", async ({ sidePanelPage }) => {
+  test("J/K - saved detail scope boundaries and persistence integrity exclude Milestone 4D+ controls", async ({ sidePanelPage }) => {
     const seeded = await seedAndReload(sidePanelPage);
     const beforeCounts = await readPersistenceCounts(sidePanelPage);
     const beforeWrappers = await Promise.all(seeded.map((capture) => readRecordWrapper(sidePanelPage, capture.record.id)));
@@ -235,8 +235,9 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     await openCapture(sidePanelPage, seeded[0].title);
     await expectDetailLoaded(sidePanelPage, seeded[0]);
 
+    await expect(sidePanelPage.getByRole("button", { name: "Edit metadata" })).toBeVisible();
+
     for (const forbiddenName of [
-      /edit/i,
       /delete/i,
       /search/i,
       /filter/i,
@@ -435,6 +436,10 @@ async function startFixtureServer() {
 
   return {
     url: `http://127.0.0.1:${address.port}/`,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.closeAllConnections();
+        server.close((error) => error ? reject(error) : resolve());
+      })
   };
 }

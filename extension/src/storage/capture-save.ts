@@ -7,12 +7,17 @@ import {
   validateNewCaptureRecordV1Candidate
 } from "../capture/capture-record-v1";
 import {
+  normalizeLibraryMetadataInput,
+  type LibraryMetadataInput
+} from "../library/library-metadata";
+import {
   addPersistenceBundle,
   deletePersistenceBundle,
   readLatestSavedRecordEntry,
   readRecordEntry,
   readSavedRecordEntries,
   readScreenshotAsset,
+  replaceSavedRecordEntry,
   type StoredRecordEntry,
   type StoredScreenshotAsset
 } from "./indexed-db";
@@ -114,6 +119,70 @@ export async function loadSavedCaptureById(recordId: string): Promise<SavedCaptu
   }
 }
 
+export async function updateSavedCaptureLibraryMetadata(
+  recordId: string,
+  input: LibraryMetadataInput,
+  expectedSavedAt: string
+): Promise<SavedCaptureReadModel> {
+  const normalizedMetadata = normalizeLibraryMetadataInput(input);
+  const original = await loadSavedCaptureById(recordId);
+  if (original.savedAt !== expectedSavedAt) {
+    throw new PersistenceError("readback", "Saved CaptureRecord changed before metadata update.");
+  }
+
+  const originalWrapper = await readOriginalWrapper(recordId, original.savedAt);
+  const originalSerializedRecord = serializeCaptureRecordV1(original.record);
+  const originalAssetDigest = await digestBlob(original.asset.blob);
+  const expectedRecord: CaptureRecord = {
+    ...original.record,
+    library: normalizedMetadata
+  };
+  validateCaptureRecordV1(expectedRecord);
+
+  const expectedSerializedRecord = serializeCaptureRecordV1(expectedRecord);
+  const replacement: StoredRecordEntry = {
+    id: original.record.id,
+    value: expectedSerializedRecord,
+    savedAt: original.savedAt
+  };
+  let committed = false;
+
+  try {
+    await replaceSavedRecordEntry({
+      replacement,
+      expectedSavedAt: original.savedAt
+    });
+    committed = true;
+
+    return await verifyMetadataUpdateReadback({
+      expectedRecord,
+      expectedMetadata: normalizedMetadata,
+      expectedAsset: original.asset,
+      expectedAssetDigest: originalAssetDigest,
+      expectedSavedAt: original.savedAt,
+      expectedSerializedRecord
+    });
+  } catch (error) {
+    const persistenceError = toPersistenceError(error);
+
+    if (!committed) {
+      throw persistenceError;
+    }
+
+    await restoreOriginalMetadataUpdateWrapper({
+      recordId,
+      originalWrapper,
+      originalRecord: original.record,
+      originalSerializedRecord,
+      originalAsset: original.asset,
+      originalAssetDigest,
+      originalSavedAt: original.savedAt,
+      originalError: persistenceError
+    });
+    throw persistenceError;
+  }
+}
+
 async function verifySavedCaptureReadback({
   expectedRecord,
   expectedAsset,
@@ -159,6 +228,113 @@ async function verifySavedCaptureReadback({
   }
 
   return readModel;
+}
+
+async function readOriginalWrapper(recordId: string, expectedSavedAt: string) {
+  const originalWrapper = await readRecordEntry(recordId);
+
+  if (!originalWrapper) {
+    throw new PersistenceError("not-found", "Saved CaptureRecord was not found.");
+  }
+
+  if (originalWrapper.id !== recordId || originalWrapper.savedAt !== expectedSavedAt) {
+    throw new PersistenceError("readback", "Saved CaptureRecord wrapper changed before metadata update.");
+  }
+
+  return originalWrapper;
+}
+
+async function verifyMetadataUpdateReadback({
+  expectedRecord,
+  expectedMetadata,
+  expectedAsset,
+  expectedAssetDigest,
+  expectedSavedAt,
+  expectedSerializedRecord
+}: {
+  expectedRecord: CaptureRecord;
+  expectedMetadata: CaptureRecord["library"];
+  expectedAsset: StoredScreenshotAsset;
+  expectedAssetDigest: string;
+  expectedSavedAt: string;
+  expectedSerializedRecord: JsonObject;
+}) {
+  const readModel = await loadSavedCaptureById(expectedRecord.id);
+
+  if (readModel.record.id !== expectedRecord.id) {
+    throw new PersistenceError("readback", "Updated CaptureRecord id changed after read-back.");
+  }
+
+  if (readModel.savedAt !== expectedSavedAt) {
+    throw new PersistenceError("readback", "Updated CaptureRecord savedAt changed after read-back.");
+  }
+
+  if (!jsonValuesEqual(serializeCaptureRecordV1(readModel.record), expectedSerializedRecord)) {
+    throw new PersistenceError("readback", "Updated CaptureRecord did not match expected metadata.");
+  }
+
+  if (!libraryMetadataMatches(readModel.record.library, expectedMetadata)) {
+    throw new PersistenceError("readback", "Updated library metadata did not match expected normalized metadata.");
+  }
+
+  verifyStoredScreenshotAsset(readModel.asset, expectedAsset);
+  const readbackDigest = await digestBlob(readModel.asset.blob);
+  if (readbackDigest !== expectedAssetDigest) {
+    throw new PersistenceError("readback", "Updated capture screenshot asset digest changed.");
+  }
+
+  return readModel;
+}
+
+function libraryMetadataMatches(left: CaptureRecord["library"], right: CaptureRecord["library"]) {
+  return (
+    left.title === right.title &&
+    left.componentType === right.componentType &&
+    left.notes === right.notes &&
+    left.tags.length === right.tags.length &&
+    left.tags.every((tag, index) => tag === right.tags[index])
+  );
+}
+
+async function restoreOriginalMetadataUpdateWrapper({
+  recordId,
+  originalWrapper,
+  originalRecord,
+  originalSerializedRecord,
+  originalAsset,
+  originalAssetDigest,
+  originalSavedAt,
+  originalError
+}: {
+  recordId: string;
+  originalWrapper: StoredRecordEntry;
+  originalRecord: CaptureRecord;
+  originalSerializedRecord: JsonObject;
+  originalAsset: StoredScreenshotAsset;
+  originalAssetDigest: string;
+  originalSavedAt: string;
+  originalError: PersistenceError;
+}) {
+  try {
+    await replaceSavedRecordEntry({
+      replacement: originalWrapper,
+      expectedSavedAt: originalSavedAt
+    });
+    await verifyMetadataUpdateReadback({
+      expectedRecord: originalRecord,
+      expectedMetadata: originalRecord.library,
+      expectedAsset: originalAsset,
+      expectedAssetDigest: originalAssetDigest,
+      expectedSavedAt: originalSavedAt,
+      expectedSerializedRecord: originalSerializedRecord
+    });
+  } catch (cleanupError) {
+    throw new PersistenceError("cleanup", "Metadata update failed after commit and rollback also failed.", {
+      recordId,
+      originalError,
+      cleanupError
+    });
+  }
 }
 
 async function readSavedCaptureEntry(entry: StoredRecordEntry): Promise<SavedCaptureReadModel> {

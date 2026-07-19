@@ -17,8 +17,10 @@ import {
   loadSavedCaptureById,
   loadSavedCaptureLibrary,
   saveCaptureRecordV1,
+  updateSavedCaptureLibraryMetadata,
   type SavedCaptureReadModel
 } from "../storage/capture-save";
+import type { LibraryMetadataInput } from "../library/library-metadata";
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
 import { CaptureLibrary, type CaptureLibraryState } from "./CaptureLibrary";
 import { CapturePreview } from "./CapturePreview";
@@ -40,6 +42,8 @@ export function App() {
   const captureRequestInFlightRef = useRef(false);
   const libraryLoadSequenceRef = useRef(0);
   const detailLoadSequenceRef = useRef(0);
+  const metadataUpdateSequenceRef = useRef(0);
+  const metadataUpdateInFlightRef = useRef(false);
 
   const loadLibrary = async () => {
     const sequence = libraryLoadSequenceRef.current + 1;
@@ -281,7 +285,61 @@ export function App() {
 
   const closeSavedCaptureDetail = () => {
     detailLoadSequenceRef.current += 1;
+    metadataUpdateSequenceRef.current += 1;
     setSavedCaptureDetail({ status: "closed" });
+  };
+
+  const handleUpdateSavedCaptureMetadata = async (
+    recordId: string,
+    input: LibraryMetadataInput,
+    expectedSavedAt: string
+  ) => {
+    if (metadataUpdateInFlightRef.current) {
+      return undefined;
+    }
+
+    const sequence = metadataUpdateSequenceRef.current + 1;
+    metadataUpdateSequenceRef.current = sequence;
+    metadataUpdateInFlightRef.current = true;
+
+    try {
+      const updatedCapture = await updateSavedCaptureLibraryMetadata(recordId, input, expectedSavedAt);
+      updateLoadedLibraryCapture(updatedCapture);
+
+      if (metadataUpdateSequenceRef.current === sequence) {
+        setSavedCaptureDetail((current) =>
+          current.status === "loaded" && current.recordId === recordId
+            ? { status: "loaded", recordId, savedCapture: updatedCapture }
+            : current
+        );
+      }
+
+      return updatedCapture;
+    } finally {
+      metadataUpdateInFlightRef.current = false;
+    }
+  };
+
+  const updateLoadedLibraryCapture = (updatedCapture: SavedCaptureReadModel) => {
+    setCaptureLibrary((current) => {
+      if (current.status !== "loaded") {
+        void loadLibrary();
+        return current;
+      }
+
+      const itemIndex = current.savedCaptures.findIndex((savedCapture) => savedCapture.record.id === updatedCapture.record.id);
+      if (itemIndex === -1) {
+        void loadLibrary();
+        return current;
+      }
+
+      return {
+        status: "loaded",
+        savedCaptures: current.savedCaptures.map((savedCapture, index) =>
+          index === itemIndex ? updatedCapture : savedCapture
+        )
+      };
+    });
   };
 
   return (
@@ -342,6 +400,7 @@ export function App() {
           detailState={savedCaptureDetail}
           onBack={closeSavedCaptureDetail}
           onRetry={(recordId) => void openSavedCaptureDetail(recordId)}
+          onSaveMetadata={handleUpdateSavedCaptureMetadata}
         />
       )}
     </main>
