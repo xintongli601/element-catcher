@@ -14,6 +14,7 @@ import {
   createCaptureRecordTimestamp
 } from "../capture/capture-record-v1";
 import {
+  loadSavedCaptureById,
   loadSavedCaptureLibrary,
   saveCaptureRecordV1,
   type SavedCaptureReadModel
@@ -22,6 +23,7 @@ import { getSafePersistenceMessage } from "../storage/persistence-errors";
 import { CaptureLibrary, type CaptureLibraryState } from "./CaptureLibrary";
 import { CapturePreview } from "./CapturePreview";
 import { cropScreenshotDataUrl } from "./crop-screenshot";
+import { SavedCaptureDetail, type SavedCaptureDetailState } from "./SavedCaptureDetail";
 
 const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
 
@@ -34,8 +36,10 @@ export function App() {
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
   const [captureRecordCandidate, setCaptureRecordCandidate] = useState<CaptureRecord | null>(null);
   const [captureLibrary, setCaptureLibrary] = useState<CaptureLibraryState>({ status: "loading" });
+  const [savedCaptureDetail, setSavedCaptureDetail] = useState<SavedCaptureDetailState>({ status: "closed" });
   const captureRequestInFlightRef = useRef(false);
   const libraryLoadSequenceRef = useRef(0);
+  const detailLoadSequenceRef = useRef(0);
 
   const loadLibrary = async () => {
     const sequence = libraryLoadSequenceRef.current + 1;
@@ -250,6 +254,36 @@ export function App() {
     }
   };
 
+  const openSavedCaptureDetail = async (recordId: string) => {
+    const sequence = detailLoadSequenceRef.current + 1;
+    detailLoadSequenceRef.current = sequence;
+    setSavedCaptureDetail({ status: "loading", recordId });
+
+    try {
+      const savedCapture = await loadSavedCaptureById(recordId);
+      if (detailLoadSequenceRef.current !== sequence) {
+        return;
+      }
+
+      setSavedCaptureDetail({ status: "loaded", recordId, savedCapture });
+    } catch (error) {
+      if (detailLoadSequenceRef.current !== sequence) {
+        return;
+      }
+
+      setSavedCaptureDetail({
+        status: "failed",
+        recordId,
+        message: getSafePersistenceMessage(error)
+      });
+    }
+  };
+
+  const closeSavedCaptureDetail = () => {
+    detailLoadSequenceRef.current += 1;
+    setSavedCaptureDetail({ status: "closed" });
+  };
+
   return (
     <main className="app-shell">
       <section className="intro">
@@ -297,7 +331,19 @@ export function App() {
         <SelectedElementPending selection={selection} hasStructuredExtraction={Boolean(structuredExtraction)} />
       ) : null}
 
-      <CaptureLibrary libraryState={captureLibrary} onRetry={loadLibrary} />
+      {savedCaptureDetail.status === "closed" ? (
+        <CaptureLibrary
+          libraryState={captureLibrary}
+          onRetry={loadLibrary}
+          onOpenCapture={(recordId) => void openSavedCaptureDetail(recordId)}
+        />
+      ) : (
+        <SavedCaptureDetail
+          detailState={savedCaptureDetail}
+          onBack={closeSavedCaptureDetail}
+          onRetry={(recordId) => void openSavedCaptureDetail(recordId)}
+        />
+      )}
     </main>
   );
 }

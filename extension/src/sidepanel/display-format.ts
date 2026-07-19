@@ -1,3 +1,5 @@
+import type { CaptureRecord } from "../shared/capture-schema";
+
 export const MAX_PREVIEW_TEXT_LENGTH = 180;
 export const MAX_SOURCE_LENGTH = 160;
 export const MAX_LIBRARY_TEXT_LENGTH = 96;
@@ -39,4 +41,14 @@ export function boundText(value: string, maxLength = MAX_PREVIEW_TEXT_LENGTH) {
 export function normalizedOptionalText(value: string | undefined) {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+export function getCaptureDisplayTitle(record: CaptureRecord, maxLength = MAX_LIBRARY_TEXT_LENGTH) {
+  const fallbackTitle =
+    normalizedOptionalText(record.library.title) ??
+    normalizedOptionalText(record.library.componentType) ??
+    normalizedOptionalText(record.summaries.componentType) ??
+    `${record.element.tagName.toLowerCase()} capture`;
+
+  return boundText(fallbackTitle, maxLength);
 }

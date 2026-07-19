@@ -10,13 +10,15 @@ export function CapturePreview({
   imageSrc,
   heading,
   statusText,
-  savedAt
+  savedAt,
+  imageUnavailableText = "Screenshot preview unavailable."
 }: {
   record: CaptureRecord;
-  imageSrc: string;
+  imageSrc: string | null;
   heading: string;
   statusText: string;
   savedAt?: string;
+  imageUnavailableText?: string;
 }) {
   const screenshot = record.assets.screenshot;
   const childSummaries = record.dom.childSummary.slice(0, MAX_CHILDREN);
@@ -31,7 +33,11 @@ export function CapturePreview({
         <p className="preview-status">{statusText}</p>
       </div>
 
-      <img src={imageSrc} alt="Cropped screenshot preview of the selected element" className="preview-image" />
+      {imageSrc ? (
+        <img src={imageSrc} alt="Cropped screenshot preview of the selected element" className="preview-image" />
+      ) : (
+        <p className="preview-image-placeholder">{imageUnavailableText}</p>
+      )}
 
       <dl className="preview-metadata">
         <PreviewItem label="Page title" value={boundText(record.source.pageTitle)} />
@@ -95,31 +101,64 @@ export function CapturePreview({
 }
 
 export function SavedCapturePreview({ savedCapture }: { savedCapture: SavedCaptureReadModel }) {
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const currentBlob = savedCapture.asset.blob;
+  const [objectUrlState, setObjectUrlState] = useState<SavedPreviewObjectUrlState>({
+    status: "preparing",
+    blob: currentBlob
+  });
 
   useEffect(() => {
-    const nextObjectUrl = URL.createObjectURL(savedCapture.asset.blob);
-    setObjectUrl(nextObjectUrl);
+    let nextObjectUrl: string | null = null;
+
+    try {
+      nextObjectUrl = URL.createObjectURL(currentBlob);
+      setObjectUrlState({ status: "ready", blob: currentBlob, objectUrl: nextObjectUrl });
+    } catch {
+      setObjectUrlState({ status: "failed", blob: currentBlob });
+    }
 
     return () => {
-      URL.revokeObjectURL(nextObjectUrl);
+      if (nextObjectUrl) {
+        URL.revokeObjectURL(nextObjectUrl);
+      }
     };
-  }, [savedCapture.asset.blob]);
+  }, [currentBlob]);
 
-  if (!objectUrl) {
-    return <p className="empty-note">Preparing saved screenshot preview...</p>;
-  }
+  const currentObjectUrlState: SavedPreviewObjectUrlRenderState =
+    objectUrlState.blob === currentBlob ? objectUrlState : { status: "preparing" };
 
   return (
     <CapturePreview
       record={savedCapture.record}
-      imageSrc={objectUrl}
+      imageSrc={currentObjectUrlState.status === "ready" ? currentObjectUrlState.objectUrl : null}
       heading="Latest saved capture"
       statusText="Stored locally"
       savedAt={savedCapture.savedAt}
+      imageUnavailableText={
+        currentObjectUrlState.status === "failed"
+          ? "Saved screenshot preview unavailable."
+          : "Preparing saved screenshot preview..."
+      }
     />
   );
 }
+
+type SavedPreviewObjectUrlState =
+  | {
+      status: "preparing";
+      blob: Blob;
+    }
+  | {
+      status: "ready";
+      blob: Blob;
+      objectUrl: string;
+    }
+  | {
+      status: "failed";
+      blob: Blob;
+    };
+
+type SavedPreviewObjectUrlRenderState = SavedPreviewObjectUrlState | { status: "preparing" };
 
 function SummaryGrid({ record }: { record: CaptureRecord }) {
   return (

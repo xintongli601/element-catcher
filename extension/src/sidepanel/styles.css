@@ -165,7 +165,8 @@ h2 {
 }
 
 .current-capture,
-.capture-library {
+.capture-library,
+.saved-capture-detail {
   display: grid;
   gap: 14px;
   border: 1px solid #d8dee8;
@@ -175,7 +176,8 @@ h2 {
 }
 
 .current-capture h2,
-.capture-library h2 {
+.capture-library h2,
+.saved-capture-detail h2 {
   margin: 0;
 }
 
@@ -286,6 +288,20 @@ h2 {
   border-radius: 6px;
   background: #ffffff;
   object-fit: contain;
+}
+
+.preview-image-placeholder {
+  display: grid;
+  min-height: 160px;
+  place-items: center;
+  margin: 0;
+  border: 1px solid #d8dee8;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #63728a;
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
 }
 
 .preview-metadata {
@@ -456,13 +472,32 @@ h2 {
 }
 
 .capture-library-item {
+  display: block;
+}
+
+.library-open-button {
   display: grid;
   grid-template-columns: 86px minmax(0, 1fr);
   gap: 12px;
+  width: 100%;
   border: 1px solid #e4e9f2;
   border-radius: 8px;
   padding: 10px;
   background: #ffffff;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.library-open-button:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.library-open-button:focus-visible,
+.secondary-action:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
 }
 
 .library-thumbnail-frame {
@@ -498,19 +533,19 @@ h2 {
   gap: 5px;
 }
 
-.library-item-body h3,
-.library-item-body p {
+.library-item-body span {
   margin: 0;
   overflow-wrap: anywhere;
 }
 
-.library-item-body h3 {
+.library-item-title {
   color: #172033;
   font-size: 14px;
+  font-weight: 700;
   line-height: 1.3;
 }
 
-.library-item-body p {
+.library-item-body span {
   color: #42506a;
   font-size: 12px;
   line-height: 1.35;
@@ -519,6 +554,11 @@ h2 {
 .library-component-type {
   color: #0f766e;
   font-weight: 700;
+}
+
+.saved-detail-actions {
+  display: flex;
+  justify-content: start;
 }
 
 .library-count {

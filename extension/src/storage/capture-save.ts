@@ -100,6 +100,20 @@ export async function loadSavedCaptureLibrary(): Promise<SavedCaptureReadModel[]
   }
 }
 
+export async function loadSavedCaptureById(recordId: string): Promise<SavedCaptureReadModel> {
+  try {
+    const entry = await readRecordEntry(recordId);
+
+    if (!entry) {
+      throw new PersistenceError("not-found", "Saved CaptureRecord was not found.");
+    }
+
+    return await readSavedCaptureEntry(entry);
+  } catch (error) {
+    throw toPersistenceError(error);
+  }
+}
+
 async function verifySavedCaptureReadback({
   expectedRecord,
   expectedAsset,

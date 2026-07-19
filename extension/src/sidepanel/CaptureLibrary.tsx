@@ -4,7 +4,7 @@ import {
   boundText,
   formatSourceLocation,
   formatTimestamp,
-  MAX_LIBRARY_TEXT_LENGTH,
+  getCaptureDisplayTitle,
   normalizedOptionalText
 } from "./display-format";
 
@@ -26,10 +26,12 @@ export type CaptureLibraryState =
 
 export function CaptureLibrary({
   libraryState,
-  onRetry
+  onRetry,
+  onOpenCapture
 }: {
   libraryState: CaptureLibraryState;
   onRetry: () => void;
+  onOpenCapture: (recordId: string) => void;
 }) {
   const loadedCount = libraryState.status === "loaded" ? libraryState.savedCaptures.length : 0;
 
@@ -58,7 +60,11 @@ export function CaptureLibrary({
       {libraryState.status === "loaded" ? (
         <ul className="capture-library-list" aria-label="Saved captures">
           {libraryState.savedCaptures.map((savedCapture) => (
-            <CaptureLibraryItem key={savedCapture.record.id} savedCapture={savedCapture} />
+            <CaptureLibraryItem
+              key={savedCapture.record.id}
+              savedCapture={savedCapture}
+              onOpenCapture={onOpenCapture}
+            />
           ))}
         </ul>
       ) : null}
@@ -66,7 +72,13 @@ export function CaptureLibrary({
   );
 }
 
-function CaptureLibraryItem({ savedCapture }: { savedCapture: SavedCaptureReadModel }) {
+function CaptureLibraryItem({
+  savedCapture,
+  onOpenCapture
+}: {
+  savedCapture: SavedCaptureReadModel;
+  onOpenCapture: (recordId: string) => void;
+}) {
   const currentBlob = savedCapture.asset.blob;
   const [objectUrlState, setObjectUrlState] = useState<ObjectUrlState>({
     status: "preparing",
@@ -90,7 +102,7 @@ function CaptureLibraryItem({ savedCapture }: { savedCapture: SavedCaptureReadMo
     };
   }, [currentBlob]);
 
-  const displayTitle = getLibraryDisplayTitle(savedCapture);
+  const displayTitle = getCaptureDisplayTitle(savedCapture.record);
   const componentType =
     normalizedOptionalText(savedCapture.record.library.componentType) ??
     normalizedOptionalText(savedCapture.record.summaries.componentType);
@@ -99,28 +111,35 @@ function CaptureLibraryItem({ savedCapture }: { savedCapture: SavedCaptureReadMo
 
   return (
     <li className="capture-library-item">
-      <div className="library-thumbnail-frame">
-        {currentObjectUrlState.status === "ready" ? (
-          <img
-            className="library-thumbnail"
-            src={currentObjectUrlState.objectUrl}
-            alt={`Saved screenshot preview for ${displayTitle}`}
-          />
-        ) : null}
-        {currentObjectUrlState.status === "preparing" ? (
-          <span className="library-thumbnail-note">Preparing preview...</span>
-        ) : null}
-        {currentObjectUrlState.status === "failed" ? (
-          <span className="library-thumbnail-note">Preview unavailable</span>
-        ) : null}
-      </div>
+      <button
+        className="library-open-button"
+        type="button"
+        onClick={() => onOpenCapture(savedCapture.record.id)}
+        aria-label={`Open saved capture: ${displayTitle}`}
+      >
+        <span className="library-thumbnail-frame">
+          {currentObjectUrlState.status === "ready" ? (
+            <img
+              className="library-thumbnail"
+              src={currentObjectUrlState.objectUrl}
+              alt={`Saved screenshot preview for ${displayTitle}`}
+            />
+          ) : null}
+          {currentObjectUrlState.status === "preparing" ? (
+            <span className="library-thumbnail-note">Preparing preview...</span>
+          ) : null}
+          {currentObjectUrlState.status === "failed" ? (
+            <span className="library-thumbnail-note">Preview unavailable</span>
+          ) : null}
+        </span>
 
-      <div className="library-item-body">
-        <h3>{displayTitle}</h3>
-        {componentType ? <p className="library-component-type">{boundText(componentType, 48)}</p> : null}
-        <p>{formatSourceLocation(savedCapture.record.source.url)}</p>
-        <p>Saved {formatTimestamp(savedCapture.savedAt)}</p>
-      </div>
+        <span className="library-item-body">
+          <span className="library-item-title">{displayTitle}</span>
+          {componentType ? <span className="library-component-type">{boundText(componentType, 48)}</span> : null}
+          <span>{formatSourceLocation(savedCapture.record.source.url)}</span>
+          <span>Saved {formatTimestamp(savedCapture.savedAt)}</span>
+        </span>
+      </button>
     </li>
   );
 }
@@ -141,14 +160,3 @@ type ObjectUrlState =
     };
 
 type ObjectUrlRenderState = ObjectUrlState | { status: "preparing" };
-
-function getLibraryDisplayTitle(savedCapture: SavedCaptureReadModel) {
-  const record = savedCapture.record;
-  const fallbackTitle =
-    normalizedOptionalText(record.library.title) ??
-    normalizedOptionalText(record.library.componentType) ??
-    normalizedOptionalText(record.summaries.componentType) ??
-    `${record.element.tagName.toLowerCase()} capture`;
-
-  return boundText(fallbackTitle, MAX_LIBRARY_TEXT_LENGTH);
-}
