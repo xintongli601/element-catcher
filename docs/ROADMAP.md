@@ -707,7 +707,7 @@ Acceptance status: Completed. Milestone 4B passed production build and classic c
 
 ### Milestone 4C - User-Managed Library Metadata Editing
 
-Status: Current
+Status: Completed
 
 Objective: Let users edit only the user-managed `CaptureRecord v1` library metadata.
 
@@ -751,9 +751,11 @@ Acceptance criteria:
 - List and detail views reflect successful edits.
 - Production build and real Chrome runtime validation are required before Milestone 4C can later be marked Completed.
 
+Acceptance status: Completed. Milestone 4C passed production build and classic content-script validation; isolated Playwright extension-runtime validation with twenty-five passing tests and no failures or skips; reusable title, component-type, tag, and notes normalization and field-specific validation; accessible prepopulated edit, Save, Cancel, failure, and Retry states; verified replacement of only the four user-managed library metadata fields; complete CaptureRecord v1 validation and serialization; missing-record and savedAt-conflict protection; synchronous duplicate-submission and stale-detail protection; verified read-back before success; exact preservation of wrapper id, original savedAt, every non-library CaptureRecord field, screenshot reference, screenshot asset metadata, asset count, and Blob digest; deterministic rollback handling after committed verification failure; immediate Detail and Library synchronization without item-count or ordering changes; successful persistence across Side Panel close/reopen; and scope checks excluding source, extraction, summaries, screenshot, generatedVersions, modifiedAt, delete, search, filter, navigation, AI, cloud, database, permission, and dependency changes. Automated testing fully covered the approved Milestone 4C scope, so no user manual testing was required.
+
 ### Milestone 4D - Atomic Capture Deletion
 
-Status: Planned
+Status: Current
 
 Objective: Delete one saved capture and its referenced screenshot asset atomically without leaving orphaned local data.
 
