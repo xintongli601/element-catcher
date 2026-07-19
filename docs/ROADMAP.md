@@ -669,7 +669,7 @@ Acceptance status: Completed. Milestone 4A passed production build and classic c
 
 ### Milestone 4B - Saved Capture Detail and Reopen Navigation
 
-Status: Current
+Status: Completed
 
 Objective: Allow a user to select any saved list item and reopen it as a persisted capture detail view.
 
@@ -703,9 +703,11 @@ Acceptance criteria:
 - Existing capture and save behavior passes regression.
 - Production build and real Chrome runtime validation are required before Milestone 4B can later be marked Completed.
 
+Acceptance status: Completed. Milestone 4B passed production build and classic content-script validation; persisted single-capture reread and full record, wrapper, screenshot-reference, Blob, and decoded-dimension validation; native mouse, Enter, and Space Library-item interaction; persisted saved-detail rendering; safe Back, not-found, wrapper-id-mismatch, missing-asset, and Retry behavior; stale asynchronous detail-load protection; no-mutation and persistence-integrity checks; persisted-Blob object-URL creation and revoke validation across Library, Detail, Back, Side Panel reopen, and switching captures; complete Library restoration; scope checks excluding edit, delete, search, filter, source navigation, and AI controls; Playwright isolated-extension E2E validation with eleven passing tests and no failures or skips; real-Chrome Side Panel detail-navigation validation; and a minimal real extension-action activeTab smoke confirming Start Capture, Confirm, Save, Saved locally, same-session Library refresh after Back, retention of earlier captures, and no extension Errors. The Playwright direct extension-page environment did not reproduce the real action-click activeTab grant, so the final activeTab integration smoke was completed manually without adding production permissions or test bypasses.
+
 ### Milestone 4C - User-Managed Library Metadata Editing
 
-Status: Planned
+Status: Current
 
 Objective: Let users edit only the user-managed `CaptureRecord v1` library metadata.
 
