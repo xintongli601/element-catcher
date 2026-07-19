@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build --mode extension && vite build --mode content && node scripts/validate-content-script-build.mjs",
-    "preview": "vite preview --host 127.0.0.1"
+    "preview": "vite preview --host 127.0.0.1",
+    "test:e2e": "npm run build && playwright test",
+    "test:e2e:headed": "npm run build && PW_HEADED=1 playwright test --headed"
   },
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/chrome": "^0.0.287",
     "@types/node": "^26.1.1",
     "@types/react": "^19.0.2",

@@ -1,0 +1,559 @@
+import type { Page } from "@playwright/test";
+import type { CaptureRecord, JsonObject, SerializableRect } from "../../extension/src/shared/capture-schema";
+import { serializeCaptureRecordV1, validateCaptureRecordV1 } from "../../extension/src/capture/capture-record-v1";
+
+export type CaptureFixtureSpec = {
+  id: string;
+  title: string;
+  libraryComponentType: string;
+  summaryComponentType: string;
+  tagName: string;
+  semanticRole: string;
+  sourceUrl: string;
+  pageTitle: string;
+  savedAt: string;
+  width: number;
+  height: number;
+  color: string;
+};
+
+export type SeededCapture = {
+  record: CaptureRecord;
+  savedAt: string;
+  storageKey: string;
+  title: string;
+  sourceDisplay: string;
+  color: string;
+};
+
+export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
+export const ELEMENT_CATCHER_DATABASE_VERSION = 1;
+export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
+export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
+
+export const DEFAULT_CAPTURE_FIXTURES: CaptureFixtureSpec[] = [
+  {
+    id: "capture-00000000-0000-0000-0000-000000000001",
+    title: "Alpha Card",
+    libraryComponentType: "pricing-card",
+    summaryComponentType: "pricing-card",
+    tagName: "article",
+    semanticRole: "card",
+    sourceUrl: "https://user:secret@example.test/library/alpha?token=hidden#private",
+    pageTitle: "Alpha Fixture",
+    savedAt: "2026-07-18T09:00:00.000Z",
+    width: 80,
+    height: 48,
+    color: "#2563eb"
+  },
+  {
+    id: "capture-00000000-0000-0000-0000-000000000002",
+    title: "Beta Banner",
+    libraryComponentType: "hero-banner",
+    summaryComponentType: "hero-banner",
+    tagName: "section",
+    semanticRole: "banner",
+    sourceUrl: "https://example.test/library/beta",
+    pageTitle: "Beta Fixture",
+    savedAt: "2026-07-18T10:00:00.000Z",
+    width: 96,
+    height: 52,
+    color: "#0f766e"
+  },
+  {
+    id: "capture-00000000-0000-0000-0000-000000000003",
+    title: "Gamma Modal",
+    libraryComponentType: "modal",
+    summaryComponentType: "modal",
+    tagName: "dialog",
+    semanticRole: "dialog",
+    sourceUrl: "https://example.test/library/gamma",
+    pageTitle: "Gamma Fixture",
+    savedAt: "2026-07-18T11:00:00.000Z",
+    width: 72,
+    height: 64,
+    color: "#7c3aed"
+  }
+];
+
+export async function resetAndSeedSavedCaptures(page: Page, specs = DEFAULT_CAPTURE_FIXTURES) {
+  const records = specs.map(createCaptureRecordFixture);
+  for (const record of records) {
+    validateCaptureRecordV1(record);
+  }
+
+  const seeded = await runDatabaseOperation<SeedArg, SeededCapture[]>(page, "seed", {
+    records: records.map((record) => serializeCaptureRecordV1(record)),
+    specs
+  });
+
+  return seeded.sort(compareSeededCapturesNewestFirst);
+}
+
+export async function clearTestData(page: Page) {
+  await runDatabaseOperation(page, "clear", {});
+}
+
+export async function readPersistenceCounts(page: Page) {
+  return runDatabaseOperation<Record<string, never>, PersistenceCounts>(page, "counts", {});
+}
+
+export async function readRecordWrapper(page: Page, recordId: string) {
+  return runDatabaseOperation<{ recordId: string }, unknown>(page, "readRecordWrapper", { recordId });
+}
+
+export async function deleteRecordWrapper(page: Page, recordId: string) {
+  await runDatabaseOperation(page, "deleteRecordWrapper", { recordId });
+}
+
+export async function restoreRecordWrapper(page: Page, wrapper: unknown) {
+  await runDatabaseOperation(page, "restoreRecordWrapper", { wrapper });
+}
+
+export async function deleteScreenshotAsset(page: Page, storageKey: string) {
+  await runDatabaseOperation(page, "deleteScreenshotAsset", { storageKey });
+}
+
+export async function restoreScreenshotAsset(page: Page, seededCapture: SeededCapture) {
+  await runDatabaseOperation(page, "restoreScreenshotAsset", { seededCapture });
+}
+
+export async function replaceWrapperWithIdMismatch(page: Page, seededCapture: SeededCapture) {
+  await runDatabaseOperation(page, "replaceWrapperWithIdMismatch", { seededCapture });
+}
+
+function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
+  const crop = createRect(spec.width, spec.height);
+  return {
+    schemaVersion: 1,
+    id: spec.id,
+    createdAt: "2026-07-18T08:00:00.000Z",
+    source: {
+      url: spec.sourceUrl,
+      pageTitle: spec.pageTitle
+    },
+    environment: {
+      viewport: {
+        width: 1280,
+        height: 800
+      },
+      devicePixelRatio: 1
+    },
+    element: {
+      tagName: spec.tagName,
+      semanticRole: spec.semanticRole,
+      textPreview: `${spec.title} fixture preview`,
+      rect: crop
+    },
+    dom: {
+      sanitizedSnapshot: {
+        tagName: spec.tagName,
+        attributes: {
+          role: spec.semanticRole,
+          "data-fixture": "element-catcher-e2e"
+        },
+        textPreview: "Safe fixture text",
+        children: [
+          {
+            tagName: "h3",
+            attributes: {},
+            textPreview: "Fixture heading",
+            children: []
+          }
+        ]
+      },
+      childSummary: [
+        {
+          tagName: "h3",
+          semanticRole: "heading",
+          textPreview: "Fixture heading",
+          childCount: 0
+        }
+      ]
+    },
+    styles: {
+      computed: {
+        display: "flex",
+        boxSizing: "border-box",
+        width: `${spec.width}px`,
+        height: `${spec.height}px`,
+        color: "#111827",
+        backgroundColor: spec.color,
+        borderRadius: "8px",
+        padding: {
+          top: "12px",
+          right: "12px",
+          bottom: "12px",
+          left: "12px"
+        }
+      }
+    },
+    summaries: {
+      componentType: spec.summaryComponentType,
+      typography: {
+        primaryFont: "Inter",
+        weights: ["500", "700"]
+      },
+      colors: {
+        foreground: "#111827",
+        background: spec.color,
+        accent: "#ffffff"
+      },
+      layout: {
+        display: "flex",
+        direction: "vertical",
+        density: "comfortable"
+      },
+      spacing: {
+        gap: "8px",
+        padding: {
+          top: "12px",
+          right: "12px",
+          bottom: "12px",
+          left: "12px"
+        }
+      }
+    },
+    assets: {
+      screenshot: {
+        storageKey: `screenshots/${spec.id}.png`,
+        mediaType: "image/png",
+        width: spec.width,
+        height: spec.height,
+        crop
+      }
+    },
+    library: {
+      title: spec.title,
+      componentType: spec.libraryComponentType,
+      tags: ["e2e", "milestone-4b"],
+      notes: "Deterministic Playwright fixture."
+    },
+    generatedVersions: []
+  };
+}
+
+function createRect(width: number, height: number): SerializableRect {
+  return {
+    x: 10,
+    y: 20,
+    width,
+    height,
+    top: 20,
+    right: 10 + width,
+    bottom: 20 + height,
+    left: 10
+  };
+}
+
+function compareSeededCapturesNewestFirst(left: SeededCapture, right: SeededCapture) {
+  if (left.savedAt !== right.savedAt) {
+    return right.savedAt.localeCompare(left.savedAt);
+  }
+
+  return left.record.id.localeCompare(right.record.id);
+}
+
+type SeedArg = {
+  records: JsonObject[];
+  specs: CaptureFixtureSpec[];
+};
+
+type PersistenceCounts = {
+  version: number;
+  stores: string[];
+  captureRecords: number;
+  screenshotAssets: number;
+};
+
+async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string, arg: TArg) {
+  return page.evaluate(
+    async ({ operation, arg, constants }) => {
+      const {
+        databaseName,
+        databaseVersion,
+        captureRecordStoreName,
+        screenshotAssetStoreName
+      } = constants;
+
+      const operations: Record<string, (value: unknown) => Promise<unknown>> = {
+        seed: async (value) => {
+          const { records, specs } = value as SeedArg;
+          const database = await openDatabase();
+
+          try {
+            await clearStores(database);
+            const results: SeededCapture[] = [];
+
+            for (let index = 0; index < records.length; index += 1) {
+              const spec = specs[index];
+              const record = records[index] as CaptureRecord;
+              const blob = await createPngBlob(spec.width, spec.height, spec.color);
+              record.assets.screenshot.byteLength = blob.size;
+
+              await putValue(database, screenshotAssetStoreName, {
+                storageKey: record.assets.screenshot.storageKey,
+                blob,
+                mediaType: "image/png",
+                width: spec.width,
+                height: spec.height,
+                byteLength: blob.size,
+                crop: record.assets.screenshot.crop
+              });
+              await putValue(database, captureRecordStoreName, {
+                id: record.id,
+                value: JSON.parse(JSON.stringify(record)) as JsonObject,
+                savedAt: spec.savedAt
+              });
+
+              results.push({
+                record,
+                savedAt: spec.savedAt,
+                storageKey: record.assets.screenshot.storageKey,
+                title: getFixtureDisplayTitle(record),
+                sourceDisplay: getFixtureSourceDisplay(record.source.url),
+                color: spec.color
+              });
+            }
+
+            return results;
+          } finally {
+            database.close();
+          }
+        },
+        clear: async () => {
+          const database = await openDatabase();
+
+          try {
+            await clearStores(database);
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        counts: async () => {
+          const database = await openDatabase();
+
+          try {
+            return {
+              version: database.version,
+              stores: Array.from(database.objectStoreNames).sort(),
+              captureRecords: await countStore(database, captureRecordStoreName),
+              screenshotAssets: await countStore(database, screenshotAssetStoreName)
+            };
+          } finally {
+            database.close();
+          }
+        },
+        readRecordWrapper: async (value) => {
+          const { recordId } = value as { recordId: string };
+          const database = await openDatabase();
+
+          try {
+            return await getValue(database, captureRecordStoreName, recordId);
+          } finally {
+            database.close();
+          }
+        },
+        deleteRecordWrapper: async (value) => {
+          const { recordId } = value as { recordId: string };
+          const database = await openDatabase();
+
+          try {
+            await deleteValue(database, captureRecordStoreName, recordId);
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        restoreRecordWrapper: async (value) => {
+          const { wrapper } = value as { wrapper: unknown };
+          const database = await openDatabase();
+
+          try {
+            await putValue(database, captureRecordStoreName, wrapper);
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        deleteScreenshotAsset: async (value) => {
+          const { storageKey } = value as { storageKey: string };
+          const database = await openDatabase();
+
+          try {
+            await deleteValue(database, screenshotAssetStoreName, storageKey);
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        restoreScreenshotAsset: async (value) => {
+          const { seededCapture } = value as { seededCapture: SeededCapture };
+          const database = await openDatabase();
+
+          try {
+            const blob = await createPngBlob(
+              seededCapture.record.assets.screenshot.width,
+              seededCapture.record.assets.screenshot.height,
+              seededCapture.color
+            );
+            await putValue(database, screenshotAssetStoreName, {
+              storageKey: seededCapture.storageKey,
+              blob,
+              mediaType: "image/png",
+              width: seededCapture.record.assets.screenshot.width,
+              height: seededCapture.record.assets.screenshot.height,
+              byteLength: blob.size,
+              crop: seededCapture.record.assets.screenshot.crop
+            });
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        replaceWrapperWithIdMismatch: async (value) => {
+          const { seededCapture } = value as { seededCapture: SeededCapture };
+          const database = await openDatabase();
+
+          try {
+            await putValue(database, captureRecordStoreName, {
+              id: seededCapture.record.id,
+              value: {
+                ...seededCapture.record,
+                id: "capture-ffffffff-ffff-ffff-ffff-ffffffffffff"
+              },
+              savedAt: seededCapture.savedAt
+            });
+            return undefined;
+          } finally {
+            database.close();
+          }
+        }
+      };
+
+      async function openDatabase() {
+        return new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(databaseName, databaseVersion);
+
+          request.onupgradeneeded = () => {
+            const database = request.result;
+            if (!database.objectStoreNames.contains(screenshotAssetStoreName)) {
+              database.createObjectStore(screenshotAssetStoreName, { keyPath: "storageKey" });
+            }
+
+            if (!database.objectStoreNames.contains(captureRecordStoreName)) {
+              database.createObjectStore(captureRecordStoreName, { keyPath: "id" });
+            }
+          };
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => resolve(request.result);
+        });
+      }
+
+      function requestResult<T>(request: IDBRequest<T>) {
+        return new Promise<T>((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      function transactionComplete(transaction: IDBTransaction) {
+        return new Promise<void>((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onabort = () => reject(transaction.error);
+          transaction.onerror = () => reject(transaction.error);
+        });
+      }
+
+      async function clearStores(database: IDBDatabase) {
+        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName], "readwrite");
+        transaction.objectStore(captureRecordStoreName).clear();
+        transaction.objectStore(screenshotAssetStoreName).clear();
+        await transactionComplete(transaction);
+      }
+
+      async function putValue(database: IDBDatabase, storeName: string, value: unknown) {
+        const transaction = database.transaction(storeName, "readwrite");
+        transaction.objectStore(storeName).put(value);
+        await transactionComplete(transaction);
+      }
+
+      async function deleteValue(database: IDBDatabase, storeName: string, key: string) {
+        const transaction = database.transaction(storeName, "readwrite");
+        transaction.objectStore(storeName).delete(key);
+        await transactionComplete(transaction);
+      }
+
+      async function getValue(database: IDBDatabase, storeName: string, key: string) {
+        return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).get(key));
+      }
+
+      async function countStore(database: IDBDatabase, storeName: string) {
+        return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).count());
+      }
+
+      async function createPngBlob(width: number, height: number, color: string) {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          throw new Error("Could not create canvas context for PNG fixture.");
+        }
+
+        context.fillStyle = color;
+        context.fillRect(0, 0, width, height);
+        context.fillStyle = "#ffffff";
+        context.fillRect(4, 4, Math.max(1, width - 8), Math.max(1, height - 8));
+
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((result) => {
+            if (!result) {
+              reject(new Error("Could not create PNG fixture blob."));
+              return;
+            }
+
+            resolve(result);
+          }, "image/png");
+        });
+
+        if (blob.type !== "image/png" || blob.size <= 0) {
+          throw new Error("Invalid PNG fixture blob.");
+        }
+
+        return blob;
+      }
+
+      function getFixtureDisplayTitle(record: CaptureRecord) {
+        return record.library.title ?? record.library.componentType ?? record.summaries.componentType ?? `${record.element.tagName.toLowerCase()} capture`;
+      }
+
+      function getFixtureSourceDisplay(value: string) {
+        const url = new URL(value);
+        url.username = "";
+        url.password = "";
+        url.search = "";
+        url.hash = "";
+        return `${url.origin}${url.pathname}`;
+      }
+
+      const selectedOperation = operations[operation];
+      if (!selectedOperation) {
+        throw new Error(`Unknown IndexedDB fixture operation: ${operation}`);
+      }
+
+      return (await selectedOperation(arg)) as TResult;
+    },
+    {
+      operation,
+      arg,
+      constants: {
+        databaseName: ELEMENT_CATCHER_DATABASE_NAME,
+        databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION,
+        captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
+        screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME
+      }
+    }
+  );
+}
