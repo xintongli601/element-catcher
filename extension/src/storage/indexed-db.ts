@@ -1,4 +1,4 @@
-import type { JsonObject, SerializableRect } from "../shared/capture-schema";
+import type { JsonObject, JsonValue, SerializableRect } from "../shared/capture-schema";
 import { assertJsonCompatible } from "../shared/json";
 import { PersistenceError, toPersistenceError } from "./persistence-errors";
 
@@ -282,6 +282,101 @@ export async function deletePersistenceBundle({ storageKey, recordId }: { storag
   });
 }
 
+export async function deleteSavedCaptureBundle({
+  expectedRecord,
+  expectedAsset
+}: {
+  expectedRecord: StoredRecordEntry;
+  expectedAsset: StoredScreenshotAsset;
+}) {
+  validateRecordEntry(expectedRecord);
+  validateScreenshotAsset(expectedAsset);
+
+  if (!expectedRecord.savedAt) {
+    throw new PersistenceError("validation", "Expected saved CaptureRecord is missing savedAt.");
+  }
+
+  await withDatabase(
+    (database) =>
+      new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME], "readwrite");
+        const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const assetStore = transaction.objectStore(SCREENSHOT_ASSET_STORE_NAME);
+        const recordRequest = recordStore.get(expectedRecord.id);
+        const assetRequest = assetStore.get(expectedAsset.storageKey);
+        let currentRecord: StoredRecordEntry | undefined;
+        let currentAsset: StoredScreenshotAsset | undefined;
+        let completedReads = 0;
+        let requestError: DOMException | null = null;
+        let settled = false;
+
+        const failAndAbort = (error: PersistenceError) => {
+          settled = true;
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may already be inactive after a request error.
+          }
+          reject(error);
+        };
+
+        const maybeDelete = () => {
+          completedReads += 1;
+          if (completedReads !== 2) {
+            return;
+          }
+
+          try {
+            assertDeletionPreconditions({
+              currentRecord,
+              currentAsset,
+              expectedRecord,
+              expectedAsset
+            });
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "validation"));
+            return;
+          }
+
+          recordStore.delete(expectedRecord.id);
+          assetStore.delete(expectedAsset.storageKey);
+        };
+
+        recordRequest.onsuccess = () => {
+          currentRecord = recordRequest.result as StoredRecordEntry | undefined;
+          maybeDelete();
+        };
+        assetRequest.onsuccess = () => {
+          currentAsset = assetRequest.result as StoredScreenshotAsset | undefined;
+          maybeDelete();
+        };
+        recordRequest.onerror = () => {
+          requestError = recordRequest.error;
+        };
+        assetRequest.onerror = () => {
+          requestError = assetRequest.error;
+        };
+        transaction.onerror = (event) => {
+          const target = event.target;
+
+          if (!requestError && target instanceof IDBRequest && target.error) {
+            requestError = target.error;
+          }
+        };
+        transaction.oncomplete = () => {
+          if (!settled) {
+            resolve();
+          }
+        };
+        transaction.onabort = () => {
+          if (!settled) {
+            reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
 export async function getPersistenceDatabaseInfo() {
   return withDatabase((database) => ({
     name: database.name,
@@ -383,6 +478,124 @@ function validateRecordEntry(record: StoredRecordEntry) {
   if (record.savedAt !== undefined && !isNormalizedIsoTimestamp(record.savedAt)) {
     throw new PersistenceError("validation", "Invalid savedAt timestamp.");
   }
+}
+
+function assertDeletionPreconditions({
+  currentRecord,
+  currentAsset,
+  expectedRecord,
+  expectedAsset
+}: {
+  currentRecord: StoredRecordEntry | undefined;
+  currentAsset: StoredScreenshotAsset | undefined;
+  expectedRecord: StoredRecordEntry;
+  expectedAsset: StoredScreenshotAsset;
+}) {
+  if (!currentRecord) {
+    throw new PersistenceError("not-found", "Saved CaptureRecord was not found.");
+  }
+
+  if (!currentAsset) {
+    throw new PersistenceError("not-found", "Saved screenshot asset was not found.");
+  }
+
+  validateRecordEntry(currentRecord);
+  validateScreenshotAsset(currentAsset);
+
+  if (currentRecord.id !== expectedRecord.id) {
+    throw new PersistenceError("readback", "Saved CaptureRecord wrapper id changed before deletion.");
+  }
+
+  if (currentRecord.savedAt !== expectedRecord.savedAt) {
+    throw new PersistenceError("readback", "Saved CaptureRecord changed before deletion.");
+  }
+
+  const currentStorageKey = getScreenshotStorageKeyFromRecordValue(currentRecord.value);
+  if (currentStorageKey !== expectedAsset.storageKey) {
+    throw new PersistenceError("reference-mismatch", "Saved CaptureRecord screenshot reference changed before deletion.");
+  }
+
+  if (!jsonValuesEqual(currentRecord.value, expectedRecord.value)) {
+    throw new PersistenceError("readback", "Saved CaptureRecord JSON changed before deletion.");
+  }
+
+  if (!storedScreenshotAssetsMatch(currentAsset, expectedAsset)) {
+    throw new PersistenceError("readback", "Saved screenshot asset changed before deletion.");
+  }
+}
+
+function getScreenshotStorageKeyFromRecordValue(value: JsonObject) {
+  const assets = value.assets;
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return undefined;
+  }
+
+  const screenshot = (assets as JsonObject).screenshot;
+  if (!screenshot || typeof screenshot !== "object" || Array.isArray(screenshot)) {
+    return undefined;
+  }
+
+  return typeof screenshot.storageKey === "string" ? screenshot.storageKey : undefined;
+}
+
+function storedScreenshotAssetsMatch(left: StoredScreenshotAsset, right: StoredScreenshotAsset) {
+  return (
+    left.storageKey === right.storageKey &&
+    left.mediaType === right.mediaType &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.byteLength === right.byteLength &&
+    left.blob.type === right.blob.type &&
+    left.blob.size === right.blob.size &&
+    rectsEqual(left.crop, right.crop)
+  );
+}
+
+function rectsEqual(left: SerializableRect, right: SerializableRect) {
+  return (
+    left.x === right.x &&
+    left.y === right.y &&
+    left.width === right.width &&
+    left.height === right.height &&
+    left.top === right.top &&
+    left.right === right.right &&
+    left.bottom === right.bottom &&
+    left.left === right.left
+  );
+}
+
+function jsonValuesEqual(left: JsonValue, right: JsonValue): boolean {
+  if (left === right) {
+    return true;
+  }
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((item, index) => jsonValuesEqual(item, right[index]));
+  }
+
+  if (isPlainJsonObject(left) || isPlainJsonObject(right)) {
+    if (!isPlainJsonObject(left) || !isPlainJsonObject(right)) {
+      return false;
+    }
+
+    const leftKeys = Object.keys(left).sort();
+    const rightKeys = Object.keys(right).sort();
+
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every((key, index) => key === rightKeys[index] && jsonValuesEqual(left[key], right[key]))
+    );
+  }
+
+  return false;
+}
+
+function isPlainJsonObject(value: JsonValue): value is JsonObject {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 function isNormalizedIsoTimestamp(value: unknown) {

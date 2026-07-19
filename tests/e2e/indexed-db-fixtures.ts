@@ -102,10 +102,18 @@ export async function readRecordWrapper(page: Page, recordId: string) {
   return runDatabaseOperation<{ recordId: string }, unknown>(page, "readRecordWrapper", { recordId });
 }
 
+export async function readAllRecordWrappers(page: Page) {
+  return runDatabaseOperation<Record<string, never>, unknown[]>(page, "readAllRecordWrappers", {});
+}
+
 export async function readScreenshotAssetSnapshot(page: Page, storageKey: string) {
   return runDatabaseOperation<{ storageKey: string }, ScreenshotAssetSnapshot>(page, "readScreenshotAssetSnapshot", {
     storageKey
   });
+}
+
+export async function readAllScreenshotAssetSnapshots(page: Page) {
+  return runDatabaseOperation<Record<string, never>, ScreenshotAssetSnapshot[]>(page, "readAllScreenshotAssetSnapshots", {});
 }
 
 export async function deleteRecordWrapper(page: Page, recordId: string) {
@@ -375,6 +383,15 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
             database.close();
           }
         },
+        readAllRecordWrappers: async () => {
+          const database = await openDatabase();
+
+          try {
+            return await getAllValues(database, captureRecordStoreName);
+          } finally {
+            database.close();
+          }
+        },
         readScreenshotAssetSnapshot: async (value) => {
           const { storageKey } = value as { storageKey: string };
           const database = await openDatabase();
@@ -403,6 +420,38 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
               crop: asset.crop,
               digest: await digestBlob(asset.blob)
             };
+          } finally {
+            database.close();
+          }
+        },
+        readAllScreenshotAssetSnapshots: async () => {
+          const database = await openDatabase();
+
+          try {
+            const assets = await getAllValues(database, screenshotAssetStoreName) as Array<{
+              storageKey: string;
+              blob: Blob;
+              mediaType: string;
+              width: number;
+              height: number;
+              byteLength: number;
+              crop: SerializableRect;
+            }>;
+
+            const snapshots = [];
+            for (const asset of assets) {
+              snapshots.push({
+                storageKey: asset.storageKey,
+                mediaType: asset.mediaType,
+                width: asset.width,
+                height: asset.height,
+                byteLength: asset.byteLength,
+                crop: asset.crop,
+                digest: await digestBlob(asset.blob)
+              });
+            }
+
+            return snapshots.sort((left, right) => left.storageKey.localeCompare(right.storageKey));
           } finally {
             database.close();
           }
@@ -558,6 +607,10 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
 
       async function getValue(database: IDBDatabase, storeName: string, key: string) {
         return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).get(key));
+      }
+
+      async function getAllValues(database: IDBDatabase, storeName: string) {
+        return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).getAll());
       }
 
       async function countStore(database: IDBDatabase, storeName: string) {

@@ -26,10 +26,12 @@ export type CaptureLibraryState =
 
 export function CaptureLibrary({
   libraryState,
+  statusMessage,
   onRetry,
   onOpenCapture
 }: {
   libraryState: CaptureLibraryState;
+  statusMessage?: string | null;
   onRetry: () => void;
   onOpenCapture: (recordId: string) => void;
 }) {
@@ -50,6 +52,11 @@ export function CaptureLibrary({
         ) : null}
       </div>
 
+      {statusMessage ? (
+        <p className="save-state save-state-saved" role="status">
+          {statusMessage}
+        </p>
+      ) : null}
       {libraryState.status === "loading" ? <p className="empty-note">Loading local captures...</p> : null}
       {libraryState.status === "empty" ? <p className="empty-note">No explicitly saved captures yet.</p> : null}
       {libraryState.status === "failed" ? (

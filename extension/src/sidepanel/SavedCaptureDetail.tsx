@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import type { SavedCaptureReadModel } from "../storage/capture-save";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import type { DeletedSavedCaptureResult, SavedCaptureReadModel } from "../storage/capture-save";
 import {
   createLibraryMetadataInput,
   LibraryMetadataValidationError,
@@ -34,7 +34,8 @@ export function SavedCaptureDetail({
   detailState,
   onBack,
   onRetry,
-  onSaveMetadata
+  onSaveMetadata,
+  onDeleteCapture
 }: {
   detailState: Exclude<SavedCaptureDetailState, { status: "closed" }>;
   onBack: () => void;
@@ -44,6 +45,7 @@ export function SavedCaptureDetail({
     input: LibraryMetadataInput,
     expectedSavedAt: string
   ) => Promise<SavedCaptureReadModel | undefined>;
+  onDeleteCapture: (recordId: string, expectedSavedAt: string) => Promise<DeletedSavedCaptureResult | undefined>;
 }) {
   if (detailState.status === "loading") {
     return (
@@ -75,6 +77,7 @@ export function SavedCaptureDetail({
       savedCapture={detailState.savedCapture}
       onBack={onBack}
       onSaveMetadata={onSaveMetadata}
+      onDeleteCapture={onDeleteCapture}
     />
   );
 }
@@ -82,7 +85,8 @@ export function SavedCaptureDetail({
 function SavedCaptureDetailContent({
   savedCapture,
   onBack,
-  onSaveMetadata
+  onSaveMetadata,
+  onDeleteCapture
 }: {
   savedCapture: SavedCaptureReadModel;
   onBack: () => void;
@@ -91,6 +95,7 @@ function SavedCaptureDetailContent({
     input: LibraryMetadataInput,
     expectedSavedAt: string
   ) => Promise<SavedCaptureReadModel | undefined>;
+  onDeleteCapture: (recordId: string, expectedSavedAt: string) => Promise<DeletedSavedCaptureResult | undefined>;
 }) {
   const currentBlob = savedCapture.asset.blob;
   const [objectUrlState, setObjectUrlState] = useState<DetailObjectUrlState>({
@@ -101,11 +106,22 @@ function SavedCaptureDetailContent({
   const [draft, setDraft] = useState<LibraryMetadataInput>(() => createLibraryMetadataInput(savedCapture.record.library));
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<LibraryMetadataField, string>>>({});
   const [saveState, setSaveState] = useState<MetadataSaveState>({ status: "idle" });
+  const [deleteState, setDeleteState] = useState<DeleteState>({ status: "idle" });
   const saveInFlightRef = useRef(false);
+  const deleteInFlightRef = useRef(false);
+  const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteConfirmButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     setDraft(createLibraryMetadataInput(savedCapture.record.library));
+    setDeleteState({ status: "idle" });
   }, [savedCapture.record.id, savedCapture.record.library]);
+
+  useEffect(() => {
+    if (deleteState.status === "confirming" || deleteState.status === "failed") {
+      deleteConfirmButtonRef.current?.focus();
+    }
+  }, [deleteState.status]);
 
   useEffect(() => {
     let nextObjectUrl: string | null = null;
@@ -132,6 +148,7 @@ function SavedCaptureDetailContent({
     setDraft(createLibraryMetadataInput(savedCapture.record.library));
     setFieldErrors({});
     setSaveState({ status: "idle" });
+    setDeleteState({ status: "idle" });
     setIsEditing(true);
   };
 
@@ -188,6 +205,42 @@ function SavedCaptureDetailContent({
     }
   };
 
+  const startDeletion = () => {
+    setDeleteState({ status: "confirming" });
+  };
+
+  const cancelDeletion = () => {
+    if (deleteInFlightRef.current) {
+      return;
+    }
+
+    setDeleteState({ status: "idle" });
+    requestAnimationFrame(() => deleteButtonRef.current?.focus());
+  };
+
+  const handleDeleteCapture = async () => {
+    if (deleteInFlightRef.current) {
+      return;
+    }
+
+    deleteInFlightRef.current = true;
+    setDeleteState({ status: "deleting" });
+
+    try {
+      const deletedCapture = await onDeleteCapture(savedCapture.record.id, savedCapture.savedAt);
+      if (!deletedCapture) {
+        setDeleteState({ status: "confirming" });
+      }
+    } catch (error) {
+      setDeleteState({
+        status: "failed",
+        message: getSafePersistenceMessage(error)
+      });
+    } finally {
+      deleteInFlightRef.current = false;
+    }
+  };
+
   return (
     <section className="saved-capture-detail" aria-label="Saved capture detail">
       <DetailHeader onBack={onBack} />
@@ -205,6 +258,16 @@ function SavedCaptureDetailContent({
             onDraftChange={setDraft}
             onSave={() => void handleSaveChanges()}
             onCancel={cancelEditing}
+          />
+        </>
+      ) : deleteState.status !== "idle" ? (
+        <>
+          <h2>{displayTitle}</h2>
+          <DeleteCaptureConfirmation
+            deleteState={deleteState}
+            confirmButtonRef={deleteConfirmButtonRef}
+            onConfirm={() => void handleDeleteCapture()}
+            onCancel={cancelDeletion}
           />
         </>
       ) : (
@@ -226,6 +289,7 @@ function SavedCaptureDetailContent({
             saveState={saveState}
             onEdit={startEditing}
           />
+          <DeleteCapturePanel onDelete={startDeletion} deleteButtonRef={deleteButtonRef} />
         </>
       )}
     </section>
@@ -273,6 +337,93 @@ type MetadataSaveState =
       status: "failed";
       message: string;
     };
+
+type DeleteState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "confirming";
+    }
+  | {
+      status: "deleting";
+    }
+  | {
+      status: "failed";
+      message: string;
+    };
+
+function DeleteCapturePanel({
+  onDelete,
+  deleteButtonRef
+}: {
+  onDelete: () => void;
+  deleteButtonRef: RefObject<HTMLButtonElement | null>;
+}) {
+  return (
+    <section className="delete-panel" aria-labelledby="delete-capture-panel-heading">
+      <div>
+        <h3 id="delete-capture-panel-heading">Delete capture</h3>
+        <p>This removes the saved capture and screenshot asset from local browser storage.</p>
+      </div>
+      <button ref={deleteButtonRef} className="danger-action compact-action" type="button" onClick={onDelete}>
+        Delete capture
+      </button>
+    </section>
+  );
+}
+
+function DeleteCaptureConfirmation({
+  deleteState,
+  confirmButtonRef,
+  onConfirm,
+  onCancel
+}: {
+  deleteState: Exclude<DeleteState, { status: "idle" }>;
+  confirmButtonRef: RefObject<HTMLButtonElement | null>;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const isDeleting = deleteState.status === "deleting";
+
+  return (
+    <section
+      className="delete-confirmation"
+      role="alertdialog"
+      aria-labelledby="delete-capture-heading"
+      aria-describedby="delete-capture-description"
+    >
+      <h3 id="delete-capture-heading">Delete this capture?</h3>
+      <p id="delete-capture-description" className="delete-warning">
+        This capture and its screenshot will be permanently removed from this browser and cannot be undone.
+      </p>
+      {isDeleting ? (
+        <p className="save-state save-state-saving" role="status">
+          Deleting capture...
+        </p>
+      ) : null}
+      {deleteState.status === "failed" ? (
+        <p className="save-state save-state-failed" role="alert">
+          Could not delete capture. {deleteState.message}
+        </p>
+      ) : null}
+      <div className="delete-actions">
+        <button
+          ref={confirmButtonRef}
+          className="danger-action"
+          type="button"
+          onClick={onConfirm}
+          disabled={isDeleting}
+        >
+          {deleteState.status === "failed" ? "Retry deletion" : "Delete permanently"}
+        </button>
+        <button className="secondary-action" type="button" onClick={onCancel} disabled={isDeleting}>
+          Cancel deletion
+        </button>
+      </div>
+    </section>
+  );
+}
 
 function LibraryMetadataView({
   savedCapture,

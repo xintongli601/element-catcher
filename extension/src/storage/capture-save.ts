@@ -12,6 +12,7 @@ import {
 } from "../library/library-metadata";
 import {
   addPersistenceBundle,
+  deleteSavedCaptureBundle,
   deletePersistenceBundle,
   readLatestSavedRecordEntry,
   readRecordEntry,
@@ -34,6 +35,11 @@ export type SavedCaptureReadModel = {
   record: CaptureRecord;
   asset: StoredScreenshotAsset;
   savedAt: string;
+};
+
+export type DeletedSavedCaptureResult = {
+  recordId: string;
+  storageKey: string;
 };
 
 export async function saveCaptureRecordV1(
@@ -183,6 +189,53 @@ export async function updateSavedCaptureLibraryMetadata(
   }
 }
 
+export async function deleteSavedCapture(
+  recordId: string,
+  expectedSavedAt: string
+): Promise<DeletedSavedCaptureResult> {
+  const original = await loadSavedCaptureById(recordId);
+  if (original.savedAt !== expectedSavedAt) {
+    throw new PersistenceError("readback", "Saved CaptureRecord changed before deletion.");
+  }
+
+  const originalWrapper = await readOriginalWrapper(recordId, original.savedAt, "deletion");
+  const originalSerializedRecord = serializeCaptureRecordV1(original.record);
+  const originalAssetDigest = await digestBlob(original.asset.blob);
+  let committed = false;
+
+  try {
+    await deleteSavedCaptureBundle({
+      expectedRecord: originalWrapper,
+      expectedAsset: original.asset
+    });
+    committed = true;
+
+    await verifyDeletedCaptureAbsent(recordId, original.asset.storageKey);
+    return {
+      recordId,
+      storageKey: original.asset.storageKey
+    };
+  } catch (error) {
+    const persistenceError = toPersistenceError(error);
+
+    if (!committed) {
+      throw persistenceError;
+    }
+
+    await restoreDeletedCaptureBundle({
+      recordId,
+      originalWrapper,
+      originalRecord: original.record,
+      originalSerializedRecord,
+      originalAsset: original.asset,
+      originalAssetDigest,
+      originalSavedAt: original.savedAt,
+      originalError: persistenceError
+    });
+    throw persistenceError;
+  }
+}
+
 async function verifySavedCaptureReadback({
   expectedRecord,
   expectedAsset,
@@ -230,7 +283,7 @@ async function verifySavedCaptureReadback({
   return readModel;
 }
 
-async function readOriginalWrapper(recordId: string, expectedSavedAt: string) {
+async function readOriginalWrapper(recordId: string, expectedSavedAt: string, operation = "metadata update") {
   const originalWrapper = await readRecordEntry(recordId);
 
   if (!originalWrapper) {
@@ -238,7 +291,7 @@ async function readOriginalWrapper(recordId: string, expectedSavedAt: string) {
   }
 
   if (originalWrapper.id !== recordId || originalWrapper.savedAt !== expectedSavedAt) {
-    throw new PersistenceError("readback", "Saved CaptureRecord wrapper changed before metadata update.");
+    throw new PersistenceError("readback", `Saved CaptureRecord wrapper changed before ${operation}.`);
   }
 
   return originalWrapper;
@@ -330,6 +383,64 @@ async function restoreOriginalMetadataUpdateWrapper({
     });
   } catch (cleanupError) {
     throw new PersistenceError("cleanup", "Metadata update failed after commit and rollback also failed.", {
+      recordId,
+      originalError,
+      cleanupError
+    });
+  }
+}
+
+async function verifyDeletedCaptureAbsent(recordId: string, storageKey: string) {
+  const [storedRecord, storedAsset] = await Promise.all([readRecordEntry(recordId), readScreenshotAsset(storageKey)]);
+
+  if (storedRecord || storedAsset) {
+    throw new PersistenceError("readback", "Deleted capture remained in local persistence after deletion.");
+  }
+}
+
+async function restoreDeletedCaptureBundle({
+  recordId,
+  originalWrapper,
+  originalRecord,
+  originalSerializedRecord,
+  originalAsset,
+  originalAssetDigest,
+  originalSavedAt,
+  originalError
+}: {
+  recordId: string;
+  originalWrapper: StoredRecordEntry;
+  originalRecord: CaptureRecord;
+  originalSerializedRecord: JsonObject;
+  originalAsset: StoredScreenshotAsset;
+  originalAssetDigest: string;
+  originalSavedAt: string;
+  originalError: PersistenceError;
+}) {
+  try {
+    await addPersistenceBundle({
+      asset: originalAsset,
+      record: originalWrapper
+    });
+
+    const restored = await loadSavedCaptureById(recordId);
+    if (restored.savedAt !== originalSavedAt) {
+      throw new PersistenceError("readback", "Restored deleted CaptureRecord savedAt did not match.");
+    }
+
+    if (!jsonValuesEqual(serializeCaptureRecordV1(restored.record), originalSerializedRecord)) {
+      throw new PersistenceError("readback", "Restored deleted CaptureRecord JSON did not match.");
+    }
+
+    verifyStoredScreenshotAsset(restored.asset, originalAsset);
+    const restoredDigest = await digestBlob(restored.asset.blob);
+    if (restoredDigest !== originalAssetDigest) {
+      throw new PersistenceError("readback", "Restored deleted screenshot asset digest did not match.");
+    }
+
+    verifyScreenshotReference(originalRecord, restored.asset);
+  } catch (cleanupError) {
+    throw new PersistenceError("cleanup", "Delete failed after commit and restore also failed.", {
       recordId,
       originalError,
       cleanupError

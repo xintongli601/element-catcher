@@ -227,7 +227,7 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     await reopened.close();
   });
 
-  test("J/K - saved detail scope boundaries and persistence integrity exclude Milestone 4D+ controls", async ({ sidePanelPage }) => {
+  test("J/K - saved detail scope boundaries and persistence integrity include 4D and exclude Milestone 4E+ controls", async ({ sidePanelPage }) => {
     const seeded = await seedAndReload(sidePanelPage);
     const beforeCounts = await readPersistenceCounts(sidePanelPage);
     const beforeWrappers = await Promise.all(seeded.map((capture) => readRecordWrapper(sidePanelPage, capture.record.id)));
@@ -236,9 +236,9 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     await expectDetailLoaded(sidePanelPage, seeded[0]);
 
     await expect(sidePanelPage.getByRole("button", { name: "Edit metadata" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("button", { name: "Delete capture" })).toBeVisible();
 
     for (const forbiddenName of [
-      /delete/i,
       /search/i,
       /filter/i,
       /recapture/i,

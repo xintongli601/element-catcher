@@ -14,10 +14,12 @@ import {
   createCaptureRecordTimestamp
 } from "../capture/capture-record-v1";
 import {
+  deleteSavedCapture,
   loadSavedCaptureById,
   loadSavedCaptureLibrary,
   saveCaptureRecordV1,
   updateSavedCaptureLibraryMetadata,
+  type DeletedSavedCaptureResult,
   type SavedCaptureReadModel
 } from "../storage/capture-save";
 import type { LibraryMetadataInput } from "../library/library-metadata";
@@ -38,12 +40,15 @@ export function App() {
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
   const [captureRecordCandidate, setCaptureRecordCandidate] = useState<CaptureRecord | null>(null);
   const [captureLibrary, setCaptureLibrary] = useState<CaptureLibraryState>({ status: "loading" });
+  const [libraryStatusMessage, setLibraryStatusMessage] = useState<string | null>(null);
   const [savedCaptureDetail, setSavedCaptureDetail] = useState<SavedCaptureDetailState>({ status: "closed" });
   const captureRequestInFlightRef = useRef(false);
   const libraryLoadSequenceRef = useRef(0);
   const detailLoadSequenceRef = useRef(0);
   const metadataUpdateSequenceRef = useRef(0);
   const metadataUpdateInFlightRef = useRef(false);
+  const deleteSequenceRef = useRef(0);
+  const deleteInFlightRef = useRef(false);
 
   const loadLibrary = async () => {
     const sequence = libraryLoadSequenceRef.current + 1;
@@ -261,6 +266,8 @@ export function App() {
   const openSavedCaptureDetail = async (recordId: string) => {
     const sequence = detailLoadSequenceRef.current + 1;
     detailLoadSequenceRef.current = sequence;
+    deleteSequenceRef.current += 1;
+    setLibraryStatusMessage(null);
     setSavedCaptureDetail({ status: "loading", recordId });
 
     try {
@@ -286,6 +293,7 @@ export function App() {
   const closeSavedCaptureDetail = () => {
     detailLoadSequenceRef.current += 1;
     metadataUpdateSequenceRef.current += 1;
+    deleteSequenceRef.current += 1;
     setSavedCaptureDetail({ status: "closed" });
   };
 
@@ -320,6 +328,35 @@ export function App() {
     }
   };
 
+  const handleDeleteSavedCapture = async (
+    recordId: string,
+    expectedSavedAt: string
+  ): Promise<DeletedSavedCaptureResult | undefined> => {
+    if (deleteInFlightRef.current) {
+      return undefined;
+    }
+
+    const sequence = deleteSequenceRef.current + 1;
+    deleteSequenceRef.current = sequence;
+    deleteInFlightRef.current = true;
+
+    try {
+      const result = await deleteSavedCapture(recordId, expectedSavedAt);
+      removeDeletedLibraryCapture(result.recordId);
+      setLibraryStatusMessage("Capture deleted locally.");
+
+      if (deleteSequenceRef.current === sequence) {
+        setSavedCaptureDetail((current) =>
+          current.status !== "closed" && current.recordId === result.recordId ? { status: "closed" } : current
+        );
+      }
+
+      return result;
+    } finally {
+      deleteInFlightRef.current = false;
+    }
+  };
+
   const updateLoadedLibraryCapture = (updatedCapture: SavedCaptureReadModel) => {
     setCaptureLibrary((current) => {
       if (current.status !== "loaded") {
@@ -339,6 +376,23 @@ export function App() {
           index === itemIndex ? updatedCapture : savedCapture
         )
       };
+    });
+  };
+
+  const removeDeletedLibraryCapture = (recordId: string) => {
+    setCaptureLibrary((current) => {
+      if (current.status !== "loaded") {
+        void loadLibrary();
+        return current;
+      }
+
+      const remainingCaptures = current.savedCaptures.filter((savedCapture) => savedCapture.record.id !== recordId);
+      if (remainingCaptures.length === current.savedCaptures.length) {
+        void loadLibrary();
+        return current;
+      }
+
+      return remainingCaptures.length ? { status: "loaded", savedCaptures: remainingCaptures } : { status: "empty" };
     });
   };
 
@@ -392,6 +446,7 @@ export function App() {
       {savedCaptureDetail.status === "closed" ? (
         <CaptureLibrary
           libraryState={captureLibrary}
+          statusMessage={libraryStatusMessage}
           onRetry={loadLibrary}
           onOpenCapture={(recordId) => void openSavedCaptureDetail(recordId)}
         />
@@ -401,6 +456,7 @@ export function App() {
           onBack={closeSavedCaptureDetail}
           onRetry={(recordId) => void openSavedCaptureDetail(recordId)}
           onSaveMetadata={handleUpdateSavedCaptureMetadata}
+          onDeleteCapture={handleDeleteSavedCapture}
         />
       )}
     </main>
