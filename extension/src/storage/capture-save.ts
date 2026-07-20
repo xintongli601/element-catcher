@@ -198,8 +198,13 @@ export async function deleteSavedCapture(
     throw new PersistenceError("readback", "Saved CaptureRecord changed before deletion.");
   }
 
-  const originalWrapper = await readOriginalWrapper(recordId, original.savedAt, "deletion");
   const originalSerializedRecord = serializeCaptureRecordV1(original.record);
+  const originalWrapper = await readExactOriginalWrapper(
+    recordId,
+    original.savedAt,
+    originalSerializedRecord,
+    "deletion"
+  );
   const originalAssetDigest = await digestBlob(original.asset.blob);
   let committed = false;
 
@@ -291,6 +296,21 @@ async function readOriginalWrapper(recordId: string, expectedSavedAt: string, op
   }
 
   if (originalWrapper.id !== recordId || originalWrapper.savedAt !== expectedSavedAt) {
+    throw new PersistenceError("readback", `Saved CaptureRecord wrapper changed before ${operation}.`);
+  }
+
+  return originalWrapper;
+}
+
+async function readExactOriginalWrapper(
+  recordId: string,
+  expectedSavedAt: string,
+  expectedSerializedRecord: JsonObject,
+  operation: string
+) {
+  const originalWrapper = await readOriginalWrapper(recordId, expectedSavedAt, operation);
+
+  if (!jsonValuesEqual(originalWrapper.value, expectedSerializedRecord)) {
     throw new PersistenceError("readback", `Saved CaptureRecord wrapper changed before ${operation}.`);
   }
 

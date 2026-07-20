@@ -307,6 +307,40 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
       screenshotAssets: seeded.length - 1
     });
   });
+
+  test("P - same-savedAt wrapper mutation between validated load and deletion aborts safely", async ({ sidePanelPage }) => {
+    const seeded = await seedAndReload(sidePanelPage);
+    const target = seeded[0];
+    const originalWrapper = await readWrapper(sidePanelPage, target.record.id);
+    const originalAsset = await readScreenshotAssetSnapshot(sidePanelPage, target.storageKey);
+    const beforeCounts = await readPersistenceCounts(sidePanelPage);
+    const conflictingWrapper = createSameSavedAtMutatedWrapper(originalWrapper);
+
+    await openCapture(sidePanelPage, target);
+    await openDeletionConfirmation(sidePanelPage);
+    await installSameSavedAtWrapperMutation(sidePanelPage, {
+      recordId: target.record.id,
+      storageKey: target.storageKey,
+      replacementWrapper: conflictingWrapper
+    });
+    await sidePanelPage.getByRole("button", { name: "Delete permanently" }).click();
+
+    await expectSafeDeleteFailure(sidePanelPage, target);
+    const mutationState = await readSameSavedAtWrapperMutationState(sidePanelPage);
+    expect(mutationState.recordReadCount).toBeGreaterThanOrEqual(2);
+    expect(mutationState.mutated).toBe(true);
+    expect(mutationState.secondRecordReadAfterMutation).toBe(true);
+    expect(mutationState.error).toBeUndefined();
+    await removeSameSavedAtWrapperMutation(sidePanelPage);
+
+    expect(await readWrapper(sidePanelPage, target.record.id)).toEqual(conflictingWrapper);
+    expect(await readScreenshotAssetSnapshot(sidePanelPage, target.storageKey)).toEqual(originalAsset);
+    expect(await readPersistenceCounts(sidePanelPage)).toEqual(beforeCounts);
+
+    await restoreRecordWrapper(sidePanelPage, originalWrapper);
+    await sidePanelPage.getByRole("button", { name: "Retry deletion" }).click();
+    await expectDeletionSuccess(sidePanelPage, seeded.slice(1));
+  });
 });
 
 async function seedAndReload(page: Page, specs = DEFAULT_CAPTURE_FIXTURES) {
@@ -381,6 +415,252 @@ async function createWrapperForTarget(_page: Page, target: SeededCapture): Promi
     value: JSON.parse(JSON.stringify(target.record)) as SeededCapture["record"],
     savedAt: target.savedAt
   };
+}
+
+function createSameSavedAtMutatedWrapper(wrapper: RecordWrapper): RecordWrapper {
+  const replacement = JSON.parse(JSON.stringify(wrapper)) as RecordWrapper;
+  replacement.value.library = {
+    ...replacement.value.library,
+    title: "Same savedAt mutation"
+  };
+  return replacement;
+}
+
+async function installSameSavedAtWrapperMutation(
+  page: Page,
+  input: {
+    recordId: string;
+    storageKey: string;
+    replacementWrapper: RecordWrapper;
+  }
+) {
+  await page.evaluate(
+    ({ recordId, storageKey, replacementWrapper, constants }) => {
+      const testWindow = window as unknown as {
+        __ecSameSavedAtMutation?: {
+          enabled: boolean;
+          recordId: string;
+          storageKey: string;
+          replacementWrapper: Record<string, unknown>;
+          recordReadCount: number;
+          mutated: boolean;
+          secondRecordReadAfterMutation: boolean;
+          assetGateUsed: boolean;
+          error?: string;
+          mutationPromise?: Promise<void>;
+        };
+        __ecOriginalGet?: IDBObjectStore["get"];
+      };
+
+      if (!testWindow.__ecOriginalGet) {
+        testWindow.__ecOriginalGet = IDBObjectStore.prototype.get;
+      }
+
+      const gate: NonNullable<typeof testWindow.__ecSameSavedAtMutation> = {
+        enabled: true,
+        recordId,
+        storageKey,
+        replacementWrapper,
+        recordReadCount: 0,
+        mutated: false,
+        secondRecordReadAfterMutation: false,
+        assetGateUsed: false,
+        error: undefined,
+        mutationPromise: undefined
+      };
+      testWindow.__ecSameSavedAtMutation = gate;
+
+      IDBObjectStore.prototype.get = function patchedGet(query: IDBValidKey | IDBKeyRange) {
+        const currentGate = testWindow.__ecSameSavedAtMutation;
+        if (!currentGate?.enabled) {
+          return testWindow.__ecOriginalGet!.call(this, query);
+        }
+
+        if (
+          this.name === constants.captureRecordStoreName &&
+          this.transaction.mode === "readonly" &&
+          query === currentGate.recordId
+        ) {
+          currentGate.recordReadCount += 1;
+          const readIndex = currentGate.recordReadCount;
+          const request = testWindow.__ecOriginalGet!.call(this, query);
+
+          if (readIndex === 1) {
+            request.addEventListener(
+              "success",
+              () => {
+                currentGate.mutationPromise = putWrapper(currentGate.replacementWrapper)
+                  .then(() => {
+                    currentGate.mutated = true;
+                  })
+                  .catch((error: unknown) => {
+                    currentGate.error = error instanceof Error ? error.message : String(error);
+                  });
+              },
+              { once: true }
+            );
+          }
+
+          if (readIndex === 2) {
+            currentGate.secondRecordReadAfterMutation = currentGate.mutated;
+          }
+
+          return request;
+        }
+
+        if (
+          this.name === constants.screenshotAssetStoreName &&
+          this.transaction.mode === "readonly" &&
+          query === currentGate.storageKey &&
+          currentGate.recordReadCount >= 1 &&
+          currentGate.mutationPromise &&
+          !currentGate.assetGateUsed
+        ) {
+          currentGate.assetGateUsed = true;
+          return createAsyncRequest(async () => {
+            await currentGate.mutationPromise;
+            return getValue(constants.screenshotAssetStoreName, currentGate.storageKey);
+          });
+        }
+
+        return testWindow.__ecOriginalGet!.call(this, query);
+      };
+
+      function createAsyncRequest(producer: () => Promise<unknown>) {
+        const listeners: Record<"success" | "error", Array<(event: Event) => void>> = {
+          success: [],
+          error: []
+        };
+        const request = {
+          result: undefined as unknown,
+          error: null as DOMException | null,
+          onsuccess: null as ((event: Event) => void) | null,
+          onerror: null as ((event: Event) => void) | null,
+          addEventListener(type: "success" | "error", listener: (event: Event) => void) {
+            listeners[type].push(listener);
+          },
+          removeEventListener(type: "success" | "error", listener: (event: Event) => void) {
+            listeners[type] = listeners[type].filter((item) => item !== listener);
+          }
+        };
+
+        queueMicrotask(() => {
+          void producer()
+            .then((result) => {
+              request.result = result;
+              const event = new Event("success");
+              request.onsuccess?.(event);
+              for (const listener of listeners.success) {
+                listener(event);
+              }
+            })
+            .catch((error: unknown) => {
+              request.error = error instanceof DOMException ? error : new DOMException(String(error), "UnknownError");
+              const event = new Event("error");
+              request.onerror?.(event);
+              for (const listener of listeners.error) {
+                listener(event);
+              }
+            });
+        });
+
+        return request as unknown as IDBRequest<unknown>;
+      }
+
+      async function putWrapper(wrapper: Record<string, unknown>) {
+        const database = await openDatabase();
+        try {
+          const transaction = database.transaction(constants.captureRecordStoreName, "readwrite");
+          transaction.objectStore(constants.captureRecordStoreName).put(wrapper);
+          await transactionComplete(transaction);
+        } finally {
+          database.close();
+        }
+      }
+
+      async function getValue(storeName: string, key: string) {
+        const database = await openDatabase();
+        try {
+          return await requestResult(database.transaction(storeName, "readonly").objectStore(storeName).get(key));
+        } finally {
+          database.close();
+        }
+      }
+
+      async function openDatabase() {
+        return new Promise<IDBDatabase>((resolve, reject) => {
+          const request = indexedDB.open(constants.databaseName, constants.databaseVersion);
+          request.onerror = () => reject(request.error);
+          request.onsuccess = () => resolve(request.result);
+        });
+      }
+
+      function requestResult<T>(request: IDBRequest<T>) {
+        return new Promise<T>((resolve, reject) => {
+          request.onsuccess = () => resolve(request.result);
+          request.onerror = () => reject(request.error);
+        });
+      }
+
+      function transactionComplete(transaction: IDBTransaction) {
+        return new Promise<void>((resolve, reject) => {
+          transaction.oncomplete = () => resolve();
+          transaction.onabort = () => reject(transaction.error);
+          transaction.onerror = () => reject(transaction.error);
+        });
+      }
+    },
+    {
+      ...input,
+      constants: {
+        databaseName: "element-catcher-local-persistence",
+        databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION,
+        captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
+        screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME
+      }
+    }
+  );
+}
+
+async function readSameSavedAtWrapperMutationState(page: Page) {
+  return page.evaluate(() => {
+    const gate = (window as unknown as {
+      __ecSameSavedAtMutation?: {
+        recordReadCount: number;
+        mutated: boolean;
+        secondRecordReadAfterMutation: boolean;
+        assetGateUsed: boolean;
+        error?: string;
+      };
+    }).__ecSameSavedAtMutation;
+
+    if (!gate) {
+      throw new Error("Same savedAt mutation instrumentation was not installed.");
+    }
+
+    return {
+      recordReadCount: gate.recordReadCount,
+      mutated: gate.mutated,
+      secondRecordReadAfterMutation: gate.secondRecordReadAfterMutation,
+      assetGateUsed: gate.assetGateUsed,
+      error: gate.error
+    };
+  });
+}
+
+async function removeSameSavedAtWrapperMutation(page: Page) {
+  await page.evaluate(() => {
+    const testWindow = window as unknown as {
+      __ecSameSavedAtMutation?: unknown;
+      __ecOriginalGet?: IDBObjectStore["get"];
+    };
+
+    if (testWindow.__ecOriginalGet) {
+      IDBObjectStore.prototype.get = testWindow.__ecOriginalGet;
+    }
+
+    testWindow.__ecSameSavedAtMutation = undefined;
+  });
 }
 
 async function installPostDeleteReadFailure(page: Page, recordId: string) {
