@@ -18,19 +18,15 @@ export async function verifyScreenshotAsset(asset: StoredScreenshotAsset): Promi
   }
 
   const bytes = new Uint8Array(await asset.blob.arrayBuffer());
-  const dimensions = parsePngDimensions(bytes);
+  assertPngByteLength(bytes.byteLength);
+  assertPngSignature(bytes);
+  const dimensions = await decodePngBlob(asset.blob);
   if (
     bytes.byteLength !== asset.byteLength ||
-    bytes.byteLength < 1 ||
-    bytes.byteLength > GENERATION_LIMITS.screenshotBytes ||
     dimensions.width !== asset.width ||
     dimensions.height !== asset.height ||
-    !Number.isSafeInteger(asset.width) ||
-    !Number.isSafeInteger(asset.height) ||
-    asset.width < 1 ||
-    asset.height < 1 ||
-    asset.width > GENERATION_LIMITS.screenshotMaxDimension ||
-    asset.height > GENERATION_LIMITS.screenshotMaxDimension
+    !isValidPngDimension(asset.width) ||
+    !isValidPngDimension(asset.height)
   ) {
     throw new GenerationError("invalid_screenshot");
   }
@@ -46,15 +42,7 @@ export async function verifyScreenshotAsset(asset: StoredScreenshotAsset): Promi
 }
 
 export function parsePngDimensions(bytes: Uint8Array) {
-  if (bytes.length < 24) {
-    throw new GenerationError("invalid_screenshot");
-  }
-
-  for (let index = 0; index < PNG_SIGNATURE.length; index += 1) {
-    if (bytes[index] !== PNG_SIGNATURE[index]) {
-      throw new GenerationError("invalid_screenshot");
-    }
-  }
+  assertPngSignature(bytes);
 
   return {
     width: readUint32(bytes, 16),
@@ -62,7 +50,7 @@ export function parsePngDimensions(bytes: Uint8Array) {
   };
 }
 
-export function validatePngDataUrl(dataUrl: string, expected: Pick<VerifiedScreenshot, "byteLength" | "width" | "height">) {
+export async function validatePngDataUrl(dataUrl: string, expected: Pick<VerifiedScreenshot, "byteLength" | "width" | "height">) {
   if (!dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
     throw new GenerationError("invalid_screenshot");
   }
@@ -75,7 +63,9 @@ export function validatePngDataUrl(dataUrl: string, expected: Pick<VerifiedScree
   }
 
   const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
-  const dimensions = parsePngDimensions(bytes);
+  assertPngByteLength(bytes.byteLength);
+  assertPngSignature(bytes);
+  const dimensions = await decodePngBlob(new Blob([bytes], { type: "image/png" }));
   if (bytes.byteLength !== expected.byteLength || dimensions.width !== expected.width || dimensions.height !== expected.height) {
     throw new GenerationError("invalid_screenshot");
   }
@@ -89,6 +79,58 @@ export async function blobToPngDataUrl(blob: Blob) {
     binary += String.fromCharCode(...bytes.slice(index, index + chunkSize));
   }
   return `${PNG_DATA_URL_PREFIX}${btoa(binary)}`;
+}
+
+export function assertPngByteLength(byteLength: number) {
+  if (!Number.isSafeInteger(byteLength) || byteLength < 1 || byteLength > GENERATION_LIMITS.screenshotBytes) {
+    throw new GenerationError("invalid_screenshot");
+  }
+}
+
+export function isPngByteLengthAllowed(byteLength: number) {
+  return Number.isSafeInteger(byteLength) && byteLength >= 1 && byteLength <= GENERATION_LIMITS.screenshotBytes;
+}
+
+function assertPngSignature(bytes: Uint8Array) {
+  if (bytes.length < 24) {
+    throw new GenerationError("invalid_screenshot");
+  }
+
+  for (let index = 0; index < PNG_SIGNATURE.length; index += 1) {
+    if (bytes[index] !== PNG_SIGNATURE[index]) {
+      throw new GenerationError("invalid_screenshot");
+    }
+  }
+}
+
+async function decodePngBlob(blob: Blob) {
+  if (typeof createImageBitmap !== "function") {
+    throw new GenerationError("invalid_screenshot");
+  }
+
+  let image: ImageBitmap | undefined;
+  try {
+    image = await createImageBitmap(blob);
+    const dimensions = {
+      width: image.width,
+      height: image.height
+    };
+    if (!isValidPngDimension(dimensions.width) || !isValidPngDimension(dimensions.height)) {
+      throw new GenerationError("invalid_screenshot");
+    }
+    return dimensions;
+  } catch (error) {
+    if (error instanceof GenerationError) {
+      throw error;
+    }
+    throw new GenerationError("invalid_screenshot", undefined, error);
+  } finally {
+    image?.close();
+  }
+}
+
+function isValidPngDimension(value: number) {
+  return Number.isSafeInteger(value) && value > 0 && value <= GENERATION_LIMITS.screenshotMaxDimension;
 }
 
 function readUint32(bytes: Uint8Array, offset: number) {

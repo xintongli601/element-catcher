@@ -209,6 +209,8 @@ export type GenerationReviewModel = {
     width: number;
     height: number;
     byteLength: number;
+    digest: string;
+    blob: Blob;
   };
   endpointCategory: "backend-unconfigured" | "deterministic-mock";
 };

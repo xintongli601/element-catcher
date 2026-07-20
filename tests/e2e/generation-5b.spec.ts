@@ -4,10 +4,12 @@ import {
   DEFAULT_CAPTURE_FIXTURES,
   ELEMENT_CATCHER_DATABASE_VERSION,
   SCREENSHOT_ASSET_STORE_NAME,
+  createBrowserPngDataUrl,
   createCaptureRecordFixture,
   readPersistenceCounts,
   readRecordWrapper,
   readScreenshotAssetSnapshot,
+  replaceScreenshotAssetVariant,
   resetAndSeedSavedCaptures,
   restoreRecordWrapper
 } from "./indexed-db-fixtures";
@@ -22,7 +24,7 @@ import { computeReviewFingerprint } from "../../extension/src/generation/fingerp
 import { canonicalJsonStringify, getUtf8ByteLength } from "../../extension/src/generation/canonical-json";
 import { GENERATION_LIMITS, PNG_DATA_URL_PREFIX } from "../../extension/src/generation/limits";
 import { GenerationError } from "../../extension/src/generation/errors";
-import { blobToPngDataUrl, validatePngDataUrl, verifyScreenshotAsset } from "../../extension/src/generation/screenshot";
+import { isPngByteLengthAllowed } from "../../extension/src/generation/screenshot";
 import { getBase64PayloadLength, predictCompleteRequestBytes } from "../../extension/src/generation/request-size";
 import type { ComponentGenerationRequestV1, ComponentGenerationResponseV1 } from "../../extension/src/generation/types";
 
@@ -235,25 +237,29 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     expect(() => assertSerializedRequestSize(oversized)).toThrow(GenerationError);
   });
 
-  test("request size prediction is exact without opening review data creating Base64", async () => {
+  test("request size prediction is exact with a real browser PNG without opening Review data creating Base64", async ({ context, extensionId }) => {
+    const page = await openSidePanelPage(context, extensionId);
     const record = createCaptureRecordFixture(DEFAULT_CAPTURE_FIXTURES[0]);
-    const blob = new Blob([createMinimalPngBytes(80, 48, 32)], { type: "image/png" });
-    const screenshot = await verifyScreenshotAsset({
-      storageKey: record.assets.screenshot.storageKey,
-      blob,
+    const png = await createBrowserPngDataUrl(page, {
+      width: 80,
+      height: 48,
+      color: "#2563eb"
+    });
+    const requestWithoutDataUrl = buildGenerationRequestWithoutDataUrl({
+      record,
+      screenshot: {
       mediaType: "image/png",
       width: 80,
       height: 48,
-      byteLength: blob.size,
-      crop: record.assets.screenshot.crop
+        byteLength: png.byteLength
+      }
     });
-    const requestWithoutDataUrl = buildGenerationRequestWithoutDataUrl({ record, screenshot });
     const predicted = predictCompleteRequestBytes(requestWithoutDataUrl);
     const fullRequest = {
       ...requestWithoutDataUrl,
       screenshot: {
         ...requestWithoutDataUrl.screenshot,
-        dataUrl: await blobToPngDataUrl(blob)
+        dataUrl: png.dataUrl
       }
     };
 
@@ -282,39 +288,67 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     expect(() => validateRequestWithoutDataUrl(withBefore(request, { exists: true, content: "x".repeat(GENERATION_LIMITS.pseudoContentCodePoints + 1) }))).toThrow(GenerationError);
   });
 
-  test("screenshot verification rejects invalid persisted assets and data URLs deterministically", async () => {
-    const record = createCaptureRecordFixture(DEFAULT_CAPTURE_FIXTURES[0]);
-    const crop = record.assets.screenshot.crop;
-    const bytes = createMinimalPngBytes(80, 48, 32);
-    const validBlob = new Blob([bytes], { type: "image/png" });
-    const validAsset = {
-      storageKey: record.assets.screenshot.storageKey,
-      blob: validBlob,
-      mediaType: "image/png",
-      width: 80,
-      height: 48,
-      byteLength: validBlob.size,
-      crop
-    };
+  test("browser PNG decoder accepts real PNGs and rejects signature-only, truncated, corrupted, MIME, metadata and limit cases", async ({ context, extensionId }) => {
+    await installMockHarness(context, "success");
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const target = seeded[0];
 
-    await expect(verifyScreenshotAsset(validAsset)).resolves.toMatchObject({ width: 80, height: 48, byteLength: validBlob.size });
-    await expect(verifyScreenshotAsset({ ...validAsset, blob: new Blob([bytes], { type: "application/octet-stream" }) })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, mediaType: "image/jpeg" })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, blob: new Blob([new Uint8Array([1, 2, 3])], { type: "image/png" }), byteLength: 3 })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, byteLength: validBlob.size + 1 })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, blob: new Blob([createMinimalPngBytes(81, 48, 32)], { type: "image/png" }) })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, width: 0 })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, width: 4097 })).rejects.toThrow(GenerationError);
-    await expect(verifyScreenshotAsset({ ...validAsset, blob: new Blob([createMinimalPngBytes(80, 48, GENERATION_LIMITS.screenshotBytes + 1)], { type: "image/png" }), byteLength: GENERATION_LIMITS.screenshotBytes + 1 })).rejects.toThrow(GenerationError);
+    await openCapture(page, target.title);
+    await page.getByRole("button", { name: "Generate component" }).click();
+    await expect(page.getByRole("heading", { name: "Review data being sent" })).toBeVisible();
+    await page.getByRole("button", { name: "Cancel" }).click();
 
-    const dataUrl = await blobToPngDataUrl(validBlob);
-    expect(() => validatePngDataUrl(dataUrl, { byteLength: validBlob.size, width: 80, height: 48 })).not.toThrow();
-    expect(() => validatePngDataUrl("data:image/jpeg;base64,AAAA", { byteLength: validBlob.size, width: 80, height: 48 })).toThrow(GenerationError);
-    expect(() => validatePngDataUrl(`${PNG_DATA_URL_PREFIX}%%%`, { byteLength: validBlob.size, width: 80, height: 48 })).toThrow(GenerationError);
-    expect(() => validatePngDataUrl(dataUrl, { byteLength: validBlob.size + 1, width: 80, height: 48 })).toThrow(GenerationError);
+    for (const [variant, label] of [
+      ["signature-only", "signature-only payload"],
+      ["truncated-png", "truncated real PNG"],
+      ["corrupted-png", "corrupted real PNG"]
+    ] as const) {
+      await replaceScreenshotAssetVariant(page, { seededCapture: target, variant, updateRecordReference: variant === "truncated-png" });
+      await page.getByRole("button", { name: /^(Retry after review|Generate component)$/ }).click();
+      await expect(page.getByRole("alert")).toContainText(/saved (capture|screenshot)/i);
+      await expect(page.getByRole("heading", { name: "Review data being sent" })).toHaveCount(0);
+      await expect.poll(() => getMockCallCount(page), { message: label }).toBe(0);
+      await page.getByRole("button", { name: "Close generation" }).click();
+    }
+
+    const reseeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const metadataTarget = reseeded[0];
+    await openCapture(page, metadataTarget.title);
+
+    for (const options of [
+      { mediaType: "image/jpeg" },
+      { declaredByteLength: metadataTarget.record.assets.screenshot.byteLength + 1 },
+      { declaredWidth: metadataTarget.record.assets.screenshot.width + 1 },
+      { declaredHeight: metadataTarget.record.assets.screenshot.height + 1 },
+      { declaredWidth: 0 },
+      { declaredHeight: 0 }
+    ]) {
+      await replaceScreenshotAssetVariant(page, { seededCapture: metadataTarget, variant: "valid-png", ...options });
+      await page.getByRole("button", { name: "Generate component" }).click();
+      await expect(page.getByRole("alert")).toContainText(/saved (capture|screenshot)/i);
+      await page.getByRole("button", { name: "Close generation" }).click();
+    }
+
+    await replaceScreenshotAssetVariant(page, {
+      seededCapture: metadataTarget,
+      variant: "valid-png",
+      width: GENERATION_LIMITS.screenshotMaxDimension + 1,
+      height: 1,
+      declaredWidth: GENERATION_LIMITS.screenshotMaxDimension + 1,
+      declaredHeight: 1
+    });
+    await page.getByRole("button", { name: "Generate component" }).click();
+    await expect(page.getByRole("alert")).toContainText(/saved (capture|screenshot)/i);
+    await page.getByRole("button", { name: "Close generation" }).click();
+
+    expect(isPngByteLengthAllowed(GENERATION_LIMITS.screenshotBytes)).toBe(true);
+    expect(isPngByteLengthAllowed(GENERATION_LIMITS.screenshotBytes + 1)).toBe(false);
   });
 
-  test("serialized body and response validators cover exact boundaries and provider-shaped responses", () => {
+  test("serialized body, data URL and response validators cover exact boundaries and provider-shaped responses", async () => {
     const request = buildGenerationRequestWithoutDataUrl({
       record: createCaptureRecordFixture({ ...DEFAULT_CAPTURE_FIXTURES[0], title: "非 ASCII 😀 title" }),
       screenshot: {
@@ -334,6 +368,8 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     const baseBytes = getUtf8ByteLength(JSON.stringify(baseRequest));
     assertSerializedRequestSize(withDataUrl(request, PNG_DATA_URL_PREFIX + "A".repeat(GENERATION_LIMITS.serializedRequestBytes - baseBytes)));
     expect(() => assertSerializedRequestSize(withDataUrl(request, PNG_DATA_URL_PREFIX + "A".repeat(GENERATION_LIMITS.serializedRequestBytes - baseBytes + 1)))).toThrow(GenerationError);
+    await expect(validateFullRequest(withDataUrl(request, "data:image/jpeg;base64,AAAA"))).rejects.toThrow(GenerationError);
+    await expect(validateFullRequest(withDataUrl(request, `${PNG_DATA_URL_PREFIX}%%%`))).rejects.toThrow(GenerationError);
 
     const valid: ComponentGenerationResponseV1 = {
       contractVersion: 1,
@@ -381,6 +417,11 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     const beforeWrapper = await readRecordWrapper(page, target.record.id);
     const beforeAsset = await readScreenshotAssetSnapshot(page, target.storageKey);
     const beforeCounts = await readPersistenceCounts(page);
+    const beforeLocalStorage = await page.evaluate(() => JSON.stringify({ ...localStorage }));
+    const beforeSessionStorage = await page.evaluate(() => JSON.stringify({ ...sessionStorage }));
+    expect(beforeCounts.version).toBe(1);
+    expect([...beforeCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
+    expect(beforeCounts.stores).not.toContain("generatedComponentVersions");
 
     await openCapture(page, target.title);
     await page.getByRole("button", { name: "Generate component" }).click();
@@ -434,12 +475,109 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await expect(page.getByText("This result is temporary and is not saved in Milestone 5B.")).toBeVisible();
     await expect(page.locator("iframe")).toHaveCount(0);
     await expect(page.locator("[dangerouslySetInnerHTML]")).toHaveCount(0);
-    expect(await readPersistenceCounts(page)).toEqual(beforeCounts);
-    expect(await readRecordWrapper(page, target.record.id)).toEqual(beforeWrapper);
+    const afterCounts = await readPersistenceCounts(page);
+    expect(afterCounts).toEqual(beforeCounts);
+    expect([...afterCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
+    expect(afterCounts.stores).not.toContain("generatedComponentVersions");
+    const afterWrapper = await readRecordWrapper(page, target.record.id) as typeof beforeWrapper;
+    expect(afterWrapper).toEqual(beforeWrapper);
+    expect((afterWrapper as { savedAt: string }).savedAt).toBe((beforeWrapper as { savedAt: string }).savedAt);
+    expect((afterWrapper as { value: typeof target.record }).value.generatedVersions).toEqual((beforeWrapper as { value: typeof target.record }).value.generatedVersions);
     expect(await readScreenshotAssetSnapshot(page, target.storageKey)).toEqual(beforeAsset);
-    expect(await page.evaluate(() => localStorage.length)).toBe(0);
-    expect(await page.evaluate(() => sessionStorage.length)).toBe(0);
+    expect(await page.evaluate(() => JSON.stringify({ ...localStorage }))).toBe(beforeLocalStorage);
+    expect(await page.evaluate(() => JSON.stringify({ ...sessionStorage }))).toBe(beforeSessionStorage);
     expect(httpRequests).toEqual([]);
+  });
+
+  test("generation review object URLs are exact to fresh verified blobs and revoked on refresh, close, back, switch and pagehide", async ({ context, extensionId }) => {
+    await installMockHarness(context, "success");
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const first = seeded[0];
+    const second = seeded[1];
+    const firstAsset = await readScreenshotAssetSnapshot(page, first.storageKey);
+    const secondAsset = await readScreenshotAssetSnapshot(page, second.storageKey);
+
+    await openCapture(page, first.title);
+    const beforeFirst = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Generate component" }).click();
+    const firstUrl = await expectGenerationPreviewUrl(page, beforeFirst, firstAsset!.byteLength);
+
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expectUrlRevoked(page, firstUrl);
+
+    const beforeRetry = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Retry after review" }).click();
+    const retryUrl = await expectGenerationPreviewUrl(page, beforeRetry, firstAsset!.byteLength);
+    expect(retryUrl).not.toBe(firstUrl);
+    await page.getByRole("button", { name: "Cancel" }).click();
+    await expectUrlRevoked(page, retryUrl);
+    await page.getByRole("button", { name: "Close generation" }).click();
+
+    const beforeBack = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Generate component" }).click();
+    const backUrl = await expectGenerationPreviewUrl(page, beforeBack, firstAsset!.byteLength);
+    await page.getByRole("button", { name: "Back to Library" }).click();
+    await expectUrlRevoked(page, backUrl);
+
+    await openCapture(page, first.title);
+    const beforeSwitch = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Generate component" }).click();
+    const switchUrl = await expectGenerationPreviewUrl(page, beforeSwitch, firstAsset!.byteLength);
+    await page.getByRole("button", { name: "Back to Library" }).click();
+    await openCapture(page, second.title);
+    await expectUrlRevoked(page, switchUrl);
+
+    const beforeSecond = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Generate component" }).click();
+    const secondUrl = await expectGenerationPreviewUrl(page, beforeSecond, secondAsset!.byteLength);
+    expect(secondUrl).not.toBe(switchUrl);
+    await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+    await expectUrlRevoked(page, secondUrl);
+  });
+
+  test("screenshot asset change refreshes stale review to the latest verified Blob and sends the new screenshot", async ({ context, extensionId }) => {
+    await installMockHarness(context, "success");
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const target = seeded[0];
+    const assetA = await readScreenshotAssetSnapshot(page, target.storageKey);
+
+    await openCapture(page, target.title);
+    const beforeReview = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Generate component" }).click();
+    const urlA = await expectGenerationPreviewUrl(page, beforeReview, assetA!.byteLength);
+    await page.getByLabel(/Data is leaving your device/).check();
+
+    const replacement = await replaceScreenshotAssetVariant(page, {
+      seededCapture: target,
+      variant: "valid-png",
+      color: "#dc2626",
+      updateRecordReference: true
+    });
+    const assetB = await readScreenshotAssetSnapshot(page, target.storageKey);
+    expect(assetB!.digest).toBe(replacement.digest);
+    expect(assetB!.digest).not.toBe(assetA!.digest);
+
+    const beforeRefresh = await getObjectUrlSnapshot(page);
+    await page.getByRole("button", { name: "Send to AI and generate" }).click();
+    await expect(page.getByText("The saved capture changed. Review the data again before generating.")).toBeVisible();
+    await expect(page.getByText(String(assetB!.byteLength))).toBeVisible();
+    await expect(page.getByLabel(/Data is leaving your device/)).not.toBeChecked();
+    await expectUrlRevoked(page, urlA);
+    const refreshedUrl = await expectGenerationPreviewUrl(page, beforeRefresh, assetB!.byteLength);
+    expect(refreshedUrl).not.toBe(urlA);
+    expect(await getMockCallCount(page)).toBe(0);
+
+    await page.getByLabel(/Data is leaving your device/).check();
+    await page.getByRole("button", { name: "Send to AI and generate" }).click();
+    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toBeVisible();
+    expect(await getMockCallCount(page)).toBe(1);
+    const requestDigest = await getFirstMockScreenshotDigest(page);
+    expect(requestDigest).toBe(assetB!.digest);
+    expect(requestDigest).not.toBe(assetA!.digest);
   });
 
   test("UI cancel before submit calls transport zero times and delayed Back aborts stale completion", async ({ context, extensionId }) => {
@@ -465,7 +603,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     expect(harness.calls).toHaveLength(1);
     expect(harness.cancellations).toBeGreaterThanOrEqual(1);
     const snapshot = await getObjectUrlSnapshot(page);
-    expect(snapshot.active.length).toBeGreaterThan(0);
+    expect(snapshot.active).not.toContain(harness.calls[0].request.screenshot.dataUrl);
   });
 
   test("UI metadata change preserving savedAt invalidates reviewed consent and prevents stale success", async ({ context, extensionId }) => {
@@ -613,6 +751,44 @@ async function getHarnessSnapshot(page: Parameters<typeof resetAndSeedSavedCaptu
   }));
 }
 
+async function expectGenerationPreviewUrl(
+  page: Parameters<typeof resetAndSeedSavedCaptures>[0],
+  before: Awaited<ReturnType<typeof getObjectUrlSnapshot>>,
+  expectedByteLength: number
+) {
+  await expect(page.getByRole("img", { name: "Screenshot that will be sent after consent" })).toBeVisible();
+  const after = await getObjectUrlSnapshot(page);
+  const previous = new Set(before.created.map((event) => event.url));
+  const created = after.created.filter((event) => !previous.has(event.url) && event.type === "image/png" && event.size === expectedByteLength);
+  expect(created).toHaveLength(1);
+  expect(after.active).toContain(created[0].url);
+  return created[0].url;
+}
+
+async function expectUrlRevoked(page: Parameters<typeof resetAndSeedSavedCaptures>[0], url: string) {
+  await expect.poll(async () => {
+    const snapshot = await getObjectUrlSnapshot(page);
+    return {
+      active: snapshot.active.includes(url),
+      revoked: snapshot.revoked.includes(url)
+    };
+  }).toEqual({
+    active: false,
+    revoked: true
+  });
+}
+
+async function getFirstMockScreenshotDigest(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {
+  return page.evaluate(async () => {
+    const dataUrl = window.__EC_GENERATION_TEST_HARNESS__!.calls[0].request.screenshot.dataUrl;
+    const payload = dataUrl.slice("data:image/png;base64,".length);
+    const binary = atob(payload);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+  });
+}
+
 async function installBase64Counter(context: Parameters<typeof openSidePanelPage>[0]) {
   await context.addInitScript(() => {
     const originalBtoa = window.btoa.bind(window);
@@ -629,21 +805,6 @@ async function installBase64Counter(context: Parameters<typeof openSidePanelPage
 
 async function getBase64Count(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {
   return page.evaluate(() => ((window as unknown as { __EC_BTOA_COUNT__?: () => number }).__EC_BTOA_COUNT__?.() ?? 0));
-}
-
-function createMinimalPngBytes(width: number, height: number, totalLength = 24) {
-  const bytes = new Uint8Array(Math.max(totalLength, 24));
-  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
-  writeUint32(bytes, 16, width);
-  writeUint32(bytes, 20, height);
-  return bytes;
-}
-
-function writeUint32(bytes: Uint8Array, offset: number, value: number) {
-  bytes[offset] = (value >>> 24) & 0xff;
-  bytes[offset + 1] = (value >>> 16) & 0xff;
-  bytes[offset + 2] = (value >>> 8) & 0xff;
-  bytes[offset + 3] = value & 0xff;
 }
 
 function withBefore(request: ReturnType<typeof buildGenerationRequestWithoutDataUrl>, before: Record<string, unknown>) {

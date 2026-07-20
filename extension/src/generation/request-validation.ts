@@ -25,17 +25,18 @@ export function validateRequestWithoutDataUrl(value: unknown): asserts value is 
   validateRequestShape(value, false);
 }
 
-export function validateFullRequest(value: unknown): asserts value is ComponentGenerationRequestV1 {
+export async function validateFullRequest(value: unknown): Promise<ComponentGenerationRequestV1> {
   validateRequestShape(value, true);
   const request = value as ComponentGenerationRequestV1;
-  validatePngDataUrl(request.screenshot.dataUrl, request.screenshot);
+  await validatePngDataUrl(request.screenshot.dataUrl, request.screenshot);
   assertSerializedRequestSize(request);
+  return request;
 }
 
-export function createFullRequest(
+export async function createFullRequest(
   request: ComponentGenerationRequestWithoutDataUrlV1,
   dataUrl: string
-): ComponentGenerationRequestV1 {
+): Promise<ComponentGenerationRequestV1> {
   const fullRequest = {
     ...request,
     screenshot: {
@@ -43,8 +44,7 @@ export function createFullRequest(
       dataUrl
     }
   };
-  validateFullRequest(fullRequest);
-  return fullRequest;
+  return validateFullRequest(fullRequest);
 }
 
 export function assertSerializedRequestSize(request: ComponentGenerationRequestV1) {

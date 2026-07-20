@@ -292,7 +292,6 @@ function SavedCaptureDetailContent({
           />
           <GenerationWorkflow
             savedCapture={savedCapture}
-            imageSrc={currentObjectUrlState.status === "ready" ? currentObjectUrlState.objectUrl : null}
           />
           <DeleteCapturePanel onDelete={startDeletion} deleteButtonRef={deleteButtonRef} />
         </>

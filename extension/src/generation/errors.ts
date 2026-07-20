@@ -31,11 +31,39 @@ export function toGenerationError(error: unknown, fallback: GenerationErrorCode 
     return error;
   }
 
+  if (isGenerationErrorLike(error)) {
+    return new GenerationError(error.code, undefined, error);
+  }
+
   if (error instanceof DOMException && error.name === "AbortError") {
     return new GenerationError("cancellation");
   }
 
   return new GenerationError(fallback, undefined, error);
+}
+
+function isGenerationErrorLike(error: unknown): error is { code: GenerationErrorCode } {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+
+  return [
+    "configuration_unavailable",
+    "request_validation_failed",
+    "request_too_large",
+    "consent_missing",
+    "review_fingerprint_mismatch",
+    "capture_changed",
+    "capture_missing",
+    "screenshot_missing",
+    "invalid_screenshot",
+    "network_unavailable",
+    "timeout",
+    "provider_rejected",
+    "rate_limited",
+    "malformed_response",
+    "cancellation"
+  ].includes(String((error as { code: unknown }).code));
 }
 
 export function getSafeGenerationMessage(error: unknown) {

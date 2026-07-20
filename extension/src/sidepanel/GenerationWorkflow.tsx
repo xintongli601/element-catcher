@@ -16,11 +16,9 @@ type GenerationState =
   | { status: "cancelled"; review?: GenerationReviewModel; message: string };
 
 export function GenerationWorkflow({
-  savedCapture,
-  imageSrc
+  savedCapture
 }: {
   savedCapture: SavedCaptureReadModel;
-  imageSrc: string | null;
 }) {
   const [state, setState] = useState<GenerationState>({ status: "closed" });
   const sequenceRef = useRef(0);
@@ -144,7 +142,6 @@ export function GenerationWorkflow({
       {state.status === "review" ? (
         <ReviewDataView
           review={state.review}
-          imageSrc={imageSrc}
           consent={state.consent}
           message={state.message}
           onConsentChange={(consent) => setState({ ...state, consent })}
@@ -187,7 +184,6 @@ export function GenerationWorkflow({
 
 function ReviewDataView({
   review,
-  imageSrc,
   consent,
   message,
   onConsentChange,
@@ -195,16 +191,47 @@ function ReviewDataView({
   onCancel
 }: {
   review: GenerationReviewModel;
-  imageSrc: string | null;
   consent: boolean;
   message?: string;
   onConsentChange: (consent: boolean) => void;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
+  const [previewState, setPreviewState] = useState<
+    | { status: "preparing" }
+    | { status: "ready"; objectUrl: string; blob: Blob }
+    | { status: "failed" }
+  >({ status: "preparing" });
   const requestWithoutDataUrl = review.localContext.reviewedRequestWithoutDataUrl;
   const estimatedBytes = predictCompleteRequestBytes(requestWithoutDataUrl);
   const context = requestWithoutDataUrl.captureContext;
+
+  useEffect(() => {
+    let objectUrl: string | null = null;
+    let revoked = false;
+    const revokePreviewUrl = () => {
+      if (objectUrl && !revoked) {
+        URL.revokeObjectURL(objectUrl);
+        revoked = true;
+      }
+    };
+
+    try {
+      objectUrl = URL.createObjectURL(review.screenshot.blob);
+      setPreviewState({ status: "ready", objectUrl, blob: review.screenshot.blob });
+      window.addEventListener("pagehide", revokePreviewUrl, { once: true });
+    } catch {
+      setPreviewState({ status: "failed" });
+    }
+
+    return () => {
+      window.removeEventListener("pagehide", revokePreviewUrl);
+      revokePreviewUrl();
+    };
+  }, [review.screenshot.blob]);
+
+  const currentPreview =
+    previewState.status === "ready" && previewState.blob === review.screenshot.blob ? previewState : previewState.status === "failed" ? previewState : { status: "preparing" as const };
 
   return (
     <section className="generation-review" aria-labelledby="generation-review-heading">
@@ -215,10 +242,12 @@ function ReviewDataView({
           {message}
         </p>
       ) : null}
-      {imageSrc ? (
-        <img src={imageSrc} alt="Screenshot that will be sent after consent" className="generation-review-image" />
+      {currentPreview.status === "ready" ? (
+        <img src={currentPreview.objectUrl} alt="Screenshot that will be sent after consent" className="generation-review-image" />
       ) : (
-        <p className="preview-image-placeholder">Screenshot preview unavailable.</p>
+        <p className="preview-image-placeholder">
+          {currentPreview.status === "failed" ? "Screenshot preview unavailable." : "Preparing generation screenshot preview..."}
+        </p>
       )}
       <dl className="preview-metadata">
         <MetadataItem label="Decoded image size" value={`${review.screenshot.width} x ${review.screenshot.height} px`} />

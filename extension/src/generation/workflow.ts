@@ -13,7 +13,7 @@ import type {
 } from "./types";
 import { verifyScreenshotAsset, blobToPngDataUrl } from "./screenshot";
 import { computeReviewFingerprint } from "./fingerprint";
-import { createFullRequest, validateFullRequest, validateGenerationResponse, validateRequestWithoutDataUrl } from "./request-validation";
+import { createFullRequest, validateGenerationResponse, validateRequestWithoutDataUrl } from "./request-validation";
 import { GENERATION_CONTRACT_VERSION } from "./limits";
 
 export async function prepareGenerationReview(
@@ -55,7 +55,9 @@ export async function prepareGenerationReview(
         mediaType: "image/png",
         width: screenshot.width,
         height: screenshot.height,
-        byteLength: screenshot.byteLength
+        byteLength: screenshot.byteLength,
+        blob: screenshot.blob,
+        digest: screenshot.digest
       },
       endpointCategory
     };
@@ -108,8 +110,7 @@ export async function generateFromReview({
     }
 
     dataUrl = await blobToPngDataUrl(screenshot.blob);
-    const request: ComponentGenerationRequestV1 = createFullRequest(requestWithoutDataUrl, dataUrl);
-    validateFullRequest(request);
+    const request: ComponentGenerationRequestV1 = await createFullRequest(requestWithoutDataUrl, dataUrl);
     const response = await transport.generate(request, signal);
     validateGenerationResponse(response);
 
@@ -141,10 +142,10 @@ export async function generateFromReview({
 function mapGenerationPreparationError(error: unknown, fallback: Parameters<typeof toGenerationError>[1] = "request_validation_failed") {
   if (error instanceof PersistenceError) {
     if (error.code === "not-found") {
-      return new GenerationError("capture_missing", undefined, error);
+      return new GenerationError(error.message.toLowerCase().includes("screenshot") ? "screenshot_missing" : "capture_missing", undefined, error);
     }
-    if (error.code === "reference-mismatch") {
-      return new GenerationError("screenshot_missing", undefined, error);
+    if (error.code === "reference-mismatch" || error.code === "encoding") {
+      return new GenerationError("invalid_screenshot", undefined, error);
     }
   }
 

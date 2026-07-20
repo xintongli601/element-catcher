@@ -150,6 +150,35 @@ export async function restoreScreenshotAsset(page: Page, seededCapture: SeededCa
   await runDatabaseOperation(page, "restoreScreenshotAsset", { seededCapture });
 }
 
+export async function replaceScreenshotAssetVariant(
+  page: Page,
+  options: {
+    seededCapture: SeededCapture;
+    variant: "valid-png" | "signature-only" | "truncated-png" | "corrupted-png";
+    width?: number;
+    height?: number;
+    color?: string;
+    mediaType?: string;
+    declaredByteLength?: number;
+    declaredWidth?: number;
+    declaredHeight?: number;
+    updateRecordReference?: boolean;
+  }
+) {
+  return runDatabaseOperation<typeof options, { byteLength: number; digest: string; type: string }>(page, "replaceScreenshotAssetVariant", options);
+}
+
+export async function createBrowserPngDataUrl(
+  page: Page,
+  options: {
+    width: number;
+    height: number;
+    color: string;
+  }
+) {
+  return runDatabaseOperation<typeof options, { dataUrl: string; byteLength: number; digest: string }>(page, "createBrowserPngDataUrl", options);
+}
+
 export async function replaceWrapperWithIdMismatch(page: Page, seededCapture: SeededCapture) {
   await runDatabaseOperation(page, "replaceWrapperWithIdMismatch", { seededCapture });
 }
@@ -565,6 +594,101 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
             database.close();
           }
         },
+        replaceScreenshotAssetVariant: async (value) => {
+          const {
+            seededCapture,
+            variant,
+            width,
+            height,
+            color,
+            mediaType,
+            declaredByteLength,
+            declaredWidth,
+            declaredHeight,
+            updateRecordReference
+          } = value as {
+            seededCapture: SeededCapture;
+            variant: "valid-png" | "signature-only" | "truncated-png" | "corrupted-png";
+            width?: number;
+            height?: number;
+            color?: string;
+            mediaType?: string;
+            declaredByteLength?: number;
+            declaredWidth?: number;
+            declaredHeight?: number;
+            updateRecordReference?: boolean;
+          };
+          const database = await openDatabase();
+
+          try {
+            const actualWidth = width ?? seededCapture.record.assets.screenshot.width;
+            const actualHeight = height ?? seededCapture.record.assets.screenshot.height;
+            const blob = await createScreenshotVariantBlob(variant, actualWidth, actualHeight, color ?? seededCapture.color);
+            const nextMediaType = mediaType ?? "image/png";
+            const nextWidth = declaredWidth ?? actualWidth;
+            const nextHeight = declaredHeight ?? actualHeight;
+            const nextByteLength = declaredByteLength ?? blob.size;
+            const nextCrop = {
+              ...seededCapture.record.assets.screenshot.crop,
+              width: nextWidth,
+              height: nextHeight,
+              right: seededCapture.record.assets.screenshot.crop.left + nextWidth,
+              bottom: seededCapture.record.assets.screenshot.crop.top + nextHeight
+            };
+            await putValue(database, screenshotAssetStoreName, {
+              storageKey: seededCapture.storageKey,
+              blob,
+              mediaType: nextMediaType,
+              width: nextWidth,
+              height: nextHeight,
+              byteLength: nextByteLength,
+              crop: nextCrop
+            });
+            if (updateRecordReference) {
+              const wrapper = await getValue(database, captureRecordStoreName, seededCapture.record.id) as {
+                id: string;
+                value: CaptureRecord;
+                savedAt: string;
+              } | undefined;
+              if (!wrapper) {
+                throw new Error("Could not update missing wrapper screenshot reference.");
+              }
+              const { byteLength: _omittedByteLength, ...screenshotReferenceWithoutByteLength } = wrapper.value.assets.screenshot;
+              await putValue(database, captureRecordStoreName, {
+                ...wrapper,
+                value: {
+                  ...wrapper.value,
+                  assets: {
+                    ...wrapper.value.assets,
+                    screenshot: {
+                      ...screenshotReferenceWithoutByteLength,
+                      mediaType: nextMediaType,
+                      width: nextWidth,
+                      height: nextHeight,
+                      crop: nextCrop
+                    }
+                  }
+                }
+              });
+            }
+            return {
+              byteLength: blob.size,
+              digest: await digestBlob(blob),
+              type: blob.type
+            };
+          } finally {
+            database.close();
+          }
+        },
+        createBrowserPngDataUrl: async (value) => {
+          const { width, height, color } = value as { width: number; height: number; color: string };
+          const blob = await createPngBlob(width, height, color);
+          return {
+            dataUrl: await blobToDataUrl(blob),
+            byteLength: blob.size,
+            digest: await digestBlob(blob)
+          };
+        },
         replaceWrapperWithIdMismatch: async (value) => {
           const { seededCapture } = value as { seededCapture: SeededCapture };
           const database = await openDatabase();
@@ -680,6 +804,53 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         }
 
         return blob;
+      }
+
+      async function createScreenshotVariantBlob(
+        variant: "valid-png" | "signature-only" | "truncated-png" | "corrupted-png",
+        width: number,
+        height: number,
+        color: string
+      ) {
+        const png = await createPngBlob(width, height, color);
+        if (variant === "valid-png") {
+          return png;
+        }
+
+        const bytes = new Uint8Array(await png.arrayBuffer());
+        if (variant === "truncated-png") {
+          return new Blob([bytes.slice(0, Math.max(24, Math.floor(bytes.length / 3)))], { type: "image/png" });
+        }
+
+        if (variant === "corrupted-png") {
+          const corrupted = new Uint8Array(bytes);
+          for (let index = 40; index < Math.min(corrupted.length, 80); index += 1) {
+            corrupted[index] = corrupted[index] ^ 0xff;
+          }
+          return new Blob([corrupted], { type: "image/png" });
+        }
+
+        const signatureOnly = new Uint8Array(bytes.length);
+        signatureOnly.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+        writeUint32(signatureOnly, 16, width);
+        writeUint32(signatureOnly, 20, height);
+        return new Blob([signatureOnly], { type: "image/png" });
+      }
+
+      function writeUint32(bytes: Uint8Array, offset: number, value: number) {
+        bytes[offset] = (value >>> 24) & 0xff;
+        bytes[offset + 1] = (value >>> 16) & 0xff;
+        bytes[offset + 2] = (value >>> 8) & 0xff;
+        bytes[offset + 3] = value & 0xff;
+      }
+
+      function blobToDataUrl(blob: Blob) {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        });
       }
 
       async function digestBlob(blob: Blob) {
