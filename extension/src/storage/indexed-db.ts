@@ -9,6 +9,22 @@ import {
 import { assertJsonCompatible } from "../shared/json";
 import { PersistenceError, toPersistenceError } from "./persistence-errors";
 
+declare global {
+  interface Window {
+    __EC_GENERATED_VERSION_PERSISTENCE_TEST_HARNESS__?: {
+      failBeforeAddCount?: number;
+      pauseBeforeAdd?: boolean;
+      releaseBeforeAdd?: boolean;
+      beforeAddCalls: number;
+      attempts: Array<{
+        id: string;
+        createdAt: string;
+        componentName: string;
+      }>;
+    };
+  }
+}
+
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
 export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
@@ -407,13 +423,16 @@ export async function addGeneratedComponentVersion({
   entry,
   expectedSourceSavedAt,
   expectedReviewFingerprint,
-  expectedSourceRecordValue
+  expectedSourceRecordValue,
+  signal
 }: {
   entry: GeneratedComponentVersionEntryV1;
   expectedSourceSavedAt: string;
   expectedReviewFingerprint: string;
   expectedSourceRecordValue: JsonObject;
+  signal: AbortSignal;
 }) {
+  throwIfAborted(signal);
   validateGeneratedComponentVersionEntryV1(entry);
   assertJsonCompatible(expectedSourceRecordValue);
   if (entry.sourceCaptureSavedAt !== expectedSourceSavedAt || entry.sourceReviewFingerprint !== expectedReviewFingerprint) {
@@ -423,6 +442,7 @@ export async function addGeneratedComponentVersion({
   return withDatabase(
     (database) =>
       new Promise<GeneratedComponentVersionEntryV1>((resolve, reject) => {
+        throwIfAborted(signal);
         const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
         const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
         const assetStore = transaction.objectStore(SCREENSHOT_ASSET_STORE_NAME);
@@ -431,12 +451,25 @@ export async function addGeneratedComponentVersion({
         let settled = false;
         let confirmedEntry: GeneratedComponentVersionEntryV1 | undefined;
         let requestError: DOMException | null = null;
+        let abortError: DOMException | null = null;
+
+        const cleanupAbortListener = () => signal.removeEventListener("abort", abortTransaction);
+        const abortTransaction = () => {
+          abortError = createAbortError();
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may have already completed or aborted.
+          }
+        };
+        signal.addEventListener("abort", abortTransaction, { once: true });
 
         const confirmAfterReadBack = (confirmed: GeneratedComponentVersionEntryV1) => {
           confirmedEntry = confirmed;
         };
 
         const failAndAbort = (error: PersistenceError) => {
+          cleanupAbortListener();
           settled = true;
           try {
             transaction.abort();
@@ -447,6 +480,10 @@ export async function addGeneratedComponentVersion({
         };
 
         sourceRequest.onsuccess = () => {
+          if (signal.aborted) {
+            abortTransaction();
+            return;
+          }
           const source = sourceRequest.result as StoredRecordEntry | undefined;
           try {
             if (!source) {
@@ -465,50 +502,84 @@ export async function addGeneratedComponentVersion({
             }
             const assetRequest = assetStore.get(screenshotKey);
             assetRequest.onsuccess = () => {
+              if (signal.aborted) {
+                abortTransaction();
+                return;
+              }
               try {
                 validateScreenshotAsset(assetRequest.result as StoredScreenshotAsset | undefined);
               } catch (error) {
                 failAndAbort(toPersistenceError(error, "not-found"));
                 return;
               }
-              const addRequest = versionStore.add(entry);
-              addRequest.onsuccess = () => {
-                const readbackRequest = versionStore.get(entry.id);
-                readbackRequest.onsuccess = () => {
-                  try {
-                    const readback = readbackRequest.result as GeneratedComponentVersionEntryV1 | undefined;
-                    validateGeneratedComponentVersionEntryV1(readback);
-                    if (!generatedComponentVersionEntriesEqual(readback, entry)) {
-                      throw new PersistenceError("readback", "Generated version read-back did not match.");
-                    }
-                    confirmAfterReadBack(readback);
-                  } catch (error) {
-                    failAndAbort(toPersistenceError(error, "readback"));
+              const addEntry = () => {
+                const addRequest = versionStore.add(entry);
+                addRequest.onsuccess = () => {
+                  if (signal.aborted) {
+                    abortTransaction();
+                    return;
                   }
+                  const readbackRequest = versionStore.get(entry.id);
+                  readbackRequest.onsuccess = () => {
+                    if (signal.aborted) {
+                      abortTransaction();
+                      return;
+                    }
+                    try {
+                      const readback = readbackRequest.result as GeneratedComponentVersionEntryV1 | undefined;
+                      validateGeneratedComponentVersionEntryV1(readback);
+                      if (!generatedComponentVersionEntriesEqual(readback, entry)) {
+                        throw new PersistenceError("readback", "Generated version read-back did not match.");
+                      }
+                      confirmAfterReadBack(readback);
+                    } catch (error) {
+                      failAndAbort(toPersistenceError(error, "readback"));
+                    }
+                  };
+                  readbackRequest.onerror = () => {
+                    requestError = readbackRequest.error;
+                  };
                 };
-                readbackRequest.onerror = () => {
-                  requestError = readbackRequest.error;
+                addRequest.onerror = (event) => {
+                  event.preventDefault();
+                  const existingRequest = versionStore.get(entry.id);
+                  existingRequest.onsuccess = () => {
+                    try {
+                      const existing = existingRequest.result as GeneratedComponentVersionEntryV1 | undefined;
+                      validateGeneratedComponentVersionEntryV1(existing);
+                      if (!generatedComponentVersionEntriesEqual(existing, entry)) {
+                        throw new PersistenceError("persistence-conflict", "Generated version id conflicted.");
+                      }
+                      confirmAfterReadBack(existing);
+                    } catch (error) {
+                      failAndAbort(toPersistenceError(error, "persistence-conflict"));
+                    }
+                  };
+                  existingRequest.onerror = () => {
+                    requestError = existingRequest.error;
+                  };
                 };
               };
-              addRequest.onerror = (event) => {
-                event.preventDefault();
-                const existingRequest = versionStore.get(entry.id);
-                existingRequest.onsuccess = () => {
-                  try {
-                    const existing = existingRequest.result as GeneratedComponentVersionEntryV1 | undefined;
-                    validateGeneratedComponentVersionEntryV1(existing);
-                    if (!generatedComponentVersionEntriesEqual(existing, entry)) {
-                      throw new PersistenceError("persistence-conflict", "Generated version id conflicted.");
-                    }
-                    confirmAfterReadBack(existing);
-                  } catch (error) {
-                    failAndAbort(toPersistenceError(error, "persistence-conflict"));
-                  }
-                };
-                existingRequest.onerror = () => {
-                  requestError = existingRequest.error;
-                };
-              };
+              try {
+                const paused = applyGeneratedVersionPersistenceTestHarness({
+                  entry,
+                  recordStore,
+                  onContinue: addEntry,
+                  onError: (error) => {
+                    requestError = error instanceof DOMException ? error : null;
+                    failAndAbort(toPersistenceError(error, "persistence-failed"));
+                  },
+                  signal,
+                  abortTransaction
+                });
+                if (paused) {
+                  return;
+                }
+              } catch (error) {
+                failAndAbort(toPersistenceError(error, "persistence-failed"));
+                return;
+              }
+              addEntry();
             };
             assetRequest.onerror = () => {
               requestError = assetRequest.error;
@@ -527,12 +598,20 @@ export async function addGeneratedComponentVersion({
           }
         };
         transaction.onabort = () => {
+          cleanupAbortListener();
           if (!settled) {
-            reject(toPersistenceError(transaction.error ?? requestError, "persistence-failed"));
+            reject(abortError ?? toPersistenceError(transaction.error ?? requestError, "persistence-failed"));
           }
         };
         transaction.oncomplete = () => {
+          cleanupAbortListener();
           if (settled) {
+            return;
+          }
+          try {
+            throwIfAborted(signal);
+          } catch (error) {
+            reject(error);
             return;
           }
           if (!confirmedEntry) {
@@ -659,6 +738,25 @@ export async function getPersistenceDatabaseInfo() {
 function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(ELEMENT_CATCHER_DATABASE_NAME, ELEMENT_CATCHER_DATABASE_VERSION);
+    let settled = false;
+    let upgradeError: PersistenceError | undefined;
+
+    const settleReject = (error: unknown) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(toPersistenceError(error, "database-upgrade"));
+    };
+
+    const settleResolve = (database: IDBDatabase) => {
+      if (settled) {
+        database.close();
+        return;
+      }
+      settled = true;
+      resolve(database);
+    };
 
     request.onupgradeneeded = (event) => {
       try {
@@ -677,16 +775,34 @@ function openDatabase() {
           store.createIndex(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME, "sourceCaptureId", { unique: false });
         }
       } catch (error) {
-        reject(new PersistenceError("database-upgrade", undefined, error));
+        upgradeError = new PersistenceError("database-upgrade", undefined, error);
+        try {
+          request.transaction?.abort();
+        } catch {
+          // The version-change transaction may already be inactive.
+        }
+        settleReject(upgradeError);
       }
     };
 
-    request.onblocked = () => reject(new PersistenceError("blocked"));
-    request.onerror = () => reject(toPersistenceError(request.error, "database-open"));
+    request.onblocked = () => settleReject(new PersistenceError("blocked"));
+    request.onerror = () => settleReject(upgradeError ?? toPersistenceError(request.error, "database-open"));
     request.onsuccess = () => {
       const database = request.result;
       database.onversionchange = () => database.close();
-      resolve(database);
+      if (upgradeError) {
+        database.close();
+        settleReject(upgradeError);
+        return;
+      }
+      try {
+        validateDatabaseSchema(database);
+      } catch (error) {
+        database.close();
+        settleReject(error);
+        return;
+      }
+      settleResolve(database);
     };
   });
 }
@@ -722,6 +838,102 @@ function requestResult<T>(request: IDBRequest<T>) {
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(toPersistenceError(request.error, "transaction"));
   });
+}
+
+function applyGeneratedVersionPersistenceTestHarness({
+  entry,
+  recordStore,
+  onContinue,
+  onError,
+  signal,
+  abortTransaction
+}: {
+  entry: GeneratedComponentVersionEntryV1;
+  recordStore: IDBObjectStore;
+  onContinue: () => void;
+  onError: (error: unknown) => void;
+  signal: AbortSignal;
+  abortTransaction: () => void;
+}) {
+  const harness = typeof window !== "undefined" ? window.__EC_GENERATED_VERSION_PERSISTENCE_TEST_HARNESS__ : undefined;
+  if (!harness) {
+    return false;
+  }
+  harness.beforeAddCalls += 1;
+  harness.attempts.push({
+    id: entry.id,
+    createdAt: entry.createdAt,
+    componentName: entry.value.componentName
+  });
+  if ((harness.failBeforeAddCount ?? 0) > 0) {
+    harness.failBeforeAddCount = (harness.failBeforeAddCount ?? 0) - 1;
+    throw new PersistenceError("persistence-failed", "Injected generated-version persistence failure.");
+  }
+  if (!harness.pauseBeforeAdd) {
+    return false;
+  }
+
+  const pump = () => {
+    if (signal.aborted) {
+      abortTransaction();
+      return;
+    }
+    if (harness.releaseBeforeAdd) {
+      harness.pauseBeforeAdd = false;
+      onContinue();
+      return;
+    }
+    try {
+      const keepAliveRequest = recordStore.get(entry.sourceCaptureId);
+      keepAliveRequest.onsuccess = pump;
+      keepAliveRequest.onerror = () => onError(keepAliveRequest.error);
+    } catch (error) {
+      onError(error);
+    }
+  };
+  pump();
+  return true;
+}
+
+function throwIfAborted(signal: AbortSignal) {
+  if (signal.aborted) {
+    throw createAbortError();
+  }
+}
+
+function createAbortError() {
+  return new DOMException("Operation aborted.", "AbortError");
+}
+
+function validateDatabaseSchema(database: IDBDatabase) {
+  if (database.version !== ELEMENT_CATCHER_DATABASE_VERSION) {
+    throw new PersistenceError("database-upgrade", "Unexpected local persistence database version.");
+  }
+
+  const stores = Array.from(database.objectStoreNames).sort();
+  const expectedStores = [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort();
+  if (JSON.stringify(stores) !== JSON.stringify(expectedStores)) {
+    throw new PersistenceError("database-upgrade", "Unexpected local persistence database stores.");
+  }
+
+  const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
+  const store = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+  if (store.keyPath !== "id") {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected generated-version store keyPath.");
+  }
+
+  const indexes = Array.from(store.indexNames);
+  if (indexes.length !== 1 || indexes[0] !== GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME) {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected generated-version indexes.");
+  }
+
+  const index = store.index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
+  if (index.keyPath !== "sourceCaptureId" || index.unique) {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected generated-version source index schema.");
+  }
 }
 
 function validateScreenshotAsset(asset: StoredScreenshotAsset | undefined) {

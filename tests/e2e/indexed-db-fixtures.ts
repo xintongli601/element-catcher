@@ -903,17 +903,26 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
           const request = indexedDB.open(databaseName, databaseVersion);
 
           request.onupgradeneeded = () => {
-            const database = request.result;
-            if (!database.objectStoreNames.contains(screenshotAssetStoreName)) {
-              database.createObjectStore(screenshotAssetStoreName, { keyPath: "storageKey" });
-            }
+            try {
+              const database = request.result;
+              if (!database.objectStoreNames.contains(screenshotAssetStoreName)) {
+                database.createObjectStore(screenshotAssetStoreName, { keyPath: "storageKey" });
+              }
 
-            if (!database.objectStoreNames.contains(captureRecordStoreName)) {
-              database.createObjectStore(captureRecordStoreName, { keyPath: "id" });
-            }
-            if (!database.objectStoreNames.contains(generatedComponentVersionStoreName)) {
-              const store = database.createObjectStore(generatedComponentVersionStoreName, { keyPath: "id" });
-              store.createIndex("sourceCaptureId", "sourceCaptureId", { unique: false });
+              if (!database.objectStoreNames.contains(captureRecordStoreName)) {
+                database.createObjectStore(captureRecordStoreName, { keyPath: "id" });
+              }
+              if (!database.objectStoreNames.contains(generatedComponentVersionStoreName)) {
+                const store = database.createObjectStore(generatedComponentVersionStoreName, { keyPath: "id" });
+                store.createIndex("sourceCaptureId", "sourceCaptureId", { unique: false });
+              }
+            } catch (error) {
+              try {
+                request.transaction?.abort();
+              } catch {
+                // The version-change transaction may already be inactive.
+              }
+              reject(error);
             }
           };
           request.onerror = () => reject(request.error);

@@ -16,6 +16,7 @@ export {
   SOURCE_URL_POLICY_REASON,
   TAG_NAME_PATTERN,
   TRANSMITTED_ATTRIBUTE_NAMES,
+  validateComponentGenerationResponseV1,
   type GenerationBackendErrorCodeV1,
   type GenerationBackendErrorResponseV1
 } from "../shared/generation-contract";

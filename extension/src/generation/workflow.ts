@@ -118,7 +118,10 @@ export async function generateFromReview({
     dataUrl = await blobToPngDataUrl(screenshot.blob);
     const request: ComponentGenerationRequestV1 = await createFullRequest(requestWithoutDataUrl, dataUrl);
     const response = await transport.generate(request, signal);
+    throwIfAborted(signal);
     validateGenerationResponse(response);
+    throwIfAborted(signal);
+    throwIfAborted(signal);
     const pendingEntry: GeneratedComponentVersionEntryV1 = {
       id: createGeneratedComponentVersionId(),
       sourceCaptureId: localContext.sourceCaptureId,
@@ -129,7 +132,7 @@ export async function generateFromReview({
     };
 
     try {
-      return await persistGeneratedVersionFromReview(localContext, pendingEntry);
+      return await persistGeneratedVersionFromReview(localContext, pendingEntry, signal);
     } catch (error) {
       const mapped = mapGenerationPreparationError(error, "persistence_failed");
       throw new GenerationError(mapped.code, undefined, { pendingEntry, originalError: error });
@@ -143,9 +146,11 @@ export async function generateFromReview({
 
 export async function persistGeneratedVersionFromReview(
   localContext: ComponentGenerationLocalContextV1,
-  pendingEntry: GeneratedComponentVersionEntryV1
+  pendingEntry: GeneratedComponentVersionEntryV1,
+  signal: AbortSignal
 ) {
   try {
+    throwIfAborted(signal);
     const latest = await loadSavedCaptureById(localContext.sourceCaptureId);
     validateCaptureRecordV1(latest.record);
     const screenshot = await verifyScreenshotAsset(latest.asset);
@@ -164,14 +169,22 @@ export async function persistGeneratedVersionFromReview(
     if (fingerprint !== localContext.reviewFingerprint) {
       throw new GenerationError("review_fingerprint_mismatch");
     }
+    throwIfAborted(signal);
     return await addGeneratedComponentVersion({
       entry: pendingEntry,
       expectedSourceSavedAt: localContext.sourceCaptureSavedAt,
       expectedReviewFingerprint: localContext.reviewFingerprint,
-      expectedSourceRecordValue: latest.record
+      expectedSourceRecordValue: latest.record,
+      signal
     });
   } catch (error) {
     throw mapGenerationPreparationError(error, "persistence_failed");
+  }
+}
+
+export function throwIfAborted(signal: AbortSignal) {
+  if (signal.aborted) {
+    throw new DOMException("Operation aborted.", "AbortError");
   }
 }
 

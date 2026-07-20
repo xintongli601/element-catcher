@@ -10,7 +10,8 @@ import {
   PSEUDO_STYLE_KEYS,
   SOURCE_URL_POLICY_REASON,
   TAG_NAME_PATTERN,
-  TRANSMITTED_ATTRIBUTE_NAMES
+  TRANSMITTED_ATTRIBUTE_NAMES,
+  validateComponentGenerationResponseV1
 } from "./limits";
 import type {
   ComponentGenerationRequestV1,
@@ -54,44 +55,10 @@ export function assertSerializedRequestSize(request: ComponentGenerationRequestV
 }
 
 export function validateGenerationResponse(value: unknown): asserts value is ComponentGenerationResponseV1 {
-  assertAllowedKeys(value, [
-    "contractVersion",
-    "componentName",
-    "framework",
-    "styling",
-    "code",
-    "summary",
-    "approximationNotes",
-    "metadata"
-  ], "malformed_response");
-
-  const response = value as Record<string, unknown>;
-  if (
-    response.contractVersion !== GENERATION_CONTRACT_VERSION ||
-    response.framework !== "react" ||
-    response.styling !== "tailwind" ||
-    typeof response.componentName !== "string" ||
-    !COMPONENT_NAME_PATTERN.test(response.componentName) ||
-    codePointLength(response.componentName) > GENERATION_LIMITS.componentNameCodePoints ||
-    typeof response.code !== "string" ||
-    response.code.trim().length === 0 ||
-    codePointLength(response.code) > GENERATION_LIMITS.codeCodePoints ||
-    typeof response.summary !== "string" ||
-    response.summary.trim().length === 0 ||
-    codePointLength(response.summary) > GENERATION_LIMITS.summaryCodePoints ||
-    typeof response.approximationNotes !== "string" ||
-    codePointLength(response.approximationNotes) > GENERATION_LIMITS.approximationNotesCodePoints
-  ) {
+  try {
+    validateComponentGenerationResponseV1(value);
+  } catch {
     throw new GenerationError("malformed_response");
-  }
-
-  if (response.metadata !== undefined) {
-    assertAllowedKeys(response.metadata, ["providerLabel", "providerModelLabel"], "malformed_response");
-    for (const value of Object.values(response.metadata as Record<string, unknown>)) {
-      if (typeof value !== "string" || codePointLength(value) > GENERATION_LIMITS.providerMetadataCodePoints) {
-        throw new GenerationError("malformed_response");
-      }
-    }
   }
 }
 

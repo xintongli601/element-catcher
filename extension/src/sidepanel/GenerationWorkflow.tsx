@@ -142,9 +142,11 @@ export function GenerationWorkflow({
     const sequence = sequenceRef.current + 1;
     sequenceRef.current = sequence;
     inFlightRef.current = true;
+    const abortController = new AbortController();
+    abortRef.current = abortController;
     setState({ status: "generating", review });
     try {
-      const entry = await persistGeneratedVersionFromReview(review.localContext, pendingEntry);
+      const entry = await persistGeneratedVersionFromReview(review.localContext, pendingEntry, abortController.signal);
       if (sequenceRef.current !== sequence) {
         return;
       }
@@ -163,6 +165,7 @@ export function GenerationWorkflow({
     } finally {
       if (sequenceRef.current === sequence) {
         inFlightRef.current = false;
+        abortRef.current = null;
       }
     }
   };

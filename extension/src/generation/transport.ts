@@ -15,6 +15,7 @@ export type MockGenerationScenario =
 export type GenerationTestHarness = {
   scenario?: MockGenerationScenario;
   delayMs?: number;
+  response?: ComponentGenerationResponseV1;
   calls: Array<{
     request: ComponentGenerationRequestV1;
     abortedAtCall: boolean;
@@ -193,6 +194,10 @@ function createMockGenerationTransport(harness: GenerationTestHarness): Generati
         case "delayed-success":
         case "success":
         default:
+          if (harness.response) {
+            validateGenerationResponse(harness.response);
+            return harness.response;
+          }
           return {
             contractVersion: 1,
             componentName: "GeneratedFixture",
