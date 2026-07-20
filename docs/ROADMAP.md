@@ -755,7 +755,7 @@ Acceptance status: Completed. Milestone 4C passed production build and classic c
 
 ### Milestone 4D - Atomic Capture Deletion
 
-Status: Current
+Status: Completed
 
 Objective: Delete one saved capture and its referenced screenshot asset atomically without leaving orphaned local data.
 
@@ -792,9 +792,11 @@ Acceptance criteria:
 - Deletion remains correct after Side Panel close/reopen.
 - Production build and real Chrome runtime validation are required before Milestone 4D can later be marked Completed.
 
+Acceptance status: Completed. Milestone 4D passed production build and classic content-script validation; isolated Playwright extension-runtime validation with forty-one passing tests and no failures or skips; a deliberate accessible saved-detail deletion flow with confirmation, Cancel, deleting, safe failure, Retry, and success states; exact pre-delete reread and validation of the saved wrapper, CaptureRecord v1, savedAt, screenshot reference, screenshot asset, Blob, and decoded dimensions; exact same-savedAt wrapper-value concurrency protection between repository validation and deletion; one atomic two-store IndexedDB transaction that verifies both current objects before deleting the selected CaptureRecord wrapper and referenced screenshot asset; safe abort behavior for missing records, missing assets, savedAt conflicts, record mutations, reference mismatches, and asset conflicts without partial deletion; verified post-delete absence before success; exact atomic restoration and read-back verification after forced post-commit verification failure; preservation of all unrelated wrappers, savedAt values, screenshot metadata, Blob digests, item ordering, and database structure; immediate Library synchronization, final-item empty-state handling, Side Panel close/reopen persistence, stale-detail and duplicate-submission protection, and object-URL preservation on Cancel or failure and revocation after success; and scope checks excluding bulk deletion, delete-all, Trash, Undo, soft deletion, deletedAt, modifiedAt, search, filter, source navigation, AI, cloud, database migrations, permissions, and dependencies. Automated testing fully covered the approved Milestone 4D scope, so no user manual testing was required.
+
 ### Milestone 4E - Search, Filtering, and Milestone 4 Regression
 
-Status: Planned
+Status: Current
 
 Objective: Add privacy-safe in-memory search and filtering, then complete final Milestone 4 regression and runtime acceptance.
 
