@@ -579,7 +579,7 @@ Acceptance status: Completed. Milestone 3D.3 passed unsaved Capture Preview vali
 
 ## Milestone 4 - Personal Capture Library
 
-Status: Current
+Status: Completed
 
 Objective: Let users manage saved local `CaptureRecord` entries as reusable inspiration assets rather than screenshot history.
 
@@ -613,6 +613,8 @@ Acceptance criteria:
 - Users can delete captures.
 - Users can search and filter captures by useful metadata such as title, tags, component type, source URL, and summaries.
 - Library behavior remains local-first.
+
+Acceptance status: Completed. Milestone 4 passed the completed and independently accepted Milestones 4A through 4E: validated local-library read models and newest-first persisted Blob-backed capture listing; saved-detail reread, navigation, failure recovery, and object-URL lifecycle; verified editing of only user-managed title, component type, tags, and notes while preserving savedAt, all non-library CaptureRecord fields, screenshot references, asset metadata, and Blob digests; exact atomic two-store deletion with pre-delete concurrency validation, safe transaction aborts, post-delete absence verification, deterministic restoration, Library synchronization, and final-item handling; and privacy-safe in-memory search and filtering with explicit field whitelists, sanitized source locations, component-type and tag options, active session state, clear and no-results feedback, metadata and deletion recomputation, and no persistence or network activity. The final production build, classic content-script validation, sixty-two-test Playwright extension-runtime suite, complete list/detail/edit/delete/search/filter/close-reopen regression, and previously accepted real-Chrome extension-action activeTab Capture, Confirm, Preview, Save, and same-session Library-refresh smoke all passed without database, schema, permission, dependency, cloud, authentication, collaboration, payment, or AI-generation changes.
 
 ### Milestone 4A - Library Read Model and Capture List Foundation
 
@@ -796,7 +798,7 @@ Acceptance status: Completed. Milestone 4D passed production build and classic c
 
 ### Milestone 4E - Search, Filtering, and Milestone 4 Regression
 
-Status: Current
+Status: Completed
 
 Objective: Add privacy-safe in-memory search and filtering, then complete final Milestone 4 regression and runtime acceptance.
 
@@ -852,9 +854,11 @@ Acceptance criteria:
 - Existing Milestone 3 Capture, Confirm, screenshot, Preview, Save, failure/retry, privacy, and classic content-script behavior remains intact.
 - Milestone 4 must not be marked Completed until Milestones 4A through 4E have each been implemented, independently reviewed, runtime validated, and marked Completed through later documentation-only commits.
 
+Acceptance status: Completed. Milestone 4E passed production build and classic content-script validation; isolated Playwright extension-runtime validation with sixty-two passing tests and no failures or skips; privacy-safe case-insensitive in-memory search over the explicitly approved title, tag, component-type, sanitized source-location, page-title, typography, color, layout, and spacing-summary fields; explicit exclusion of library notes, element data, DOM data, styles, screenshot references and Blob contents, generated versions, raw wrappers, hidden content, form or password values, and unsanitized payloads; HTTP/HTTPS source normalization excluding credentials, query strings, fragments, malformed URLs, and source navigation; deterministic library-first component-type fallback, tag derivation, case-insensitive exact filtering, option deduplication, sorting, and combined AND semantics; App-owned session-only query state across Detail, Back, verified metadata edits, deletion, and Library refresh with reset after Side Panel reopen; no IndexedDB rereads or writes, network requests, content-script messages, navigation, analytics, permissions, dependencies, schema changes, or persisted query state during search and filtering; accessible native search and filter controls, live-search helper text, a prominent aria-live result-feedback region, bounded visible query text, active-filter summaries, and a distinct No matching captures panel; correct empty-Library distinction, clearing, ordering, metadata synchronization, deletion synchronization, selected-option preservation, large deterministic multi-capture results, and filtered object-URL cleanup; complete Milestone 4 integrated regression across list, persisted Detail, edit, Back, atomic delete, close/reopen restoration, counts, and Blob-backed previews; and the previously accepted real-Chrome extension-action activeTab smoke on an ordinary supported webpage confirming Capture, Confirm, Preview, Save, same-session filtered Library refresh, Clear recovery, newly saved capture visibility, and retention of earlier captures. Automated testing covered all deterministic Milestone 4E behavior, and no additional user manual testing was required after the accepted activeTab smoke.
+
 ## Milestone 5 - AI React + Tailwind Reconstruction
 
-Status: Planned
+Status: Current
 
 Objective: Generate readable, reusable React + Tailwind component versions from a screenshot reference plus structured `CaptureRecord` input.
 
