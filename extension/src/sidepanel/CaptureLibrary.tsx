@@ -106,9 +106,10 @@ export function CaptureLibrary({
               ))}
             </ul>
           ) : (
-            <p className="empty-note library-no-results" role="status">
-              No captures match the current search and filters.
-            </p>
+            <div className="library-no-results" aria-labelledby="library-no-results-heading">
+              <h3 id="library-no-results-heading">No matching captures</h3>
+              <p>Try another search term or clear the active filters.</p>
+            </div>
           )}
         </>
       ) : null}
@@ -141,6 +142,9 @@ function CaptureLibraryQueryControls({
   const clearQuery = () => {
     onQueryChange(createDefaultCaptureLibraryQuery());
   };
+  const searchHelperId = "library-search-helper";
+  const normalizedSearchQuery = normalizeCaptureLibrarySearchQuery(queryState.searchQuery);
+  const hasActiveFilters = Boolean(queryState.componentType || queryState.tag);
 
   return (
     <div className="library-query-panel" aria-label="Capture Library search and filters">
@@ -149,9 +153,14 @@ function CaptureLibraryQueryControls({
           <span>Search captures</span>
           <input
             type="search"
+            aria-describedby={searchHelperId}
+            placeholder="Search titles, tags, types, and sources"
             value={queryState.searchQuery}
             onChange={(event) => updateQuery({ searchQuery: event.target.value })}
           />
+          <span id={searchHelperId} className="library-query-helper">
+            Results update as you type.
+          </span>
         </label>
 
         <label className="library-query-field">
@@ -183,26 +192,58 @@ function CaptureLibraryQueryControls({
         Clear search and filters
       </button>
 
+      <p className="library-result-status" role="status" aria-live="polite">
+        {formatLibraryResultStatus({
+          normalizedSearchQuery,
+          hasActiveFilters,
+          visibleCount,
+          totalCount
+        })}
+      </p>
+
       {hasActiveQuery ? (
         <div className="library-active-summary">
-          {normalizeCaptureLibrarySearchQuery(queryState.searchQuery) ? (
+          {normalizedSearchQuery ? (
             <p>Search: "{boundCaptureLibraryQuerySummaryText(queryState.searchQuery)}"</p>
           ) : null}
           {queryState.componentType ? (
             <p>Component type: {boundCaptureLibraryQuerySummaryText(queryState.componentType)}</p>
           ) : null}
           {queryState.tag ? <p>Tag: {boundCaptureLibraryQuerySummaryText(queryState.tag)}</p> : null}
-          <p className="library-result-count" role="status" aria-live="polite">
-            Showing {visibleCount} of {totalCount} captures.
-          </p>
         </div>
-      ) : (
-        <p className="library-result-count visually-muted" role="status" aria-live="polite">
-          Showing all {totalCount} captures.
-        </p>
-      )}
+      ) : null}
     </div>
   );
+}
+
+function formatLibraryResultStatus({
+  normalizedSearchQuery,
+  hasActiveFilters,
+  visibleCount,
+  totalCount
+}: {
+  normalizedSearchQuery: string;
+  hasActiveFilters: boolean;
+  visibleCount: number;
+  totalCount: number;
+}) {
+  if (visibleCount === totalCount && !normalizedSearchQuery && !hasActiveFilters) {
+    return `Showing all ${totalCount} captures.`;
+  }
+
+  if (visibleCount > 0) {
+    return `Showing ${visibleCount} of ${totalCount} captures.`;
+  }
+
+  if (normalizedSearchQuery && hasActiveFilters) {
+    return `0 results for “${boundCaptureLibraryQuerySummaryText(normalizedSearchQuery)}” with the current filters.`;
+  }
+
+  if (normalizedSearchQuery) {
+    return `0 results for “${boundCaptureLibraryQuerySummaryText(normalizedSearchQuery)}”.`;
+  }
+
+  return "0 captures match the current filters.";
 }
 
 function CaptureLibraryItem({

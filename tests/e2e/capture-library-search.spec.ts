@@ -94,6 +94,11 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
 
     const search = sidePanelPage.getByLabel("Search captures");
     await expect(search).toHaveAttribute("type", "search");
+    await expect(search).toHaveAttribute("placeholder", "Search titles, tags, types, and sources");
+    const describedBy = await search.getAttribute("aria-describedby");
+    expect(describedBy).toBeTruthy();
+    await expect(sidePanelPage.locator(`#${describedBy}`)).toHaveText("Results update as you type.");
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText("Showing all 5 captures.");
     await expect(search.evaluate((element) => element.tagName.toLowerCase())).resolves.toBe("input");
     await expect(sidePanelPage.getByLabel("Component type").evaluate((element) => element.tagName.toLowerCase())).resolves.toBe("select");
     await expect(sidePanelPage.getByLabel("Tag").evaluate((element) => element.tagName.toLowerCase())).resolves.toBe("select");
@@ -115,7 +120,9 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await seedSearchLibrary(sidePanelPage);
 
     await sidePanelPage.getByLabel("Search captures").fill("  PRICING   card  ");
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText("Showing 2 of 5 captures.");
     await expectTitles(sidePanelPage, ["Beta Pricing Card", "Alpha Pricing Card"]);
+    await expect(sidePanelPage.getByRole("button", { name: /^(Search|Confirm)$/ })).toHaveCount(0);
   });
 
   test("C - approved metadata search covers tags, component type, source, page title, and summaries", async ({ sidePanelPage }) => {
@@ -242,12 +249,13 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await expect(sidePanelPage.getByText('Search: "pricing"')).toBeVisible();
     await expect(sidePanelPage.getByText("Component type: pricing card")).toBeVisible();
     await expect(sidePanelPage.getByText("Tag: Campaign")).toBeVisible();
-    await expect(sidePanelPage.locator(".library-result-count")).toContainText("Showing 1 of 5 captures.");
+    await expect(sidePanelPage.locator(".library-result-status")).toContainText("Showing 1 of 5 captures.");
 
     await sidePanelPage.getByRole("button", { name: "Clear search and filters" }).click();
     await expect(sidePanelPage.getByLabel("Search captures")).toHaveValue("");
     await expect(sidePanelPage.getByLabel("Component type")).toHaveValue("");
     await expect(sidePanelPage.getByLabel("Tag")).toHaveValue("");
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText("Showing all 5 captures.");
     await expectTitles(sidePanelPage, seeded.map((capture) => capture.title));
     expect(await readAllRecordWrappers(sidePanelPage)).toEqual(beforeWrappers);
     expect(await readAllScreenshotAssetSnapshots(sidePanelPage)).toEqual(beforeAssets);
@@ -257,6 +265,7 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await seedSearchLibrary(sidePanelPage);
 
     await sidePanelPage.getByLabel("Search captures").fill("no-matching-safe-term");
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText("0 results for “no-matching-safe-term”.");
     await expectNoResults(sidePanelPage);
     await expect(sidePanelPage.getByText("No explicitly saved captures yet.")).toHaveCount(0);
     await expect(sidePanelPage.getByRole("button", { name: "Clear search and filters" })).toBeVisible();
@@ -266,6 +275,38 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await sidePanelPage.reload();
     await expect(sidePanelPage.getByText("No explicitly saved captures yet.")).toBeVisible();
     await expect(sidePanelPage.getByText("No captures match the current search and filters.")).toHaveCount(0);
+  });
+
+  test("UX - feedback handles filter-only zero results, long query display, and clear recovery", async ({ sidePanelPage }) => {
+    const seeded = await seedSearchLibrary(sidePanelPage);
+    const beforeWrappers = await readAllRecordWrappers(sidePanelPage);
+    const beforeAssets = await readAllScreenshotAssetSnapshots(sidePanelPage);
+
+    await installInteractionGuards(sidePanelPage);
+    await sidePanelPage.getByLabel("Component type").selectOption("Metric Tile");
+    await sidePanelPage.getByLabel("Tag").selectOption("Campaign");
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText("0 captures match the current filters.");
+    await expect(sidePanelPage.getByText("Component type: Metric Tile")).toBeVisible();
+    await expect(sidePanelPage.getByText("Tag: Campaign")).toBeVisible();
+    await expectNoResults(sidePanelPage);
+
+    const longQuery = `<strong>${"long query ".repeat(12)}</strong>`;
+    const boundedQuery = `${longQuery.trim().replace(/\s+/g, " ").toLowerCase().slice(0, 47)}...`;
+    await sidePanelPage.getByLabel("Search captures").fill(longQuery);
+    await expect(sidePanelPage.getByLabel("Search captures")).toHaveValue(longQuery);
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText(
+      `0 results for “${boundedQuery}” with the current filters.`
+    );
+    await expect(sidePanelPage.locator(".library-result-status strong")).toHaveCount(0);
+
+    await sidePanelPage.getByRole("button", { name: "Clear search and filters" }).click();
+    await expect(sidePanelPage.locator(".library-result-status")).toHaveText("Showing all 5 captures.");
+    await expect(sidePanelPage.getByRole("heading", { name: "No matching captures" })).toHaveCount(0);
+    await expectTitles(sidePanelPage, seeded.map((capture) => capture.title));
+    expect(await readInteractionGuardState(sidePanelPage)).toMatchObject({ idbReads: 0, idbWrites: 0 });
+    await removeInteractionGuards(sidePanelPage);
+    expect(await readAllRecordWrappers(sidePanelPage)).toEqual(beforeWrappers);
+    expect(await readAllScreenshotAssetSnapshots(sidePanelPage)).toEqual(beforeAssets);
   });
 
   test("K - opening detail and Back preserves search/filter state and matching result set", async ({ sidePanelPage }) => {
@@ -555,7 +596,8 @@ async function expectTitles(page: Page, titles: string[]) {
 }
 
 async function expectNoResults(page: Page) {
-  await expect(page.getByText("No captures match the current search and filters.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No matching captures" })).toBeVisible();
+  await expect(page.getByText("Try another search term or clear the active filters.")).toBeVisible();
   await expect(page.locator(".capture-library-list")).toHaveCount(0);
   await expect(page.locator(".library-item-title")).toHaveCount(0);
 }
