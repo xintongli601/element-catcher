@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, getObjectUrlSnapshot, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
   DEFAULT_CAPTURE_FIXTURES,
   ELEMENT_CATCHER_DATABASE_VERSION,
   SCREENSHOT_ASSET_STORE_NAME,
@@ -67,7 +68,8 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
     expect(await readScreenshotAssetSnapshot(sidePanelPage, target.storageKey)).toBeUndefined();
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       captureRecords: seeded.length - 1,
-      screenshotAssets: seeded.length - 1
+      screenshotAssets: seeded.length - 1,
+      generatedComponentVersions: 0
     });
   });
 
@@ -86,9 +88,10 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
     expect(afterAssets).toEqual(beforeAssets.filter((asset) => asset.storageKey !== target.storageKey));
     expect(await readPersistenceCounts(sidePanelPage)).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
       captureRecords: seeded.length - 1,
-      screenshotAssets: seeded.length - 1
+      screenshotAssets: seeded.length - 1,
+      generatedComponentVersions: 0
     });
   });
 
@@ -184,7 +187,8 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
     await expectDeletionSuccess(sidePanelPage, seeded.slice(1));
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       captureRecords: beforeCounts.captureRecords - 1,
-      screenshotAssets: beforeCounts.screenshotAssets - 1
+      screenshotAssets: beforeCounts.screenshotAssets - 1,
+      generatedComponentVersions: 0
     });
   });
 
@@ -264,7 +268,8 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
     await expect(sidePanelPage.getByText("No explicitly saved captures yet.")).toBeVisible();
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       captureRecords: 0,
-      screenshotAssets: 0
+      screenshotAssets: 0,
+      generatedComponentVersions: 0
     });
   });
 
@@ -304,7 +309,8 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
     await expect(sidePanelPage.getByRole("heading", { name: "Beta After Delete" })).toBeVisible();
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       captureRecords: seeded.length - 1,
-      screenshotAssets: seeded.length - 1
+      screenshotAssets: seeded.length - 1,
+      generatedComponentVersions: 0
     });
   });
 
@@ -616,6 +622,7 @@ async function installSameSavedAtWrapperMutation(
         databaseName: "element-catcher-local-persistence",
         databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION,
         captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
         screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME
       }
     }

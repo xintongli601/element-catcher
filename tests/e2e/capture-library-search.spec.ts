@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 import { test, expect, getObjectUrlSnapshot, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
   ELEMENT_CATCHER_DATABASE_VERSION,
   SCREENSHOT_ASSET_STORE_NAME,
   clearTestData,
@@ -368,7 +369,8 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await expectNoResults(sidePanelPage);
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       captureRecords: seeded.length - 1,
-      screenshotAssets: seeded.length - 1
+      screenshotAssets: seeded.length - 1,
+      generatedComponentVersions: 0
     });
     await sidePanelPage.getByRole("button", { name: "Clear search and filters" }).click();
     await expectTitles(sidePanelPage, ["Epsilon Untyped", "Delta Summary Tile", "Gamma Modal", "Alpha Pricing Card"]);
@@ -384,7 +386,8 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await expect(sidePanelPage.getByLabel("Search captures")).toHaveCount(0);
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       captureRecords: 0,
-      screenshotAssets: 0
+      screenshotAssets: 0,
+      generatedComponentVersions: 0
     });
   });
 
@@ -563,9 +566,10 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await expectTitles(reopened, ["Epsilon Untyped", "Delta Summary Tile", "Gamma Modal", "Beta Pricing Edited"]);
     expect(await readPersistenceCounts(reopened)).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
       captureRecords: 4,
-      screenshotAssets: 4
+      screenshotAssets: 4,
+      generatedComponentVersions: 0
     });
     await openCapture(reopened, "Beta Pricing Edited");
     await expect(reopened.getByRole("heading", { name: "Beta Pricing Edited" })).toBeVisible();

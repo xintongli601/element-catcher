@@ -11,6 +11,8 @@ export type PersistenceErrorCode =
   | "reference-mismatch"
   | "readback"
   | "not-found"
+  | "persistence-failed"
+  | "persistence-conflict"
   | "cleanup"
   | "unknown";
 
@@ -27,6 +29,8 @@ const USER_MESSAGES: Record<PersistenceErrorCode, string> = {
   "reference-mismatch": "Element Catcher detected a screenshot reference mismatch.",
   readback: "Element Catcher could not verify the saved local persistence data.",
   "not-found": "Element Catcher could not find the expected local persistence data.",
+  "persistence-failed": "Element Catcher could not save the generated component version.",
+  "persistence-conflict": "Element Catcher detected a generated version persistence conflict.",
   cleanup: "Element Catcher could not clean up temporary local persistence data.",
   unknown: "Element Catcher local persistence failed for an unknown reason."
 };

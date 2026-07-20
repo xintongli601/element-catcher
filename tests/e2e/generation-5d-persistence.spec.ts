@@ -1,0 +1,271 @@
+import { test, expect, openSidePanelPage } from "./extension-fixture";
+import {
+  CAPTURE_RECORD_STORE_NAME,
+  ELEMENT_CATCHER_DATABASE_VERSION,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  readAllRecordWrappers,
+  readAllScreenshotAssetSnapshots,
+  readGeneratedStoreInfo,
+  readGeneratedVersions,
+  SCREENSHOT_ASSET_STORE_NAME,
+  putGeneratedVersion,
+  readPersistenceCounts,
+  readRecordWrapper,
+  readVersionOneSnapshots,
+  readScreenshotAssetSnapshot,
+  resetAndSeedSavedCaptures,
+  resetAndSeedVersionOneDatabase
+} from "./indexed-db-fixtures";
+
+test.describe("Milestone 5D generated component persistence", () => {
+  test("migrates a real version 1 database without changing capture records or screenshots", async ({ sidePanelPage }) => {
+    await resetAndSeedVersionOneDatabase(sidePanelPage);
+    const before = await readVersionOneSnapshots(sidePanelPage);
+    expect(before).toMatchObject({
+      version: 1,
+      stores: [CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort()
+    });
+
+    const counts = await readPersistenceCounts(sidePanelPage);
+    const storeInfo = await readGeneratedStoreInfo(sidePanelPage);
+
+    expect(counts).toEqual({
+      version: ELEMENT_CATCHER_DATABASE_VERSION,
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      captureRecords: before.wrappers.length,
+      screenshotAssets: before.assets.length,
+      generatedComponentVersions: 0
+    });
+    expect(storeInfo).toEqual({
+      keyPath: "id",
+      indexes: [{ name: "sourceCaptureId", keyPath: "sourceCaptureId", unique: false }]
+    });
+    expect(await readAllRecordWrappers(sidePanelPage)).toEqual(before.wrappers);
+    expect(await readAllScreenshotAssetSnapshots(sidePanelPage)).toEqual(before.assets);
+  });
+
+  test("database opens at version 2 with exact generated-version store and empty migration result", async ({ sidePanelPage }) => {
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
+    const counts = await readPersistenceCounts(sidePanelPage);
+    const storeInfo = await readGeneratedStoreInfo(sidePanelPage);
+    expect(counts).toEqual({
+      version: ELEMENT_CATCHER_DATABASE_VERSION,
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      captureRecords: seeded.length,
+      screenshotAssets: seeded.length,
+      generatedComponentVersions: 0
+    });
+    expect(storeInfo).toEqual({
+      keyPath: "id",
+      indexes: [{ name: "sourceCaptureId", keyPath: "sourceCaptureId", unique: false }]
+    });
+  });
+
+  test("mock generation persists one validated version and survives side panel reopen", async ({ context, extensionId }) => {
+    await installMockHarness(context, "success");
+    await installBase64Counter(context);
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const target = seeded[0];
+    const beforeWrapper = await readRecordWrapper(page, target.record.id);
+    const beforeAsset = await readScreenshotAssetSnapshot(page, target.storageKey);
+    const beforeCounts = await readPersistenceCounts(page);
+
+    await page.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
+    await expect(page.getByRole("heading", { name: "Generated versions" })).toBeVisible();
+    await expect(page.getByText("No generated versions saved yet.")).toBeVisible();
+    await page.getByRole("button", { name: "Generate component" }).click();
+    await page.getByLabel(/Data is leaving your device/).check();
+    await page.getByRole("button", { name: "Send to AI and generate" }).click();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
+    await expect(page.getByText("This generated component version was saved locally.")).toBeVisible();
+    expect(await getMockCallCount(page)).toBe(1);
+    expect(await getBase64Count(page)).toBe(1);
+
+    expect(await readRecordWrapper(page, target.record.id)).toEqual(beforeWrapper);
+    expect(await readScreenshotAssetSnapshot(page, target.storageKey)).toEqual(beforeAsset);
+    expect(await readPersistenceCounts(page)).toEqual({
+      ...beforeCounts,
+      generatedComponentVersions: beforeCounts.generatedComponentVersions + 1
+    });
+
+    await page.getByRole("button", { name: "Close result" }).click();
+    await expect(page.getByText("1 generated version saved locally.")).toBeVisible();
+    await expect(page.getByRole("button", { name: /GeneratedFixture/ })).toBeVisible();
+    await page.getByRole("button", { name: /GeneratedFixture/ }).click();
+    await expect(page.locator("pre.generated-code code")).toContainText("export function GeneratedFixture");
+    await expect(page.locator("iframe")).toHaveCount(0);
+    await expect(page.locator("[dangerouslySetInnerHTML]")).toHaveCount(0);
+
+    await page.close();
+    const reopened = await openSidePanelPage(context, extensionId);
+    await reopened.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
+    await expect(reopened.getByText("1 generated version saved locally.")).toBeVisible();
+  });
+
+  test("version reads are newest-first, use id tie-breaks, and hide malformed entries", async ({ sidePanelPage }) => {
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
+    await sidePanelPage.reload();
+    const target = seeded[0];
+    const older = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T12:00:00.000Z", "AlphaOlder", "99999999-9999-9999-9999-999999999999");
+    const tieB = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:00:00.000Z", "AlphaTieB", "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+    const tieA = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:00:00.000Z", "AlphaTieA", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+    await putGeneratedVersion(sidePanelPage, older);
+    await putGeneratedVersion(sidePanelPage, tieB);
+    await putGeneratedVersion(sidePanelPage, tieA);
+    await putGeneratedVersion(sidePanelPage, {
+      id: "generated-version-cccccccc-cccc-cccc-cccc-cccccccccccc",
+      sourceCaptureId: target.record.id,
+      sourceCaptureSavedAt: target.savedAt,
+      sourceReviewFingerprint: "c".repeat(64),
+      createdAt: "2026-07-18T14:00:00.000Z",
+      value: { componentName: "MalformedEntry" }
+    });
+
+    await sidePanelPage.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
+    await expect(sidePanelPage.getByText("3 generated versions saved locally.")).toBeVisible();
+    const buttons = sidePanelPage.locator(".generated-version-item > button");
+    await expect(buttons).toHaveText([
+      "AlphaTieA - 2026-07-18T13:00:00.000Z",
+      "AlphaTieB - 2026-07-18T13:00:00.000Z",
+      "AlphaOlder - 2026-07-18T12:00:00.000Z"
+    ]);
+    await expect(sidePanelPage.getByText("MalformedEntry")).toHaveCount(0);
+  });
+
+  test("source deletion cascades multiple generated versions and leaves another source intact", async ({ context, extensionId }) => {
+    await installMockHarness(context, "success");
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const target = seeded[0];
+    const other = seeded[1];
+    const otherWrapper = await readRecordWrapper(page, other.record.id);
+    const otherAsset = await readScreenshotAssetSnapshot(page, other.storageKey);
+    const otherVersion = createGeneratedVersionEntry(other.record.id, other.savedAt, "2026-07-18T13:15:00.000Z", "OtherVersion", "22222222-2222-2222-2222-222222222222");
+    await putGeneratedVersion(page, otherVersion);
+
+    await page.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
+    await page.getByRole("button", { name: "Generate component" }).click();
+    await page.getByLabel(/Data is leaving your device/).check();
+    await page.getByRole("button", { name: "Send to AI and generate" }).click();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
+    await page.getByRole("button", { name: "Close result" }).click();
+
+    await page.getByRole("button", { name: "Delete capture" }).click();
+    await page.getByRole("button", { name: "Delete permanently" }).click();
+    await expect(page.getByText("Capture deleted locally.")).toBeVisible();
+
+    expect(await readRecordWrapper(page, target.record.id)).toBeUndefined();
+    expect(await readScreenshotAssetSnapshot(page, target.storageKey)).toBeUndefined();
+    expect(await readGeneratedVersions(page, target.record.id)).toEqual([]);
+    expect(await readRecordWrapper(page, other.record.id)).toEqual(otherWrapper);
+    expect(await readScreenshotAssetSnapshot(page, other.storageKey)).toEqual(otherAsset);
+    expect(await readGeneratedVersions(page, other.record.id)).toEqual([otherVersion]);
+    expect(await readPersistenceCounts(page)).toMatchObject({
+      captureRecords: seeded.length - 1,
+      screenshotAssets: seeded.length - 1,
+      generatedComponentVersions: 1
+    });
+  });
+
+  test("source deletion rolls back when generated-version deletion fails", async ({ sidePanelPage }) => {
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
+    await sidePanelPage.reload();
+    const target = seeded[0];
+    const firstVersion = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:00:00.000Z", "RollbackOne", "33333333-3333-3333-3333-333333333333");
+    const secondVersion = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:05:00.000Z", "RollbackTwo", "44444444-4444-4444-4444-444444444444");
+    await putGeneratedVersion(sidePanelPage, firstVersion);
+    await putGeneratedVersion(sidePanelPage, secondVersion);
+    const beforeWrapper = await readRecordWrapper(sidePanelPage, target.record.id);
+    const beforeAsset = await readScreenshotAssetSnapshot(sidePanelPage, target.storageKey);
+
+    await sidePanelPage.evaluate(() => {
+      const originalDelete = IDBObjectStore.prototype.delete;
+      Object.defineProperty(window, "__EC_RESTORE_IDB_DELETE__", {
+        configurable: true,
+        value: () => {
+          IDBObjectStore.prototype.delete = originalDelete;
+        }
+      });
+      IDBObjectStore.prototype.delete = function patchedDelete(this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+        if (this.name === "generatedComponentVersions") {
+          throw new DOMException("Injected generated version deletion failure.", "AbortError");
+        }
+        return originalDelete.call(this, query);
+      };
+    });
+
+    await sidePanelPage.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
+    await sidePanelPage.getByRole("button", { name: "Delete capture" }).click();
+    await sidePanelPage.getByRole("button", { name: "Delete permanently" }).click();
+    await expect(sidePanelPage.getByText(/Could not delete capture/)).toBeVisible();
+    await sidePanelPage.evaluate(() => (window as unknown as { __EC_RESTORE_IDB_DELETE__: () => void }).__EC_RESTORE_IDB_DELETE__());
+
+    expect(await readRecordWrapper(sidePanelPage, target.record.id)).toEqual(beforeWrapper);
+    expect(await readScreenshotAssetSnapshot(sidePanelPage, target.storageKey)).toEqual(beforeAsset);
+    expect(await readGeneratedVersions(sidePanelPage, target.record.id)).toEqual([firstVersion, secondVersion]);
+  });
+});
+
+function createGeneratedVersionEntry(
+  sourceCaptureId: string,
+  sourceCaptureSavedAt: string,
+  createdAt: string,
+  componentName: string,
+  idSuffix = "11111111-1111-1111-1111-111111111111"
+) {
+  return {
+    id: `generated-version-${idSuffix}`,
+    sourceCaptureId,
+    sourceCaptureSavedAt,
+    sourceReviewFingerprint: "a".repeat(64),
+    createdAt,
+    value: {
+      contractVersion: 1,
+      componentName,
+      framework: "react",
+      styling: "tailwind",
+      code: `export function ${componentName}() {\n  return <div>${componentName}</div>;\n}`,
+      summary: `${componentName} summary.`,
+      approximationNotes: ""
+    }
+  };
+}
+
+async function installMockHarness(context: Parameters<typeof openSidePanelPage>[0], scenario: string, delayMs = 0) {
+  await context.addInitScript(
+    ({ scenario, delayMs }) => {
+      window.__EC_GENERATION_TEST_HARNESS__ = {
+        scenario: scenario as never,
+        delayMs,
+        calls: [],
+        cancellations: 0
+      };
+    },
+    { scenario, delayMs }
+  );
+}
+
+async function installBase64Counter(context: Parameters<typeof openSidePanelPage>[0]) {
+  await context.addInitScript(() => {
+    const originalBtoa = window.btoa.bind(window);
+    let count = 0;
+    window.btoa = (value: string) => {
+      count += 1;
+      return originalBtoa(value);
+    };
+    Object.defineProperty(window, "__EC_BTOA_COUNT__", {
+      value: () => count
+    });
+  });
+}
+
+async function getMockCallCount(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {
+  return page.evaluate(() => window.__EC_GENERATION_TEST_HARNESS__?.calls.length ?? 0);
+}
+
+async function getBase64Count(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {
+  return page.evaluate(() => ((window as unknown as { __EC_BTOA_COUNT__?: () => number }).__EC_BTOA_COUNT__?.() ?? 0));
+}

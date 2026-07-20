@@ -13,6 +13,9 @@ export type GenerationErrorCode =
   | "provider_rejected"
   | "rate_limited"
   | "malformed_response"
+  | "persistence_failed"
+  | "persistence_conflict"
+  | "read_back_failed"
   | "cancellation";
 
 export class GenerationError extends Error {
@@ -62,6 +65,9 @@ function isGenerationErrorLike(error: unknown): error is { code: GenerationError
     "provider_rejected",
     "rate_limited",
     "malformed_response",
+    "persistence_failed",
+    "persistence_conflict",
+    "read_back_failed",
     "cancellation"
   ].includes(String((error as { code: unknown }).code));
 }
@@ -97,6 +103,12 @@ export function getSafeGenerationMessage(error: unknown) {
       return "Generation is rate limited. Wait and try again.";
     case "malformed_response":
       return "The generation response was malformed and was not accepted.";
+    case "persistence_failed":
+      return "The generated component version could not be saved locally.";
+    case "persistence_conflict":
+      return "Element Catcher detected a generated version save conflict.";
+    case "read_back_failed":
+      return "Element Catcher could not verify the saved generated version.";
     case "cancellation":
       return "Generation was cancelled.";
   }

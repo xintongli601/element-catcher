@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
   SCREENSHOT_ASSET_STORE_NAME,
   readPersistenceCounts,
   readRecordWrapper,
@@ -62,7 +63,7 @@ test("browser generation flow sends one loopback request and preserves persisten
     await expect(page.getByText("Local development proxy at 127.0.0.1")).toBeVisible();
     await page.getByLabel(/Data is leaving your device/).check();
     await page.getByRole("button", { name: "Send to AI and generate" }).click();
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
     await expect(page.locator(".generation-result .preview-metadata dd", { hasText: "LoopbackFixture" })).toBeVisible();
 
     expect(providerCalls).toHaveLength(1);
@@ -71,7 +72,8 @@ test("browser generation flow sends one loopback request and preserves persisten
     expect(await readScreenshotAssetSnapshot(page, target.storageKey)).toEqual(beforeAsset);
     expect(await readPersistenceCounts(page)).toEqual({
       ...beforeCounts,
-      stores: [CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME]
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME],
+      generatedComponentVersions: beforeCounts.generatedComponentVersions + 1
     });
     expect(await page.evaluate(() => localStorage.length)).toBe(0);
     expect(await page.evaluate(() => sessionStorage.length)).toBe(0);

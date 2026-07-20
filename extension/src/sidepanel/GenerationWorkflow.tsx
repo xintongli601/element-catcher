@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { GenerationError, getSafeGenerationMessage } from "../generation/errors";
-import { prepareGenerationReviewById, generateFromReview } from "../generation/workflow";
+import { prepareGenerationReviewById, generateFromReview, persistGeneratedVersionFromReview } from "../generation/workflow";
 import { createGenerationTransport } from "../generation/transport";
-import type { ComponentGenerationResponseV1, GenerationReviewModel, TransmittedDomNodeV1 } from "../generation/types";
+import type { GenerationReviewModel, TransmittedDomNodeV1 } from "../generation/types";
+import type { GeneratedComponentVersionEntryV1 } from "../shared/generated-version-contract";
 import type { SavedCaptureReadModel } from "../storage/capture-save";
 import { predictCompleteRequestBytes } from "../generation/request-size";
 
@@ -11,14 +12,17 @@ type GenerationState =
   | { status: "preparing" }
   | { status: "review"; review: GenerationReviewModel; consent: boolean; message?: string }
   | { status: "generating"; review: GenerationReviewModel }
-  | { status: "succeeded"; review: GenerationReviewModel; response: ComponentGenerationResponseV1 }
+  | { status: "succeeded"; review: GenerationReviewModel; entry: GeneratedComponentVersionEntryV1 }
+  | { status: "save-failed"; review: GenerationReviewModel; pendingEntry: GeneratedComponentVersionEntryV1; message: string }
   | { status: "failed"; review?: GenerationReviewModel; message: string }
   | { status: "cancelled"; review?: GenerationReviewModel; message: string };
 
 export function GenerationWorkflow({
-  savedCapture
+  savedCapture,
+  onGeneratedVersionSaved
 }: {
   savedCapture: SavedCaptureReadModel;
+  onGeneratedVersionSaved?: (entry: GeneratedComponentVersionEntryV1) => void;
 }) {
   const [state, setState] = useState<GenerationState>({ status: "closed" });
   const sequenceRef = useRef(0);
@@ -94,7 +98,7 @@ export function GenerationWorkflow({
     setState({ status: "generating", review });
 
     try {
-      const response = await generateFromReview({
+      const entry = await generateFromReview({
         localContext: review.localContext,
         transport: transportConfig.transport,
         signal: abortController.signal
@@ -102,7 +106,8 @@ export function GenerationWorkflow({
       if (sequenceRef.current !== sequence) {
         return;
       }
-      setState({ status: "succeeded", review, response });
+      setState({ status: "succeeded", review, entry });
+      onGeneratedVersionSaved?.(entry);
     } catch (error) {
       if (sequenceRef.current !== sequence) {
         return;
@@ -113,6 +118,11 @@ export function GenerationWorkflow({
         await prepareFreshReview(getSafeGenerationMessage(error));
         return;
       }
+      const pendingEntry = getPendingEntry(error);
+      if (pendingEntry) {
+        setState({ status: "save-failed", review, pendingEntry, message: getSafeGenerationMessage(error) });
+        return;
+      }
       const message = getSafeGenerationMessage(error);
       const nextStatus = message === "Generation was cancelled." ? "cancelled" : "failed";
       setState({ status: nextStatus, review, message });
@@ -120,6 +130,39 @@ export function GenerationWorkflow({
       if (sequenceRef.current === sequence) {
         inFlightRef.current = false;
         abortRef.current = null;
+      }
+    }
+  };
+
+  const retrySaving = async (review: GenerationReviewModel, pendingEntry: GeneratedComponentVersionEntryV1) => {
+    if (inFlightRef.current) {
+      return;
+    }
+
+    const sequence = sequenceRef.current + 1;
+    sequenceRef.current = sequence;
+    inFlightRef.current = true;
+    setState({ status: "generating", review });
+    try {
+      const entry = await persistGeneratedVersionFromReview(review.localContext, pendingEntry);
+      if (sequenceRef.current !== sequence) {
+        return;
+      }
+      setState({ status: "succeeded", review, entry });
+      onGeneratedVersionSaved?.(entry);
+    } catch (error) {
+      if (sequenceRef.current !== sequence) {
+        return;
+      }
+      if (error instanceof GenerationError && (error.code === "review_fingerprint_mismatch" || error.code === "capture_changed")) {
+        inFlightRef.current = false;
+        await prepareFreshReview(getSafeGenerationMessage(error));
+        return;
+      }
+      setState({ status: "save-failed", review, pendingEntry, message: getSafeGenerationMessage(error) });
+    } finally {
+      if (sequenceRef.current === sequence) {
+        inFlightRef.current = false;
       }
     }
   };
@@ -160,7 +203,16 @@ export function GenerationWorkflow({
         </div>
       ) : null}
       {state.status === "succeeded" ? (
-        <GeneratedResult response={state.response} onClose={closeFlow} onRetry={() => void prepareFreshReview("Review again before retrying.")} />
+        <GeneratedResult entry={state.entry} onClose={closeFlow} onRetry={() => void prepareFreshReview("Review again before generating another version.")} />
+      ) : null}
+      {state.status === "save-failed" ? (
+        <GenerationFailure
+          message={state.message}
+          review={state.review}
+          retryLabel="Retry saving"
+          onClose={closeFlow}
+          onRetry={() => void retrySaving(state.review, state.pendingEntry)}
+        />
       ) : null}
       {state.status === "failed" ? (
         <GenerationFailure
@@ -180,6 +232,13 @@ export function GenerationWorkflow({
       ) : null}
     </section>
   );
+}
+
+function getPendingEntry(error: unknown) {
+  if (!(error instanceof GenerationError) || !error.cause || typeof error.cause !== "object") {
+    return undefined;
+  }
+  return (error.cause as { pendingEntry?: GeneratedComponentVersionEntryV1 }).pendingEntry;
 }
 
 function ReviewDataView({
@@ -317,22 +376,24 @@ function ReviewDataView({
 }
 
 function GeneratedResult({
-  response,
+  entry,
   onClose,
   onRetry
 }: {
-  response: ComponentGenerationResponseV1;
+  entry: GeneratedComponentVersionEntryV1;
   onClose: () => void;
   onRetry: () => void;
 }) {
+  const response = entry.value;
   return (
     <section className="generation-result" aria-labelledby="generation-result-heading">
-      <h4 id="generation-result-heading">Temporary generated result</h4>
-      <p className="generation-note">This result is temporary and is not saved in Milestone 5B.</p>
+      <h4 id="generation-result-heading">Saved generated version</h4>
+      <p className="generation-note">This generated component version was saved locally.</p>
       <dl className="preview-metadata">
         <MetadataItem label="Component name" value={response.componentName} />
         <MetadataItem label="Framework" value={response.framework} />
         <MetadataItem label="Styling" value={response.styling} />
+        <MetadataItem label="Created time" value={entry.createdAt} />
         <MetadataItem label="Summary" value={response.summary} multiline />
         <MetadataItem label="Approximation notes" value={response.approximationNotes || "No notes"} multiline />
       </dl>
@@ -352,11 +413,13 @@ function GeneratedResult({
 function GenerationFailure({
   message,
   review,
+  retryLabel = "Retry after review",
   onClose,
   onRetry
 }: {
   message: string;
   review?: GenerationReviewModel;
+  retryLabel?: string;
   onClose: () => void;
   onRetry: () => void;
 }) {
@@ -366,7 +429,7 @@ function GenerationFailure({
       <div className="generation-actions">
         {review ? (
           <button className="secondary-action compact-action" type="button" onClick={onRetry}>
-            Retry after review
+            {retryLabel}
           </button>
         ) : null}
         <button className="secondary-action compact-action" type="button" onClick={onClose}>

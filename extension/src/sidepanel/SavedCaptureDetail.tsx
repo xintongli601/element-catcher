@@ -8,6 +8,8 @@ import {
   type LibraryMetadataInput
 } from "../library/library-metadata";
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
+import { listGeneratedComponentVersionsBySourceCaptureId } from "../storage/indexed-db";
+import type { GeneratedComponentVersionEntryV1 } from "../shared/generated-version-contract";
 import { boundText, getCaptureDisplayTitle, normalizedOptionalText } from "./display-format";
 import { CapturePreview } from "./CapturePreview";
 import { GenerationWorkflow } from "./GenerationWorkflow";
@@ -108,6 +110,7 @@ function SavedCaptureDetailContent({
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<LibraryMetadataField, string>>>({});
   const [saveState, setSaveState] = useState<MetadataSaveState>({ status: "idle" });
   const [deleteState, setDeleteState] = useState<DeleteState>({ status: "idle" });
+  const [versionsRefreshKey, setVersionsRefreshKey] = useState(0);
   const saveInFlightRef = useRef(false);
   const deleteInFlightRef = useRef(false);
   const deleteButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -292,10 +295,77 @@ function SavedCaptureDetailContent({
           />
           <GenerationWorkflow
             savedCapture={savedCapture}
+            onGeneratedVersionSaved={() => setVersionsRefreshKey((current) => current + 1)}
           />
+          <GeneratedVersionsSection sourceCaptureId={savedCapture.record.id} refreshKey={versionsRefreshKey} />
           <DeleteCapturePanel onDelete={startDeletion} deleteButtonRef={deleteButtonRef} />
         </>
       )}
+    </section>
+  );
+}
+
+function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptureId: string; refreshKey: number }) {
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "loaded"; versions: GeneratedComponentVersionEntryV1[] }
+    | { status: "failed"; message: string }
+  >({ status: "loading" });
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+    listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId)
+      .then((versions) => {
+        if (!cancelled) {
+          setState({ status: "loaded", versions });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setState({ status: "failed", message: getSafePersistenceMessage(error) });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceCaptureId, refreshKey]);
+
+  return (
+    <section className="generated-versions" aria-labelledby="generated-versions-heading">
+      <h3 id="generated-versions-heading">Generated versions</h3>
+      {state.status === "loading" ? <p className="empty-note">Loading generated versions...</p> : null}
+      {state.status === "failed" ? (
+        <p className="save-state save-state-failed" role="alert">
+          Could not load generated versions. {state.message}
+        </p>
+      ) : null}
+      {state.status === "loaded" ? (
+        <>
+          <p className="empty-note">{state.versions.length} generated version{state.versions.length === 1 ? "" : "s"} saved locally.</p>
+          {state.versions.length === 0 ? <p className="empty-note">No generated versions saved yet.</p> : null}
+          {state.versions.map((entry) => {
+            const expanded = expandedId === entry.id;
+            return (
+              <article className="generated-version-item" key={entry.id}>
+                <button className="secondary-action compact-action" type="button" onClick={() => setExpandedId(expanded ? null : entry.id)}>
+                  {entry.value.componentName} - {entry.createdAt}
+                </button>
+                {expanded ? (
+                  <div className="generated-version-details">
+                    <dl className="preview-metadata">
+                      <MetadataItem label="Summary" value={entry.value.summary} multiline />
+                      <MetadataItem label="Approximation notes" value={entry.value.approximationNotes || "No notes"} multiline />
+                    </dl>
+                    <pre className="generated-code"><code>{entry.value.code}</code></pre>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
+        </>
+      ) : null}
     </section>
   );
 }

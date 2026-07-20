@@ -1,11 +1,19 @@
 import type { JsonObject, JsonValue, SerializableRect } from "../shared/capture-schema";
+import {
+  GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  generatedComponentVersionEntriesEqual,
+  validateGeneratedComponentVersionEntryV1,
+  type GeneratedComponentVersionEntryV1
+} from "../shared/generated-version-contract";
 import { assertJsonCompatible } from "../shared/json";
 import { PersistenceError, toPersistenceError } from "./persistence-errors";
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
-export const ELEMENT_CATCHER_DATABASE_VERSION = 1;
+export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
+export { GENERATED_COMPONENT_VERSION_STORE_NAME };
 
 export type StoredScreenshotAsset = {
   storageKey: string;
@@ -299,13 +307,17 @@ export async function deleteSavedCaptureBundle({
   await withDatabase(
     (database) =>
       new Promise<void>((resolve, reject) => {
-        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME], "readwrite");
+        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
         const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
         const assetStore = transaction.objectStore(SCREENSHOT_ASSET_STORE_NAME);
+        const generatedStore = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+        const generatedIndex = generatedStore.index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
         const recordRequest = recordStore.get(expectedRecord.id);
         const assetRequest = assetStore.get(expectedAsset.storageKey);
+        const versionsRequest = generatedIndex.getAllKeys(expectedRecord.id);
         let currentRecord: StoredRecordEntry | undefined;
         let currentAsset: StoredScreenshotAsset | undefined;
+        let generatedVersionKeys: IDBValidKey[] = [];
         let completedReads = 0;
         let requestError: DOMException | null = null;
         let settled = false;
@@ -322,7 +334,7 @@ export async function deleteSavedCaptureBundle({
 
         const maybeDelete = () => {
           completedReads += 1;
-          if (completedReads !== 2) {
+          if (completedReads !== 3) {
             return;
           }
 
@@ -338,8 +350,15 @@ export async function deleteSavedCaptureBundle({
             return;
           }
 
-          recordStore.delete(expectedRecord.id);
-          assetStore.delete(expectedAsset.storageKey);
+          try {
+            for (const key of generatedVersionKeys) {
+              generatedStore.delete(key);
+            }
+            recordStore.delete(expectedRecord.id);
+            assetStore.delete(expectedAsset.storageKey);
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "transaction"));
+          }
         };
 
         recordRequest.onsuccess = () => {
@@ -350,11 +369,18 @@ export async function deleteSavedCaptureBundle({
           currentAsset = assetRequest.result as StoredScreenshotAsset | undefined;
           maybeDelete();
         };
+        versionsRequest.onsuccess = () => {
+          generatedVersionKeys = versionsRequest.result;
+          maybeDelete();
+        };
         recordRequest.onerror = () => {
           requestError = recordRequest.error;
         };
         assetRequest.onerror = () => {
           requestError = assetRequest.error;
+        };
+        versionsRequest.onerror = () => {
+          requestError = versionsRequest.error;
         };
         transaction.onerror = (event) => {
           const target = event.target;
@@ -377,6 +403,251 @@ export async function deleteSavedCaptureBundle({
   );
 }
 
+export async function addGeneratedComponentVersion({
+  entry,
+  expectedSourceSavedAt,
+  expectedReviewFingerprint,
+  expectedSourceRecordValue
+}: {
+  entry: GeneratedComponentVersionEntryV1;
+  expectedSourceSavedAt: string;
+  expectedReviewFingerprint: string;
+  expectedSourceRecordValue: JsonObject;
+}) {
+  validateGeneratedComponentVersionEntryV1(entry);
+  assertJsonCompatible(expectedSourceRecordValue);
+  if (entry.sourceCaptureSavedAt !== expectedSourceSavedAt || entry.sourceReviewFingerprint !== expectedReviewFingerprint) {
+    throw new PersistenceError("validation", "Generated version source linkage did not match.");
+  }
+
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedComponentVersionEntryV1>((resolve, reject) => {
+        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
+        const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const assetStore = transaction.objectStore(SCREENSHOT_ASSET_STORE_NAME);
+        const versionStore = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+        const sourceRequest = recordStore.get(entry.sourceCaptureId);
+        let settled = false;
+        let confirmedEntry: GeneratedComponentVersionEntryV1 | undefined;
+        let requestError: DOMException | null = null;
+
+        const confirmAfterReadBack = (confirmed: GeneratedComponentVersionEntryV1) => {
+          confirmedEntry = confirmed;
+        };
+
+        const failAndAbort = (error: PersistenceError) => {
+          settled = true;
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may already be inactive after a request error.
+          }
+          reject(error);
+        };
+
+        sourceRequest.onsuccess = () => {
+          const source = sourceRequest.result as StoredRecordEntry | undefined;
+          try {
+            if (!source) {
+              throw new PersistenceError("not-found", "Generated version source capture was not found.");
+            }
+            validateRecordEntry(source);
+            if (source.id !== entry.sourceCaptureId || source.savedAt !== expectedSourceSavedAt) {
+              throw new PersistenceError("readback", "Generated version source capture changed before persistence.");
+            }
+            if (!jsonValuesEqual(source.value, expectedSourceRecordValue)) {
+              throw new PersistenceError("readback", "Generated version source content changed before persistence.");
+            }
+            const screenshotKey = getScreenshotStorageKeyFromRecordValue(source.value);
+            if (!screenshotKey) {
+              throw new PersistenceError("reference-mismatch", "Generated version source screenshot reference was invalid.");
+            }
+            const assetRequest = assetStore.get(screenshotKey);
+            assetRequest.onsuccess = () => {
+              try {
+                validateScreenshotAsset(assetRequest.result as StoredScreenshotAsset | undefined);
+              } catch (error) {
+                failAndAbort(toPersistenceError(error, "not-found"));
+                return;
+              }
+              const addRequest = versionStore.add(entry);
+              addRequest.onsuccess = () => {
+                const readbackRequest = versionStore.get(entry.id);
+                readbackRequest.onsuccess = () => {
+                  try {
+                    const readback = readbackRequest.result as GeneratedComponentVersionEntryV1 | undefined;
+                    validateGeneratedComponentVersionEntryV1(readback);
+                    if (!generatedComponentVersionEntriesEqual(readback, entry)) {
+                      throw new PersistenceError("readback", "Generated version read-back did not match.");
+                    }
+                    confirmAfterReadBack(readback);
+                  } catch (error) {
+                    failAndAbort(toPersistenceError(error, "readback"));
+                  }
+                };
+                readbackRequest.onerror = () => {
+                  requestError = readbackRequest.error;
+                };
+              };
+              addRequest.onerror = (event) => {
+                event.preventDefault();
+                const existingRequest = versionStore.get(entry.id);
+                existingRequest.onsuccess = () => {
+                  try {
+                    const existing = existingRequest.result as GeneratedComponentVersionEntryV1 | undefined;
+                    validateGeneratedComponentVersionEntryV1(existing);
+                    if (!generatedComponentVersionEntriesEqual(existing, entry)) {
+                      throw new PersistenceError("persistence-conflict", "Generated version id conflicted.");
+                    }
+                    confirmAfterReadBack(existing);
+                  } catch (error) {
+                    failAndAbort(toPersistenceError(error, "persistence-conflict"));
+                  }
+                };
+                existingRequest.onerror = () => {
+                  requestError = existingRequest.error;
+                };
+              };
+            };
+            assetRequest.onerror = () => {
+              requestError = assetRequest.error;
+            };
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "persistence-failed"));
+          }
+        };
+        sourceRequest.onerror = () => {
+          requestError = sourceRequest.error;
+        };
+        transaction.onerror = (event) => {
+          const target = event.target;
+          if (!requestError && target instanceof IDBRequest && target.error) {
+            requestError = target.error;
+          }
+        };
+        transaction.onabort = () => {
+          if (!settled) {
+            reject(toPersistenceError(transaction.error ?? requestError, "persistence-failed"));
+          }
+        };
+        transaction.oncomplete = () => {
+          if (settled) {
+            return;
+          }
+          if (!confirmedEntry) {
+            reject(new PersistenceError("readback", "Generated version persistence completed without a validated read-back."));
+            return;
+          }
+          settled = true;
+          resolve(confirmedEntry);
+        };
+      })
+  );
+}
+
+export async function getGeneratedComponentVersionById(id: string) {
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedComponentVersionEntryV1 | undefined>((resolve, reject) => {
+        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
+        const versionStore = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+        const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const request = versionStore.get(id);
+        let result: GeneratedComponentVersionEntryV1 | undefined;
+        let requestError: DOMException | null = null;
+
+        request.onsuccess = () => {
+          try {
+            const entry = request.result as GeneratedComponentVersionEntryV1 | undefined;
+            if (!entry) {
+              result = undefined;
+              return;
+            }
+            validateGeneratedComponentVersionEntryV1(entry);
+            const sourceRequest = recordStore.get(entry.sourceCaptureId);
+            sourceRequest.onsuccess = () => {
+              if (!sourceRequest.result) {
+                versionStore.delete(entry.id);
+                result = undefined;
+              } else {
+                result = entry;
+              }
+            };
+            sourceRequest.onerror = () => {
+              requestError = sourceRequest.error;
+            };
+          } catch {
+            result = undefined;
+          }
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(result);
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+      })
+  );
+}
+
+export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId: string) {
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedComponentVersionEntryV1[]>((resolve, reject) => {
+        const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
+        const index = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME).index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
+        const request = index.getAll(sourceCaptureId);
+        let entries: GeneratedComponentVersionEntryV1[] = [];
+        let requestError: DOMException | null = null;
+
+        request.onsuccess = () => {
+          entries = (request.result as unknown[]).flatMap((candidate) => {
+            try {
+              validateGeneratedComponentVersionEntryV1(candidate);
+              return candidate.sourceCaptureId === sourceCaptureId ? [candidate] : [];
+            } catch {
+              return [];
+            }
+          });
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(entries.sort(compareGeneratedVersionsNewestFirst));
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+      })
+  );
+}
+
+export async function deleteGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId: string) {
+  await withDatabase(
+    (database) =>
+      new Promise<void>((resolve, reject) => {
+        const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readwrite");
+        const store = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+        const request = store.index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME).getAllKeys(sourceCaptureId);
+        let requestError: DOMException | null = null;
+
+        request.onsuccess = () => {
+          for (const key of request.result) {
+            store.delete(key);
+          }
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.onerror = (event) => {
+          const target = event.target;
+          if (!requestError && target instanceof IDBRequest && target.error) {
+            requestError = target.error;
+          }
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "cleanup"));
+      })
+  );
+}
+
 export async function getPersistenceDatabaseInfo() {
   return withDatabase((database) => ({
     name: database.name,
@@ -389,7 +660,7 @@ function openDatabase() {
   return new Promise<IDBDatabase>((resolve, reject) => {
     const request = indexedDB.open(ELEMENT_CATCHER_DATABASE_NAME, ELEMENT_CATCHER_DATABASE_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       try {
         const database = request.result;
 
@@ -399,6 +670,11 @@ function openDatabase() {
 
         if (!database.objectStoreNames.contains(CAPTURE_RECORD_STORE_NAME)) {
           database.createObjectStore(CAPTURE_RECORD_STORE_NAME, { keyPath: "id" });
+        }
+
+        if (event.oldVersion < 2 && !database.objectStoreNames.contains(GENERATED_COMPONENT_VERSION_STORE_NAME)) {
+          const store = database.createObjectStore(GENERATED_COMPONENT_VERSION_STORE_NAME, { keyPath: "id" });
+          store.createIndex(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME, "sourceCaptureId", { unique: false });
         }
       } catch (error) {
         reject(new PersistenceError("database-upgrade", undefined, error));
@@ -448,7 +724,10 @@ function requestResult<T>(request: IDBRequest<T>) {
   });
 }
 
-function validateScreenshotAsset(asset: StoredScreenshotAsset) {
+function validateScreenshotAsset(asset: StoredScreenshotAsset | undefined) {
+  if (!asset) {
+    throw new PersistenceError("not-found", "Saved screenshot asset was not found.");
+  }
   if (!asset.storageKey || !asset.storageKey.startsWith("screenshots/") || !asset.storageKey.endsWith(".png")) {
     throw new PersistenceError("encoding", "Invalid screenshot storage key.");
   }
@@ -466,6 +745,13 @@ function validateScreenshotAsset(asset: StoredScreenshotAsset) {
   ) {
     throw new PersistenceError("encoding", "Invalid screenshot asset metadata.");
   }
+}
+
+function compareGeneratedVersionsNewestFirst(left: GeneratedComponentVersionEntryV1, right: GeneratedComponentVersionEntryV1) {
+  if (left.createdAt !== right.createdAt) {
+    return right.createdAt.localeCompare(left.createdAt);
+  }
+  return left.id.localeCompare(right.id);
 }
 
 function validateRecordEntry(record: StoredRecordEntry) {

@@ -41,9 +41,10 @@ export type SeededCapture = {
 };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
-export const ELEMENT_CATCHER_DATABASE_VERSION = 1;
+export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
+export const GENERATED_COMPONENT_VERSION_STORE_NAME = "generatedComponentVersions";
 
 export const DEFAULT_CAPTURE_FIXTURES: CaptureFixtureSpec[] = [
   {
@@ -112,6 +113,10 @@ export async function readPersistenceCounts(page: Page) {
   return runDatabaseOperation<Record<string, never>, PersistenceCounts>(page, "counts", {});
 }
 
+export async function readGeneratedStoreInfo(page: Page) {
+  return runDatabaseOperation<Record<string, never>, GeneratedStoreInfo>(page, "generatedStoreInfo", {});
+}
+
 export async function readRecordWrapper(page: Page, recordId: string) {
   return runDatabaseOperation<{ recordId: string }, unknown>(page, "readRecordWrapper", { recordId });
 }
@@ -128,6 +133,14 @@ export async function readScreenshotAssetSnapshot(page: Page, storageKey: string
 
 export async function readAllScreenshotAssetSnapshots(page: Page) {
   return runDatabaseOperation<Record<string, never>, ScreenshotAssetSnapshot[]>(page, "readAllScreenshotAssetSnapshots", {});
+}
+
+export async function readGeneratedVersions(page: Page, sourceCaptureId?: string) {
+  return runDatabaseOperation<{ sourceCaptureId?: string }, unknown[]>(page, "readGeneratedVersions", { sourceCaptureId });
+}
+
+export async function putGeneratedVersion(page: Page, entry: unknown) {
+  await runDatabaseOperation(page, "putGeneratedVersion", { entry });
 }
 
 export async function deleteRecordWrapper(page: Page, recordId: string) {
@@ -181,6 +194,22 @@ export async function createBrowserPngDataUrl(
 
 export async function replaceWrapperWithIdMismatch(page: Page, seededCapture: SeededCapture) {
   await runDatabaseOperation(page, "replaceWrapperWithIdMismatch", { seededCapture });
+}
+
+export async function resetAndSeedVersionOneDatabase(page: Page, specs = DEFAULT_CAPTURE_FIXTURES.slice(0, 2)) {
+  const records = specs.map(createCaptureRecordFixture);
+  for (const record of records) {
+    validateCaptureRecordV1(record);
+  }
+
+  return runDatabaseOperation<SeedArg, SeededCapture[]>(page, "seedVersionOne", {
+    records: records.map((record) => serializeCaptureRecordV1(record)),
+    specs
+  });
+}
+
+export async function readVersionOneSnapshots(page: Page) {
+  return runDatabaseOperation<Record<string, never>, VersionOneSnapshots>(page, "readVersionOneSnapshots", {});
 }
 
 export function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
@@ -344,6 +373,7 @@ type PersistenceCounts = {
   stores: string[];
   captureRecords: number;
   screenshotAssets: number;
+  generatedComponentVersions: number;
 };
 
 type ScreenshotAssetSnapshot = {
@@ -356,6 +386,18 @@ type ScreenshotAssetSnapshot = {
   digest: string;
 };
 
+type GeneratedStoreInfo = {
+  keyPath: string | string[] | null;
+  indexes: Array<{ name: string; keyPath: string | string[]; unique: boolean }>;
+};
+
+type VersionOneSnapshots = {
+  version: number;
+  stores: string[];
+  wrappers: unknown[];
+  assets: ScreenshotAssetSnapshot[];
+};
+
 async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string, arg: TArg) {
   return page.evaluate(
     async ({ operation, arg, constants }) => {
@@ -363,7 +405,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         databaseName,
         databaseVersion,
         captureRecordStoreName,
-        screenshotAssetStoreName
+        screenshotAssetStoreName,
+        generatedComponentVersionStoreName
       } = constants;
 
       const operations: Record<string, (value: unknown) => Promise<unknown>> = {
@@ -429,7 +472,29 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
               version: database.version,
               stores: Array.from(database.objectStoreNames).sort(),
               captureRecords: await countStore(database, captureRecordStoreName),
-              screenshotAssets: await countStore(database, screenshotAssetStoreName)
+              screenshotAssets: await countStore(database, screenshotAssetStoreName),
+              generatedComponentVersions: await countStore(database, generatedComponentVersionStoreName)
+            };
+          } finally {
+            database.close();
+          }
+        },
+        generatedStoreInfo: async () => {
+          const database = await openDatabase();
+
+          try {
+            const transaction = database.transaction(generatedComponentVersionStoreName, "readonly");
+            const store = transaction.objectStore(generatedComponentVersionStoreName);
+            return {
+              keyPath: store.keyPath,
+              indexes: Array.from(store.indexNames).map((name) => {
+                const index = store.index(name);
+                return {
+                  name,
+                  keyPath: index.keyPath,
+                  unique: index.unique
+                };
+              })
             };
           } finally {
             database.close();
@@ -514,6 +579,36 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
             }
 
             return snapshots.sort((left, right) => left.storageKey.localeCompare(right.storageKey));
+          } finally {
+            database.close();
+          }
+        },
+        readGeneratedVersions: async (value) => {
+          const { sourceCaptureId } = value as { sourceCaptureId?: string };
+          const database = await openDatabase();
+
+          try {
+            if (!sourceCaptureId) {
+              return await getAllValues(database, generatedComponentVersionStoreName);
+            }
+            return await requestResult(
+              database
+                .transaction(generatedComponentVersionStoreName, "readonly")
+                .objectStore(generatedComponentVersionStoreName)
+                .index("sourceCaptureId")
+                .getAll(sourceCaptureId)
+            );
+          } finally {
+            database.close();
+          }
+        },
+        putGeneratedVersion: async (value) => {
+          const { entry } = value as { entry: unknown };
+          const database = await openDatabase();
+
+          try {
+            await putValue(database, generatedComponentVersionStoreName, entry);
+            return undefined;
           } finally {
             database.close();
           }
@@ -706,6 +801,100 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
           } finally {
             database.close();
           }
+        },
+        seedVersionOne: async (value) => {
+          const { records, specs } = value as SeedArg;
+          await new Promise<void>((resolve, reject) => {
+            const deleteRequest = indexedDB.deleteDatabase(databaseName);
+            deleteRequest.onerror = () => reject(deleteRequest.error);
+            deleteRequest.onsuccess = () => resolve();
+            deleteRequest.onblocked = () => reject(new Error("Version one database reset was blocked."));
+          });
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(databaseName, 1);
+            request.onupgradeneeded = () => {
+              const database = request.result;
+              database.createObjectStore(screenshotAssetStoreName, { keyPath: "storageKey" });
+              database.createObjectStore(captureRecordStoreName, { keyPath: "id" });
+            };
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+
+          try {
+            const results: SeededCapture[] = [];
+            for (let index = 0; index < records.length; index += 1) {
+              const spec = specs[index];
+              const record = records[index] as CaptureRecord;
+              const blob = await createPngBlob(spec.width, spec.height, spec.color);
+              record.assets.screenshot.byteLength = blob.size;
+              await putValue(database, screenshotAssetStoreName, {
+                storageKey: record.assets.screenshot.storageKey,
+                blob,
+                mediaType: "image/png",
+                width: spec.width,
+                height: spec.height,
+                byteLength: blob.size,
+                crop: record.assets.screenshot.crop
+              });
+              await putValue(database, captureRecordStoreName, {
+                id: record.id,
+                value: JSON.parse(JSON.stringify(record)) as JsonObject,
+                savedAt: spec.savedAt
+              });
+              results.push({
+                record,
+                savedAt: spec.savedAt,
+                storageKey: record.assets.screenshot.storageKey,
+                title: getFixtureDisplayTitle(record),
+                sourceDisplay: getFixtureSourceDisplay(record.source.url),
+                color: spec.color
+              });
+            }
+
+            return results;
+          } finally {
+            database.close();
+          }
+        },
+        readVersionOneSnapshots: async () => {
+          const database = await new Promise<IDBDatabase>((resolve, reject) => {
+            const request = indexedDB.open(databaseName, 1);
+            request.onerror = () => reject(request.error);
+            request.onsuccess = () => resolve(request.result);
+          });
+
+          try {
+            const assets = await getAllValues(database, screenshotAssetStoreName) as Array<{
+              storageKey: string;
+              blob: Blob;
+              mediaType: string;
+              width: number;
+              height: number;
+              byteLength: number;
+              crop: SerializableRect;
+            }>;
+            const snapshots = [];
+            for (const asset of assets) {
+              snapshots.push({
+                storageKey: asset.storageKey,
+                mediaType: asset.mediaType,
+                width: asset.width,
+                height: asset.height,
+                byteLength: asset.byteLength,
+                crop: asset.crop,
+                digest: await digestBlob(asset.blob)
+              });
+            }
+            return {
+              version: database.version,
+              stores: Array.from(database.objectStoreNames).sort(),
+              wrappers: await getAllValues(database, captureRecordStoreName),
+              assets: snapshots.sort((left, right) => left.storageKey.localeCompare(right.storageKey))
+            };
+          } finally {
+            database.close();
+          }
         }
       };
 
@@ -721,6 +910,10 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
 
             if (!database.objectStoreNames.contains(captureRecordStoreName)) {
               database.createObjectStore(captureRecordStoreName, { keyPath: "id" });
+            }
+            if (!database.objectStoreNames.contains(generatedComponentVersionStoreName)) {
+              const store = database.createObjectStore(generatedComponentVersionStoreName, { keyPath: "id" });
+              store.createIndex("sourceCaptureId", "sourceCaptureId", { unique: false });
             }
           };
           request.onerror = () => reject(request.error);
@@ -744,9 +937,10 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
       }
 
       async function clearStores(database: IDBDatabase) {
-        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName], "readwrite");
+        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName, generatedComponentVersionStoreName], "readwrite");
         transaction.objectStore(captureRecordStoreName).clear();
         transaction.objectStore(screenshotAssetStoreName).clear();
+        transaction.objectStore(generatedComponentVersionStoreName).clear();
         await transactionComplete(transaction);
       }
 
@@ -890,7 +1084,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         databaseName: ELEMENT_CATCHER_DATABASE_NAME,
         databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION,
         captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
-        screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME
+        screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME,
+        generatedComponentVersionStoreName: GENERATED_COMPONENT_VERSION_STORE_NAME
       }
     }
   );

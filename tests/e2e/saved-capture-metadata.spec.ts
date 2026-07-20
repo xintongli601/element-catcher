@@ -1,6 +1,7 @@
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
   ELEMENT_CATCHER_DATABASE_VERSION,
   SCREENSHOT_ASSET_STORE_NAME,
   deleteRecordWrapper,
@@ -384,9 +385,10 @@ test.describe("Milestone 4C saved capture metadata automated validation", () => 
 
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
       captureRecords: seeded.length,
-      screenshotAssets: seeded.length
+      screenshotAssets: seeded.length,
+      generatedComponentVersions: 0
     });
     await openCapture(sidePanelPage, seeded[1].title);
     await expect(sidePanelPage.getByRole("heading", { name: seeded[1].title })).toBeVisible();

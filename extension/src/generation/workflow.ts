@@ -1,7 +1,13 @@
 import { validateCaptureRecordV1 } from "../capture/capture-record-v1";
+import {
+  createGeneratedComponentVersionId,
+  createGeneratedComponentVersionTimestamp,
+  type GeneratedComponentVersionEntryV1
+} from "../shared/generated-version-contract";
 import { loadSavedCaptureById, type SavedCaptureReadModel } from "../storage/capture-save";
 import { PersistenceError } from "../storage/persistence-errors";
 import { digestBlob } from "../storage/screenshot-asset";
+import { addGeneratedComponentVersion } from "../storage/indexed-db";
 import { GenerationError, toGenerationError } from "./errors";
 import { buildGenerationRequestWithoutDataUrl } from "./projection";
 import type {
@@ -86,7 +92,7 @@ export async function generateFromReview({
   localContext: ComponentGenerationLocalContextV1;
   transport: GenerationTransport;
   signal: AbortSignal;
-}): Promise<ComponentGenerationResponseV1> {
+}): Promise<GeneratedComponentVersionEntryV1> {
   let dataUrl: string | undefined;
 
   try {
@@ -113,25 +119,21 @@ export async function generateFromReview({
     const request: ComponentGenerationRequestV1 = await createFullRequest(requestWithoutDataUrl, dataUrl);
     const response = await transport.generate(request, signal);
     validateGenerationResponse(response);
+    const pendingEntry: GeneratedComponentVersionEntryV1 = {
+      id: createGeneratedComponentVersionId(),
+      sourceCaptureId: localContext.sourceCaptureId,
+      sourceCaptureSavedAt: localContext.sourceCaptureSavedAt,
+      sourceReviewFingerprint: localContext.reviewFingerprint,
+      createdAt: createGeneratedComponentVersionTimestamp(),
+      value: response
+    };
 
-    const afterResponse = await loadSavedCaptureById(localContext.sourceCaptureId);
-    const afterScreenshot = await verifyScreenshotAsset(afterResponse.asset);
-    const afterRequest = buildGenerationRequestWithoutDataUrl({
-      record: afterResponse.record,
-      screenshot: afterScreenshot
-    });
-    const afterFingerprint = await computeReviewFingerprint({
-      requestWithoutDataUrl: afterRequest,
-      screenshotDigest: afterScreenshot.digest,
-      screenshotByteLength: afterScreenshot.byteLength,
-      screenshotWidth: afterScreenshot.width,
-      screenshotHeight: afterScreenshot.height
-    });
-    if (afterFingerprint !== localContext.reviewFingerprint) {
-      throw new GenerationError("review_fingerprint_mismatch");
+    try {
+      return await persistGeneratedVersionFromReview(localContext, pendingEntry);
+    } catch (error) {
+      const mapped = mapGenerationPreparationError(error, "persistence_failed");
+      throw new GenerationError(mapped.code, undefined, { pendingEntry, originalError: error });
     }
-
-    return response;
   } catch (error) {
     throw mapGenerationPreparationError(error, "malformed_response");
   } finally {
@@ -139,8 +141,48 @@ export async function generateFromReview({
   }
 }
 
+export async function persistGeneratedVersionFromReview(
+  localContext: ComponentGenerationLocalContextV1,
+  pendingEntry: GeneratedComponentVersionEntryV1
+) {
+  try {
+    const latest = await loadSavedCaptureById(localContext.sourceCaptureId);
+    validateCaptureRecordV1(latest.record);
+    const screenshot = await verifyScreenshotAsset(latest.asset);
+    const requestWithoutDataUrl = buildGenerationRequestWithoutDataUrl({
+      record: latest.record,
+      screenshot
+    });
+    validateRequestWithoutDataUrl(requestWithoutDataUrl);
+    const fingerprint = await computeReviewFingerprint({
+      requestWithoutDataUrl,
+      screenshotDigest: screenshot.digest,
+      screenshotByteLength: screenshot.byteLength,
+      screenshotWidth: screenshot.width,
+      screenshotHeight: screenshot.height
+    });
+    if (fingerprint !== localContext.reviewFingerprint) {
+      throw new GenerationError("review_fingerprint_mismatch");
+    }
+    return await addGeneratedComponentVersion({
+      entry: pendingEntry,
+      expectedSourceSavedAt: localContext.sourceCaptureSavedAt,
+      expectedReviewFingerprint: localContext.reviewFingerprint,
+      expectedSourceRecordValue: latest.record
+    });
+  } catch (error) {
+    throw mapGenerationPreparationError(error, "persistence_failed");
+  }
+}
+
 function mapGenerationPreparationError(error: unknown, fallback: Parameters<typeof toGenerationError>[1] = "request_validation_failed") {
   if (error instanceof PersistenceError) {
+    if (error.code === "persistence-conflict" || error.code === "constraint") {
+      return new GenerationError("persistence_conflict", undefined, error);
+    }
+    if (error.code === "readback") {
+      return new GenerationError("read_back_failed", undefined, error);
+    }
     if (error.code === "not-found") {
       return new GenerationError(error.message.toLowerCase().includes("screenshot") ? "screenshot_missing" : "capture_missing", undefined, error);
     }

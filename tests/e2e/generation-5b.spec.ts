@@ -1,6 +1,7 @@
 import { test, expect, openSidePanelPage, getObjectUrlSnapshot } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
   DEFAULT_CAPTURE_FIXTURES,
   ELEMENT_CATCHER_DATABASE_VERSION,
   SCREENSHOT_ASSET_STORE_NAME,
@@ -401,7 +402,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     }
   });
 
-  test("UI review requires consent, sends one mock request, displays plain temporary result and preserves persistence", async ({ context, extensionId }) => {
+  test("UI review requires consent, sends one mock request, displays plain saved result and preserves persistence", async ({ context, extensionId }) => {
     await installMockHarness(context, "success");
     await installBase64Counter(context);
     const page = await openSidePanelPage(context, extensionId);
@@ -419,9 +420,8 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     const beforeCounts = await readPersistenceCounts(page);
     const beforeLocalStorage = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     const beforeSessionStorage = await page.evaluate(() => JSON.stringify({ ...sessionStorage }));
-    expect(beforeCounts.version).toBe(1);
-    expect([...beforeCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
-    expect(beforeCounts.stores).not.toContain("generatedComponentVersions");
+    expect(beforeCounts.version).toBe(ELEMENT_CATCHER_DATABASE_VERSION);
+    expect([...beforeCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
 
     await openCapture(page, target.title);
     await page.getByRole("button", { name: "Generate component" }).click();
@@ -457,10 +457,14 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await expect(submit).toBeDisabled();
     await page.getByLabel(/Data is leaving your device/).check();
     await expect(submit).toBeEnabled();
+    const submitHandle = await submit.elementHandle();
+    expect(submitHandle).not.toBeNull();
     await Promise.all([
-      page.getByRole("heading", { name: "Temporary generated result" }).waitFor(),
-      submit.click(),
-      submit.click()
+      page.getByRole("heading", { name: "Saved generated version" }).waitFor(),
+      submitHandle!.evaluate((button) => {
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+        button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      })
     ]);
     expect(await getMockCallCount(page)).toBe(1);
     expect(await getBase64Count(page)).toBe(1);
@@ -472,13 +476,15 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
 
     await expect(page.locator(".generation-result .preview-metadata dd", { hasText: "GeneratedFixture" })).toBeVisible();
     await expect(page.locator("pre.generated-code code")).toContainText("export function GeneratedFixture");
-    await expect(page.getByText("This result is temporary and is not saved in Milestone 5B.")).toBeVisible();
+    await expect(page.getByText("This generated component version was saved locally.")).toBeVisible();
     await expect(page.locator("iframe")).toHaveCount(0);
     await expect(page.locator("[dangerouslySetInnerHTML]")).toHaveCount(0);
     const afterCounts = await readPersistenceCounts(page);
-    expect(afterCounts).toEqual(beforeCounts);
-    expect([...afterCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
-    expect(afterCounts.stores).not.toContain("generatedComponentVersions");
+    expect(afterCounts).toEqual({
+      ...beforeCounts,
+      generatedComponentVersions: beforeCounts.generatedComponentVersions + 1
+    });
+    expect([...afterCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
     const afterWrapper = await readRecordWrapper(page, target.record.id) as typeof beforeWrapper;
     expect(afterWrapper).toEqual(beforeWrapper);
     expect((afterWrapper as { savedAt: string }).savedAt).toBe((beforeWrapper as { savedAt: string }).savedAt);
@@ -573,7 +579,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
 
     await page.getByLabel(/Data is leaving your device/).check();
     await page.getByRole("button", { name: "Send to AI and generate" }).click();
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
     expect(await getMockCallCount(page)).toBe(1);
     const requestDigest = await getFirstMockScreenshotDigest(page);
     expect(requestDigest).toBe(assetB!.digest);
@@ -598,7 +604,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await page.getByRole("button", { name: "Back to Library" }).click();
     await expect(page.getByRole("heading", { name: "Capture Library" })).toBeVisible();
     await page.waitForTimeout(1_700);
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toHaveCount(0);
     const harness = await getHarnessSnapshot(page);
     expect(harness.calls).toHaveLength(1);
     expect(harness.cancellations).toBeGreaterThanOrEqual(1);
@@ -628,7 +634,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     expect(await getMockCallCount(page)).toBe(0);
     await page.getByLabel(/Data is leaving your device/).check();
     await page.getByRole("button", { name: "Send to AI and generate" }).click();
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
     expect(await getMockCallCount(page)).toBe(1);
   });
 
@@ -684,7 +690,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await expect(page.getByText("scenario: rate-limit; provider-rejected; timeout").first()).toBeVisible();
     await page.getByLabel(/Data is leaving your device/).check();
     await page.getByRole("button", { name: "Send to AI and generate" }).click();
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
     expect(await getMockCallCount(page)).toBe(1);
   });
 
@@ -697,11 +703,11 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await page.getByRole("button", { name: "Generate component" }).click();
     await page.getByLabel(/Data is leaving your device/).check();
     await page.getByRole("button", { name: "Send to AI and generate" }).click();
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
 
     await page.getByRole("button", { name: "Back to Library" }).click();
     await openCapture(page, seeded[1].title);
-    await expect(page.getByRole("heading", { name: "Temporary generated result" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Review data being sent" })).toHaveCount(0);
 
     await page.getByRole("button", { name: "Generate component" }).click();
@@ -709,7 +715,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await page.close();
     const reopened = await openSidePanelPage(context, extensionId);
     await expect(reopened.getByRole("heading", { name: "Review data being sent" })).toHaveCount(0);
-    await expect(reopened.getByRole("heading", { name: "Temporary generated result" })).toHaveCount(0);
+    await expect(reopened.getByRole("heading", { name: "Saved generated version" })).toHaveCount(0);
     await openCapture(reopened, seeded[1].title);
     await reopened.getByRole("button", { name: "Generate component" }).click();
     await expect(reopened.getByRole("heading", { name: "Review data being sent" })).toBeVisible();

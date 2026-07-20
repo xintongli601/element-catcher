@@ -11,6 +11,7 @@
     "start:backend": "node .backend-dist/backend/src/server.js",
     "test:backend": "npm run build:backend && node --test tests/backend/*.mjs",
     "test:e2e:5c": "VITE_ELEMENT_CATCHER_BACKEND_URL=http://127.0.0.1:8787 npm run build && node --test tests/backend/*.mjs && RUN_5C_LOOPBACK=1 playwright test tests/e2e/generation-5c-loopback.spec.ts",
+    "test:e2e:5d": "npm run build && playwright test tests/e2e/generation-5d-persistence.spec.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && PW_HEADED=1 playwright test --headed"

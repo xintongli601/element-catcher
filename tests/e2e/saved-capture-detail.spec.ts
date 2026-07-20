@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { test, expect, getObjectUrlSnapshot, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
   ELEMENT_CATCHER_DATABASE_VERSION,
   SCREENSHOT_ASSET_STORE_NAME,
   clearTestData,
@@ -29,9 +30,10 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     const counts = await readPersistenceCounts(sidePanelPage);
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
       captureRecords: seeded.length,
-      screenshotAssets: seeded.length
+      screenshotAssets: seeded.length,
+      generatedComponentVersions: 0
     });
   });
 
@@ -219,7 +221,8 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     await expectBlobThumbnails(reopened, seeded.length);
     expect(await readPersistenceCounts(reopened)).toMatchObject({
       captureRecords: seeded.length,
-      screenshotAssets: seeded.length
+      screenshotAssets: seeded.length,
+      generatedComponentVersions: 0
     });
 
     await openCapture(reopened, seeded[1].title);
@@ -297,7 +300,8 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
         );
         expect(await readPersistenceCounts(page)).toMatchObject({
           captureRecords: 0,
-          screenshotAssets: 0
+          screenshotAssets: 0,
+          generatedComponentVersions: 0
         });
         await localhostPage.close();
         return;
@@ -315,7 +319,8 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
 
       expect(await readPersistenceCounts(page)).toMatchObject({
         captureRecords: 1,
-        screenshotAssets: 1
+        screenshotAssets: 1,
+        generatedComponentVersions: 0
       });
       await localhostPage.close();
     } finally {
