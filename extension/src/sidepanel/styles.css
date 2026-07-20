@@ -485,6 +485,78 @@ h2 {
   font-size: 13px;
 }
 
+.library-query-panel {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid #e4e9f2;
+  padding-top: 12px;
+}
+
+.library-query-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.library-query-field {
+  display: grid;
+  gap: 5px;
+  color: #172033;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.library-query-field input,
+.library-query-field select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #bac4d5;
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+  font-weight: 500;
+}
+
+.library-query-field input:focus-visible,
+.library-query-field select:focus-visible {
+  outline: 3px solid #93c5fd;
+  outline-offset: 2px;
+}
+
+.library-active-summary {
+  display: grid;
+  gap: 4px;
+  border-radius: 6px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.library-active-summary p,
+.library-result-count {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #42506a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.library-result-count {
+  font-weight: 700;
+}
+
+.visually-muted {
+  color: #63728a;
+  font-weight: 500;
+}
+
+.library-no-results {
+  border: 1px dashed #bac4d5;
+  border-radius: 6px;
+  padding: 12px;
+  background: #f8fafc;
+}
+
 .capture-library-list {
   display: grid;
   gap: 10px;

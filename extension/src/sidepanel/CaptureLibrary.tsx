@@ -1,4 +1,14 @@
 import { useEffect, useState } from "react";
+import {
+  boundCaptureLibraryQuerySummaryText,
+  createCaptureLibraryFilterOptions,
+  createDefaultCaptureLibraryQuery,
+  filterSavedCaptureLibrary,
+  getUserVisibleComponentType,
+  hasActiveCaptureLibraryQuery,
+  normalizeCaptureLibrarySearchQuery,
+  type CaptureLibraryQueryState
+} from "../library/capture-library-query";
 import type { SavedCaptureReadModel } from "../storage/capture-save";
 import {
   boundText,
@@ -26,16 +36,27 @@ export type CaptureLibraryState =
 
 export function CaptureLibrary({
   libraryState,
+  queryState,
   statusMessage,
+  onQueryChange,
   onRetry,
   onOpenCapture
 }: {
   libraryState: CaptureLibraryState;
+  queryState: CaptureLibraryQueryState;
   statusMessage?: string | null;
+  onQueryChange: (queryState: CaptureLibraryQueryState) => void;
   onRetry: () => void;
   onOpenCapture: (recordId: string) => void;
 }) {
   const loadedCount = libraryState.status === "loaded" ? libraryState.savedCaptures.length : 0;
+  const filteredCaptures =
+    libraryState.status === "loaded" ? filterSavedCaptureLibrary(libraryState.savedCaptures, queryState) : [];
+  const hasActiveQuery = hasActiveCaptureLibraryQuery(queryState);
+  const filterOptions =
+    libraryState.status === "loaded"
+      ? createCaptureLibraryFilterOptions(libraryState.savedCaptures, queryState)
+      : { componentTypes: [], tags: [] };
 
   return (
     <section className="capture-library" aria-labelledby="capture-library-heading">
@@ -65,17 +86,122 @@ export function CaptureLibrary({
         </p>
       ) : null}
       {libraryState.status === "loaded" ? (
-        <ul className="capture-library-list" aria-label="Saved captures">
-          {libraryState.savedCaptures.map((savedCapture) => (
-            <CaptureLibraryItem
-              key={savedCapture.record.id}
-              savedCapture={savedCapture}
-              onOpenCapture={onOpenCapture}
-            />
-          ))}
-        </ul>
+        <>
+          <CaptureLibraryQueryControls
+            queryState={queryState}
+            options={filterOptions}
+            visibleCount={filteredCaptures.length}
+            totalCount={loadedCount}
+            hasActiveQuery={hasActiveQuery}
+            onQueryChange={onQueryChange}
+          />
+          {filteredCaptures.length ? (
+            <ul className="capture-library-list" aria-label="Saved captures">
+              {filteredCaptures.map((savedCapture) => (
+                <CaptureLibraryItem
+                  key={savedCapture.record.id}
+                  savedCapture={savedCapture}
+                  onOpenCapture={onOpenCapture}
+                />
+              ))}
+            </ul>
+          ) : (
+            <p className="empty-note library-no-results" role="status">
+              No captures match the current search and filters.
+            </p>
+          )}
+        </>
       ) : null}
     </section>
+  );
+}
+
+function CaptureLibraryQueryControls({
+  queryState,
+  options,
+  visibleCount,
+  totalCount,
+  hasActiveQuery,
+  onQueryChange
+}: {
+  queryState: CaptureLibraryQueryState;
+  options: ReturnType<typeof createCaptureLibraryFilterOptions>;
+  visibleCount: number;
+  totalCount: number;
+  hasActiveQuery: boolean;
+  onQueryChange: (queryState: CaptureLibraryQueryState) => void;
+}) {
+  const updateQuery = (nextQuery: Partial<CaptureLibraryQueryState>) => {
+    onQueryChange({
+      ...queryState,
+      ...nextQuery
+    });
+  };
+
+  const clearQuery = () => {
+    onQueryChange(createDefaultCaptureLibraryQuery());
+  };
+
+  return (
+    <div className="library-query-panel" aria-label="Capture Library search and filters">
+      <div className="library-query-grid">
+        <label className="library-query-field">
+          <span>Search captures</span>
+          <input
+            type="search"
+            value={queryState.searchQuery}
+            onChange={(event) => updateQuery({ searchQuery: event.target.value })}
+          />
+        </label>
+
+        <label className="library-query-field">
+          <span>Component type</span>
+          <select value={queryState.componentType} onChange={(event) => updateQuery({ componentType: event.target.value })}>
+            <option value="">All component types</option>
+            {options.componentTypes.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="library-query-field">
+          <span>Tag</span>
+          <select value={queryState.tag} onChange={(event) => updateQuery({ tag: event.target.value })}>
+            <option value="">All tags</option>
+            {options.tags.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <button className="secondary-action compact-action" type="button" onClick={clearQuery}>
+        Clear search and filters
+      </button>
+
+      {hasActiveQuery ? (
+        <div className="library-active-summary">
+          {normalizeCaptureLibrarySearchQuery(queryState.searchQuery) ? (
+            <p>Search: "{boundCaptureLibraryQuerySummaryText(queryState.searchQuery)}"</p>
+          ) : null}
+          {queryState.componentType ? (
+            <p>Component type: {boundCaptureLibraryQuerySummaryText(queryState.componentType)}</p>
+          ) : null}
+          {queryState.tag ? <p>Tag: {boundCaptureLibraryQuerySummaryText(queryState.tag)}</p> : null}
+          <p className="library-result-count" role="status" aria-live="polite">
+            Showing {visibleCount} of {totalCount} captures.
+          </p>
+        </div>
+      ) : (
+        <p className="library-result-count visually-muted" role="status" aria-live="polite">
+          Showing all {totalCount} captures.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -110,9 +236,7 @@ function CaptureLibraryItem({
   }, [currentBlob]);
 
   const displayTitle = getCaptureDisplayTitle(savedCapture.record);
-  const componentType =
-    normalizedOptionalText(savedCapture.record.library.componentType) ??
-    normalizedOptionalText(savedCapture.record.summaries.componentType);
+  const componentType = normalizedOptionalText(getUserVisibleComponentType(savedCapture.record));
   const currentObjectUrlState: ObjectUrlRenderState =
     objectUrlState.blob === currentBlob ? objectUrlState : { status: "preparing" };
 

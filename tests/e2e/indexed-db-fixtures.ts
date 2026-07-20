@@ -5,8 +5,8 @@ import { serializeCaptureRecordV1, validateCaptureRecordV1 } from "../../extensi
 export type CaptureFixtureSpec = {
   id: string;
   title: string;
-  libraryComponentType: string;
-  summaryComponentType: string;
+  libraryComponentType?: string;
+  summaryComponentType?: string;
   tagName: string;
   semanticRole: string;
   sourceUrl: string;
@@ -15,6 +15,20 @@ export type CaptureFixtureSpec = {
   width: number;
   height: number;
   color: string;
+  libraryTags?: string[];
+  libraryNotes?: string;
+  elementTextPreview?: string;
+  elementId?: string;
+  elementClassNames?: string[];
+  domTextPreview?: string;
+  childSummaryTextPreview?: string;
+  styleSentinel?: string;
+  generatedVersionCode?: string;
+  typographyNotes?: string;
+  colorRole?: { role: string; value: string };
+  layoutNotes?: string;
+  spacingNotes?: string;
+  spacingGap?: string;
 };
 
 export type SeededCapture = {
@@ -160,7 +174,9 @@ function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
     element: {
       tagName: spec.tagName,
       semanticRole: spec.semanticRole,
-      textPreview: `${spec.title} fixture preview`,
+      textPreview: spec.elementTextPreview ?? `${spec.title} fixture preview`,
+      ...(spec.elementId ? { id: spec.elementId } : {}),
+      ...(spec.elementClassNames ? { classNames: spec.elementClassNames } : {}),
       rect: crop
     },
     dom: {
@@ -170,12 +186,12 @@ function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
           role: spec.semanticRole,
           "data-fixture": "element-catcher-e2e"
         },
-        textPreview: "Safe fixture text",
+        textPreview: spec.domTextPreview ?? "Safe fixture text",
         children: [
           {
             tagName: "h3",
             attributes: {},
-            textPreview: "Fixture heading",
+            textPreview: spec.domTextPreview ?? "Fixture heading",
             children: []
           }
         ]
@@ -184,7 +200,7 @@ function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
         {
           tagName: "h3",
           semanticRole: "heading",
-          textPreview: "Fixture heading",
+          textPreview: spec.childSummaryTextPreview ?? "Fixture heading",
           childCount: 0
         }
       ]
@@ -196,7 +212,7 @@ function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
         width: `${spec.width}px`,
         height: `${spec.height}px`,
         color: "#111827",
-        backgroundColor: spec.color,
+        backgroundColor: spec.styleSentinel ?? spec.color,
         borderRadius: "8px",
         padding: {
           top: "12px",
@@ -207,29 +223,33 @@ function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
       }
     },
     summaries: {
-      componentType: spec.summaryComponentType,
+      ...(spec.summaryComponentType ? { componentType: spec.summaryComponentType } : {}),
       typography: {
         primaryFont: "Inter",
-        weights: ["500", "700"]
+        weights: ["500", "700"],
+        ...(spec.typographyNotes ? { notes: spec.typographyNotes } : {})
       },
       colors: {
         foreground: "#111827",
         background: spec.color,
-        accent: "#ffffff"
+        accent: "#ffffff",
+        ...(spec.colorRole ? { roles: [spec.colorRole] } : {})
       },
       layout: {
         display: "flex",
         direction: "vertical",
-        density: "comfortable"
+        density: "comfortable",
+        ...(spec.layoutNotes ? { notes: spec.layoutNotes } : {})
       },
       spacing: {
-        gap: "8px",
+        gap: spec.spacingGap ?? "8px",
         padding: {
           top: "12px",
           right: "12px",
           bottom: "12px",
           left: "12px"
-        }
+        },
+        ...(spec.spacingNotes ? { notes: spec.spacingNotes } : {})
       }
     },
     assets: {
@@ -243,11 +263,24 @@ function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
     },
     library: {
       title: spec.title,
-      componentType: spec.libraryComponentType,
-      tags: ["e2e", "milestone-4b"],
-      notes: "Deterministic Playwright fixture."
+      ...(spec.libraryComponentType ? { componentType: spec.libraryComponentType } : {}),
+      tags: spec.libraryTags ?? ["e2e", "milestone-4b"],
+      notes: spec.libraryNotes ?? "Deterministic Playwright fixture."
     },
-    generatedVersions: []
+    generatedVersions: spec.generatedVersionCode
+      ? [
+          {
+            id: `generated-${spec.id}`,
+            createdAt: "2026-07-18T08:30:00.000Z",
+            generator: "placeholder",
+            componentName: "GeneratedFixture",
+            framework: "react",
+            styling: "tailwind",
+            code: spec.generatedVersionCode,
+            summary: "Synthetic generated fixture."
+          }
+        ]
+      : []
   };
 }
 
@@ -660,12 +693,16 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
       }
 
       function getFixtureSourceDisplay(value: string) {
-        const url = new URL(value);
-        url.username = "";
-        url.password = "";
-        url.search = "";
-        url.hash = "";
-        return `${url.origin}${url.pathname}`;
+        try {
+          const url = new URL(value);
+          url.username = "";
+          url.password = "";
+          url.search = "";
+          url.hash = "";
+          return `${url.origin}${url.pathname}`;
+        } catch {
+          return "Source unavailable";
+        }
       }
 
       const selectedOperation = operations[operation];

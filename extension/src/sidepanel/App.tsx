@@ -14,6 +14,10 @@ import {
   createCaptureRecordTimestamp
 } from "../capture/capture-record-v1";
 import {
+  createDefaultCaptureLibraryQuery,
+  type CaptureLibraryQueryState
+} from "../library/capture-library-query";
+import {
   deleteSavedCapture,
   loadSavedCaptureById,
   loadSavedCaptureLibrary,
@@ -40,6 +44,7 @@ export function App() {
   const [screenshotCapture, setScreenshotCapture] = useState<ScreenshotCaptureResult | null>(null);
   const [captureRecordCandidate, setCaptureRecordCandidate] = useState<CaptureRecord | null>(null);
   const [captureLibrary, setCaptureLibrary] = useState<CaptureLibraryState>({ status: "loading" });
+  const [libraryQuery, setLibraryQuery] = useState<CaptureLibraryQueryState>(createDefaultCaptureLibraryQuery);
   const [libraryStatusMessage, setLibraryStatusMessage] = useState<string | null>(null);
   const [savedCaptureDetail, setSavedCaptureDetail] = useState<SavedCaptureDetailState>({ status: "closed" });
   const captureRequestInFlightRef = useRef(false);
@@ -446,7 +451,9 @@ export function App() {
       {savedCaptureDetail.status === "closed" ? (
         <CaptureLibrary
           libraryState={captureLibrary}
+          queryState={libraryQuery}
           statusMessage={libraryStatusMessage}
+          onQueryChange={setLibraryQuery}
           onRetry={loadLibrary}
           onOpenCapture={(recordId) => void openSavedCaptureDetail(recordId)}
         />
