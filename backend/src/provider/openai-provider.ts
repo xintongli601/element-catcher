@@ -115,7 +115,7 @@ function assertCompletedResponse(response: unknown): asserts response is Record<
   if (!isPlainObject(response)) {
     throw new BackendSafeError("malformed_response", 502);
   }
-  if (response.status !== "completed" || "error" in response || response.incomplete_details !== undefined || hasRefusalContent(response)) {
+  if (response.status !== "completed" || response.error != null || response.incomplete_details != null || hasRefusalContent(response)) {
     throw new BackendSafeError("malformed_response", 502);
   }
 }
@@ -134,11 +134,19 @@ function collectOutputTexts(response: Record<string, unknown>) {
     throw new BackendSafeError("malformed_response", 502);
   }
   const texts: string[] = [];
+  let assistantMessageCount = 0;
   for (const item of output) {
     if (!isPlainObject(item) || isToolItem(item)) {
       throw new BackendSafeError("malformed_response", 502);
     }
+    if (item.type === "reasoning") {
+      continue;
+    }
     if (item.type !== "message" || item.role !== "assistant" || !Array.isArray(item.content)) {
+      throw new BackendSafeError("malformed_response", 502);
+    }
+    assistantMessageCount += 1;
+    if (assistantMessageCount > 1) {
       throw new BackendSafeError("malformed_response", 502);
     }
     for (const content of item.content) {
@@ -150,6 +158,9 @@ function collectOutputTexts(response: Record<string, unknown>) {
       }
       texts.push(content.text);
     }
+  }
+  if (assistantMessageCount !== 1) {
+    throw new BackendSafeError("malformed_response", 502);
   }
   return texts;
 }

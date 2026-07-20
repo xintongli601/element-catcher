@@ -221,14 +221,21 @@ test("OpenAI adapter builds safe Responses API request, disables retries and acc
   }
 
   for (const [name, providerResponse] of [
+    ["non-null error", completedProviderResponse(validResponse(), { error: { message: "raw provider detail" } })],
+    ["non-null incomplete details", completedProviderResponse(validResponse(), { incomplete_details: { reason: "max_output_tokens" } })],
     ["incomplete no text", { status: "incomplete", output: [] }],
     ["incomplete valid-looking text", { status: "incomplete", output_text: JSON.stringify(validResponse()), output: completedProviderResponse(validResponse()).output }],
     ["refusal", { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "refusal", refusal: "no" }] }] }],
     ["failed", { status: "failed", output: completedProviderResponse(validResponse()).output }],
+    ["cancelled", { status: "cancelled", output: completedProviderResponse(validResponse()).output }],
     ["missing status", { output: completedProviderResponse(validResponse()).output }],
     ["completed output_text shortcut only", { status: "completed", output_text: JSON.stringify(validResponse()) }],
     ["empty output", { status: "completed", output: [] }],
     ["multiple text outputs", { status: "completed", output: [{ type: "message", role: "assistant", content: [{ type: "output_text", text: JSON.stringify(validResponse()) }, { type: "output_text", text: JSON.stringify({ ...validResponse(), componentName: "OtherFixture" }) }] }] }],
+    ["two assistant messages", completedProviderResponse(validResponse(), { output: [assistantMessage(validResponse()), assistantMessage(validResponse())] })],
+    ["no assistant message", completedProviderResponse(validResponse(), { output: [reasoningItem("safe internal reasoning")] })],
+    ["reasoning plus tool call", completedProviderResponse(validResponse(), { output: [reasoningItem("safe internal reasoning"), { type: "function_call", name: "x" }, assistantMessage(validResponse())] })],
+    ["reasoning plus refusal", completedProviderResponse(validResponse(), { output: [reasoningItem("safe internal reasoning"), { type: "message", role: "assistant", content: [{ type: "refusal", refusal: "no" }] }] })],
     ["tool call", { status: "completed", output: [{ type: "function_call", name: "x" }] }],
     ["provider-shaped object", completedProviderResponse({ status: "completed", output: [] })],
     ["markdown wrapper", completedProviderResponse("```json\n{}\n```")],
@@ -236,6 +243,18 @@ test("OpenAI adapter builds safe Responses API request, disables retries and acc
     ["wrong schema", completedProviderResponse({ ...validResponse(), extra: true })]
   ]) {
     await assertRejectsProviderResponse(name, providerResponse);
+  }
+
+  for (const [name, providerResponse] of [
+    ["completed null fields", completedProviderResponse(validResponse())],
+    ["one reasoning then assistant", completedProviderResponse(validResponse(), { output: [reasoningItem("safe internal reasoning"), assistantMessage(validResponse())] })],
+    ["multiple reasoning then assistant", completedProviderResponse(validResponse(), { output: [reasoningItem("first"), reasoningItem("second"), assistantMessage(validResponse())] })]
+  ]) {
+    const normalized = await normalizeProviderFixture(providerResponse);
+    assert.deepEqual(normalized, validResponse(), name);
+    assert.equal(JSON.stringify(normalized).includes("safe internal reasoning"), false, name);
+    assert.equal(JSON.stringify(normalized).includes("resp_test"), false, name);
+    assert.equal(JSON.stringify(normalized).includes("msg_test"), false, name);
   }
 });
 
@@ -284,6 +303,15 @@ async function assertRejectsProviderResponse(name, response) {
     assert.equal(error.code, "malformed_response", name);
     return true;
   });
+}
+
+async function normalizeProviderFixture(response) {
+  const provider = createOpenAIProvider({
+    apiKey: "test-key-not-real",
+    model: "model",
+    client: { responses: { async create() { return response; } } }
+  });
+  return provider.generate(validRequest(), new AbortController().signal);
 }
 
 async function startServer({ logs, generate }) {
@@ -419,20 +447,44 @@ function validResponse() {
   };
 }
 
-function completedProviderResponse(value) {
+function completedProviderResponse(value, overrides = {}) {
   return {
+    id: "resp_test",
+    object: "response",
+    created_at: 1,
     status: "completed",
-    output: [
+    error: null,
+    incomplete_details: null,
+    model: "test-model",
+    output: [assistantMessage(value)],
+    tools: [],
+    tool_choice: "none",
+    metadata: {},
+    ...overrides
+  };
+}
+
+function assistantMessage(value) {
+  return {
+    id: "msg_test",
+    type: "message",
+    status: "completed",
+    role: "assistant",
+    content: [
       {
-        type: "message",
-        role: "assistant",
-        content: [
-          {
-            type: "output_text",
-            text: typeof value === "string" ? value : JSON.stringify(value)
-          }
-        ]
+        type: "output_text",
+        annotations: [],
+        text: typeof value === "string" ? value : JSON.stringify(value)
       }
     ]
+  };
+}
+
+function reasoningItem(summary) {
+  return {
+    id: "rs_test",
+    type: "reasoning",
+    status: "completed",
+    summary: [{ type: "summary_text", text: summary }]
   };
 }
