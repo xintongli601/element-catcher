@@ -1,5 +1,6 @@
 import { validateCaptureRecordV1 } from "../capture/capture-record-v1";
 import { loadSavedCaptureById, type SavedCaptureReadModel } from "../storage/capture-save";
+import { PersistenceError } from "../storage/persistence-errors";
 import { digestBlob } from "../storage/screenshot-asset";
 import { GenerationError, toGenerationError } from "./errors";
 import { buildGenerationRequestWithoutDataUrl } from "./projection";
@@ -63,6 +64,18 @@ export async function prepareGenerationReview(
   }
 }
 
+export async function prepareGenerationReviewById(
+  sourceCaptureId: string,
+  endpointCategory: GenerationReviewModel["endpointCategory"]
+): Promise<GenerationReviewModel> {
+  try {
+    const latest = await loadSavedCaptureById(sourceCaptureId);
+    return await prepareGenerationReview(latest, endpointCategory);
+  } catch (error) {
+    throw mapGenerationPreparationError(error);
+  }
+}
+
 export async function generateFromReview({
   localContext,
   transport,
@@ -119,8 +132,21 @@ export async function generateFromReview({
 
     return response;
   } catch (error) {
-    throw toGenerationError(error, "malformed_response");
+    throw mapGenerationPreparationError(error, "malformed_response");
   } finally {
     dataUrl = undefined;
   }
+}
+
+function mapGenerationPreparationError(error: unknown, fallback: Parameters<typeof toGenerationError>[1] = "request_validation_failed") {
+  if (error instanceof PersistenceError) {
+    if (error.code === "not-found") {
+      return new GenerationError("capture_missing", undefined, error);
+    }
+    if (error.code === "reference-mismatch") {
+      return new GenerationError("screenshot_missing", undefined, error);
+    }
+  }
+
+  return toGenerationError(error, fallback);
 }

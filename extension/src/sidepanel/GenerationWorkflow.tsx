@@ -1,12 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { getSafeGenerationMessage } from "../generation/errors";
-import { prepareGenerationReview, generateFromReview } from "../generation/workflow";
+import { GenerationError, getSafeGenerationMessage } from "../generation/errors";
+import { prepareGenerationReviewById, generateFromReview } from "../generation/workflow";
 import { createGenerationTransport } from "../generation/transport";
-import type { ComponentGenerationResponseV1, GenerationReviewModel } from "../generation/types";
+import type { ComponentGenerationResponseV1, GenerationReviewModel, TransmittedDomNodeV1 } from "../generation/types";
 import type { SavedCaptureReadModel } from "../storage/capture-save";
-import { getUtf8ByteLength } from "../generation/canonical-json";
-import { PNG_DATA_URL_PREFIX } from "../generation/limits";
-import { boundText } from "./display-format";
+import { predictCompleteRequestBytes } from "../generation/request-size";
 
 type GenerationState =
   | { status: "closed" }
@@ -40,7 +38,7 @@ export function GenerationWorkflow({
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const openReview = async () => {
+  const prepareFreshReview = async (message?: string) => {
     const sequence = sequenceRef.current + 1;
     sequenceRef.current = sequence;
     abortRef.current?.abort();
@@ -48,17 +46,21 @@ export function GenerationWorkflow({
     setState({ status: "preparing" });
 
     try {
-      const review = await prepareGenerationReview(savedCapture, transportConfig.endpointCategory);
+      const review = await prepareGenerationReviewById(savedCapture.record.id, transportConfig.endpointCategory);
       if (sequenceRef.current !== sequence) {
         return;
       }
-      setState({ status: "review", review, consent: false });
+      setState({ status: "review", review, consent: false, message });
     } catch (error) {
       if (sequenceRef.current !== sequence) {
         return;
       }
       setState({ status: "failed", message: getSafeGenerationMessage(error) });
     }
+  };
+
+  const openReview = async () => {
+    await prepareFreshReview();
   };
 
   const closeFlow = () => {
@@ -107,6 +109,12 @@ export function GenerationWorkflow({
       if (sequenceRef.current !== sequence) {
         return;
       }
+      if (error instanceof GenerationError && (error.code === "review_fingerprint_mismatch" || error.code === "capture_changed")) {
+        inFlightRef.current = false;
+        abortRef.current = null;
+        await prepareFreshReview(getSafeGenerationMessage(error));
+        return;
+      }
       const message = getSafeGenerationMessage(error);
       const nextStatus = message === "Generation was cancelled." ? "cancelled" : "failed";
       setState({ status: nextStatus, review, message });
@@ -138,6 +146,7 @@ export function GenerationWorkflow({
           review={state.review}
           imageSrc={imageSrc}
           consent={state.consent}
+          message={state.message}
           onConsentChange={(consent) => setState({ ...state, consent })}
           onSubmit={() => void submitGeneration(state.review)}
           onCancel={cancelGeneration}
@@ -154,14 +163,14 @@ export function GenerationWorkflow({
         </div>
       ) : null}
       {state.status === "succeeded" ? (
-        <GeneratedResult response={state.response} onClose={closeFlow} onRetry={() => setState({ status: "review", review: state.review, consent: false })} />
+        <GeneratedResult response={state.response} onClose={closeFlow} onRetry={() => void prepareFreshReview("Review again before retrying.")} />
       ) : null}
       {state.status === "failed" ? (
         <GenerationFailure
           message={state.message}
           review={state.review}
           onClose={closeFlow}
-          onRetry={(review) => setState({ status: "review", review, consent: false, message: "Review again before retrying." })}
+          onRetry={() => void prepareFreshReview("Review again before retrying.")}
         />
       ) : null}
       {state.status === "cancelled" ? (
@@ -169,7 +178,7 @@ export function GenerationWorkflow({
           message={state.message}
           review={state.review}
           onClose={closeFlow}
-          onRetry={(review) => setState({ status: "review", review, consent: false, message: "Review again before retrying." })}
+          onRetry={() => void prepareFreshReview("Review again before retrying.")}
         />
       ) : null}
     </section>
@@ -180,6 +189,7 @@ function ReviewDataView({
   review,
   imageSrc,
   consent,
+  message,
   onConsentChange,
   onSubmit,
   onCancel
@@ -187,18 +197,24 @@ function ReviewDataView({
   review: GenerationReviewModel;
   imageSrc: string | null;
   consent: boolean;
+  message?: string;
   onConsentChange: (consent: boolean) => void;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
   const requestWithoutDataUrl = review.localContext.reviewedRequestWithoutDataUrl;
-  const approximateBytes = estimateRequestBytes(review);
+  const estimatedBytes = predictCompleteRequestBytes(requestWithoutDataUrl);
   const context = requestWithoutDataUrl.captureContext;
 
   return (
     <section className="generation-review" aria-labelledby="generation-review-heading">
       <h4 id="generation-review-heading">Review data being sent</h4>
       <p className="generation-note">Displayed values are the exact outbound projection. Excluded content is not sent.</p>
+      {message ? (
+        <p className="save-state save-state-failed" role="alert">
+          {message}
+        </p>
+      ) : null}
       {imageSrc ? (
         <img src={imageSrc} alt="Screenshot that will be sent after consent" className="generation-review-image" />
       ) : (
@@ -207,18 +223,30 @@ function ReviewDataView({
       <dl className="preview-metadata">
         <MetadataItem label="Decoded image size" value={`${review.screenshot.width} x ${review.screenshot.height} px`} />
         <MetadataItem label="Decoded image bytes" value={String(review.screenshot.byteLength)} />
-        <MetadataItem label="Approximate request size" value={`${approximateBytes} UTF-8 bytes`} />
+        <MetadataItem label="Estimated complete request size" value={`${estimatedBytes} UTF-8 bytes`} />
         <MetadataItem label="Endpoint category" value={formatEndpoint(review.endpointCategory)} />
-        <MetadataItem label="Title" value={context.library.title ? boundText(context.library.title, 120) : "Not included"} />
+        <MetadataItem label="Contract version" value={String(requestWithoutDataUrl.contractVersion)} />
+        <MetadataItem label="Requested framework" value={requestWithoutDataUrl.requestedOutput.framework} />
+        <MetadataItem label="Requested styling" value={requestWithoutDataUrl.requestedOutput.styling} />
+        <MetadataItem label="Requested fields" value={requestWithoutDataUrl.requestedOutput.fields.join(", ")} />
+        <MetadataItem label="Library title" value={context.library.title ?? "Not included"} />
         <MetadataItem label="Component type" value={context.library.componentType ?? "Not included"} />
+        <MetadataItem label="Summary component type" value={context.summaries.componentType ?? "Not included"} />
         <MetadataItem label="Tags" value={context.library.tags.length ? context.library.tags.join(", ") : "No tags transmitted"} />
-        <MetadataItem label="Element" value={`${context.element.tagName}${context.element.semanticRole ? ` (${context.element.semanticRole})` : ""}`} />
-        <MetadataItem label="Element size" value={`${context.element.rect.width} x ${context.element.rect.height} CSS px`} />
-        <MetadataItem label="Page title" value="Excluded" />
-        <MetadataItem label="Source URL" value="Excluded" />
+        <MetadataItem label="Element tag name" value={context.element.tagName} />
+        <MetadataItem label="Element semantic role" value={context.element.semanticRole ?? "Not included"} />
+        <MetadataItem label="Element width" value={`${context.element.rect.width} CSS px`} />
+        <MetadataItem label="Element height" value={`${context.element.rect.height} CSS px`} />
+        <MetadataItem label="Page title exclusion" value={`${context.pageTitlePolicy.included ? "Included" : "Excluded"}: ${context.pageTitlePolicy.reason}`} />
+        <MetadataItem label="Source URL exclusion" value={`${context.sourceUrlPolicy.included ? "Included" : "Excluded"}: ${context.sourceUrlPolicy.reason}`} />
       </dl>
+      <ReviewList title="DOM node tag names" values={collectDomTags(context.dom.sanitizedSnapshot)} />
       <ReviewList title="DOM text previews" values={collectDomText(context.dom.sanitizedSnapshot)} />
       <ReviewList title="Transmitted attributes" values={collectAttributes(context.dom.sanitizedSnapshot)} />
+      <ReviewList title="Child summary" values={context.dom.childSummary.map(formatChildSummary)} />
+      <ReviewList title="Computed styles" values={summarizeObject(context.styles.computed)} />
+      <ReviewList title="Before pseudo styles" values={context.styles.before ? summarizeObject(context.styles.before) : []} />
+      <ReviewList title="After pseudo styles" values={context.styles.after ? summarizeObject(context.styles.after) : []} />
       <ReviewList title="Typography" values={summarizeObject(context.summaries.typography)} />
       <ReviewList title="Colors" values={summarizeObject(context.summaries.colors)} />
       <ReviewList title="Layout" values={summarizeObject(context.summaries.layout)} />
@@ -301,14 +329,14 @@ function GenerationFailure({
   message: string;
   review?: GenerationReviewModel;
   onClose: () => void;
-  onRetry: (review: GenerationReviewModel) => void;
+  onRetry: () => void;
 }) {
   return (
     <div className="save-state save-state-failed" role="alert">
       <p>{message}</p>
       <div className="generation-actions">
         {review ? (
-          <button className="secondary-action compact-action" type="button" onClick={() => onRetry(review)}>
+          <button className="secondary-action compact-action" type="button" onClick={onRetry}>
             Retry after review
           </button>
         ) : null}
@@ -336,7 +364,7 @@ function ReviewList({ title, values }: { title: string; values: string[] }) {
       {values.length ? (
         <ul>
           {values.map((value, index) => (
-            <li key={`${title}-${index}`}>{boundText(value, 180)}</li>
+            <li key={`${title}-${index}`}>{value}</li>
           ))}
         </ul>
       ) : (
@@ -346,9 +374,19 @@ function ReviewList({ title, values }: { title: string; values: string[] }) {
   );
 }
 
-function collectDomText(node: GenerationReviewModel["localContext"]["reviewedRequestWithoutDataUrl"]["captureContext"]["dom"]["sanitizedSnapshot"]): string[] {
+function collectDomTags(node: TransmittedDomNodeV1): string[] {
   const values: string[] = [];
-  const visit = (current: typeof node) => {
+  const visit = (current: TransmittedDomNodeV1) => {
+    values.push(current.tagName);
+    current.children.forEach(visit);
+  };
+  visit(node);
+  return values;
+}
+
+function collectDomText(node: TransmittedDomNodeV1): string[] {
+  const values: string[] = [];
+  const visit = (current: TransmittedDomNodeV1) => {
     if (current.textPreview) {
       values.push(current.textPreview);
     }
@@ -358,16 +396,25 @@ function collectDomText(node: GenerationReviewModel["localContext"]["reviewedReq
   return values;
 }
 
-function collectAttributes(node: GenerationReviewModel["localContext"]["reviewedRequestWithoutDataUrl"]["captureContext"]["dom"]["sanitizedSnapshot"]): string[] {
+function collectAttributes(node: TransmittedDomNodeV1): string[] {
   const values: string[] = [];
-  const visit = (current: typeof node) => {
+  const visit = (current: TransmittedDomNodeV1) => {
     for (const [key, value] of Object.entries(current.attributes)) {
-      values.push(`${key}: ${value}`);
+      values.push(`${current.tagName}.${key}: ${value}`);
     }
     current.children.forEach(visit);
   };
   visit(node);
   return values;
+}
+
+function formatChildSummary(child: GenerationReviewModel["localContext"]["reviewedRequestWithoutDataUrl"]["captureContext"]["dom"]["childSummary"][number]) {
+  return [
+    `tag: ${child.tagName}`,
+    `role: ${child.semanticRole ?? "Not included"}`,
+    `text: ${child.textPreview ?? "Not included"}`,
+    `childCount: ${child.childCount}`
+  ].join("; ");
 }
 
 function summarizeObject(value: unknown): string[] {
@@ -377,24 +424,28 @@ function summarizeObject(value: unknown): string[] {
 
   return Object.entries(value).flatMap(([key, child]) => {
     if (Array.isArray(child)) {
-      return child.map((item) => `${key}: ${typeof item === "object" ? JSON.stringify(item) : String(item)}`);
+      return child.map((item, index) => `${key}[${index}]: ${formatReviewValue(item)}`);
     }
     if (child && typeof child === "object") {
-      return Object.entries(child).map(([innerKey, innerValue]) => `${key}.${innerKey}: ${String(innerValue)}`);
+      return Object.entries(child).map(([innerKey, innerValue]) => `${key}.${innerKey}: ${formatReviewValue(innerValue)}`);
     }
-    return [`${key}: ${String(child)}`];
+    return [`${key}: ${formatReviewValue(child)}`];
   });
 }
 
-function estimateRequestBytes(review: GenerationReviewModel) {
-  const placeholder = {
-    ...review.localContext.reviewedRequestWithoutDataUrl,
-    screenshot: {
-      ...review.localContext.reviewedRequestWithoutDataUrl.screenshot,
-      dataUrl: `${PNG_DATA_URL_PREFIX}<created-after-consent>`
-    }
-  };
-  return getUtf8ByteLength(JSON.stringify(placeholder));
+function formatReviewValue(value: unknown): string {
+  if (value === undefined) {
+    return "Not included";
+  }
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, child]) => `${key}=${formatReviewValue(child)}`)
+      .join(", ");
+  }
+  return String(value);
 }
 
 function formatEndpoint(value: GenerationReviewModel["endpointCategory"]) {

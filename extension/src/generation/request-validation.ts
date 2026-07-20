@@ -241,6 +241,9 @@ function validateStyleObject(value: unknown, stringLimit: number, pseudo: boolea
   }
   const allowedKeys = pseudo ? ["exists", ...PSEUDO_STYLE_KEYS] : [...COMPUTED_STYLE_KEYS, "padding", "margin"];
   assertAllowedKeys(value, allowedKeys);
+  if (pseudo && !("exists" in value)) {
+    throw new GenerationError("request_validation_failed");
+  }
   for (const [key, child] of Object.entries(value)) {
     if (key === "exists" && pseudo) {
       if (typeof child !== "boolean") {
