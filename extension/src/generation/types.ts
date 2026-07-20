@@ -212,7 +212,7 @@ export type GenerationReviewModel = {
     digest: string;
     blob: Blob;
   };
-  endpointCategory: "backend-unconfigured" | "deterministic-mock";
+  endpointCategory: "backend-unconfigured" | "deterministic-mock" | "local-development-proxy";
 };
 
 export type ProjectionInput = {

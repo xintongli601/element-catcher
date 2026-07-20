@@ -1,5 +1,8 @@
 import type { ComponentGenerationRequestV1, ComponentGenerationResponseV1, GenerationTransport } from "./types";
 import { GenerationError } from "./errors";
+import { GENERATION_CONTRACT_VERSION, type GenerationBackendErrorCodeV1 } from "./limits";
+import { validateGenerationResponse } from "./request-validation";
+import { getUtf8ByteLength } from "./canonical-json";
 
 export type MockGenerationScenario =
   | "success"
@@ -25,12 +28,23 @@ declare global {
   }
 }
 
-export function createGenerationTransport(): { transport: GenerationTransport; endpointCategory: "backend-unconfigured" | "deterministic-mock" } {
+const LOOPBACK_BACKEND_ORIGIN = "http://127.0.0.1:8787";
+const RESPONSE_BODY_LIMIT_BYTES = 100_000;
+
+export function createGenerationTransport(): { transport: GenerationTransport; endpointCategory: "backend-unconfigured" | "deterministic-mock" | "local-development-proxy" } {
   const harness = typeof window !== "undefined" ? window.__EC_GENERATION_TEST_HARNESS__ : undefined;
   if (harness) {
     return {
       endpointCategory: "deterministic-mock",
       transport: createMockGenerationTransport(harness)
+    };
+  }
+
+  const backendUrl = import.meta.env.VITE_ELEMENT_CATCHER_BACKEND_URL;
+  if (backendUrl === LOOPBACK_BACKEND_ORIGIN) {
+    return {
+      endpointCategory: "local-development-proxy",
+      transport: createHttpGenerationTransport(`${LOOPBACK_BACKEND_ORIGIN}/v1/generate-component`)
     };
   }
 
@@ -46,6 +60,81 @@ export const unavailableGenerationTransport: GenerationTransport = {
   }
 };
 
+function createHttpGenerationTransport(endpoint: string): GenerationTransport {
+  return {
+    async generate(request, signal) {
+      let response: Response;
+      try {
+        response = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Element-Catcher-Contract-Version": String(GENERATION_CONTRACT_VERSION)
+          },
+          body: JSON.stringify(request),
+          credentials: "omit",
+          cache: "no-store",
+          signal
+        });
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          throw new GenerationError("cancellation");
+        }
+        throw new GenerationError("network_unavailable");
+      }
+
+      const text = await readBoundedResponseText(response);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        throw new GenerationError(response.ok ? "malformed_response" : "network_unavailable");
+      }
+
+      if (!response.ok) {
+        const code = parseBackendErrorCode(parsed);
+        throw new GenerationError(code);
+      }
+
+      validateGenerationResponse(parsed);
+      return parsed;
+    }
+  };
+}
+
+async function readBoundedResponseText(response: Response) {
+  const text = await response.text();
+  if (getUtf8ByteLength(text) > RESPONSE_BODY_LIMIT_BYTES) {
+    throw new GenerationError("malformed_response");
+  }
+  return text;
+}
+
+function parseBackendErrorCode(value: unknown): GenerationBackendErrorCodeV1 {
+  if (!value || typeof value !== "object") {
+    return "network_unavailable";
+  }
+  const error = (value as { error?: unknown }).error;
+  if (!error || typeof error !== "object") {
+    return "network_unavailable";
+  }
+  const code = (error as { code?: unknown }).code;
+  switch (code) {
+    case "configuration_unavailable":
+    case "request_validation_failed":
+    case "request_too_large":
+    case "invalid_screenshot":
+    case "network_unavailable":
+    case "timeout":
+    case "provider_rejected":
+    case "rate_limited":
+    case "malformed_response":
+      return code;
+    default:
+      return "network_unavailable";
+  }
+}
+
 function createMockGenerationTransport(harness: GenerationTestHarness): GenerationTransport {
   return {
     async generate(request, signal) {
@@ -59,7 +148,7 @@ function createMockGenerationTransport(harness: GenerationTestHarness): Generati
         throw new GenerationError("cancellation");
       }
 
-      const delayMs = harness.delayMs ?? (harness.scenario === "delayed-success" ? 250 : 0);
+      const delayMs = harness.delayMs ?? (harness.scenario === "delayed-success" ? 250 : 50);
       if (delayMs > 0) {
         await wait(delayMs, signal, harness);
       }

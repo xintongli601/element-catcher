@@ -478,5 +478,11 @@ function formatReviewValue(value: unknown): string {
 }
 
 function formatEndpoint(value: GenerationReviewModel["endpointCategory"]) {
-  return value === "deterministic-mock" ? "Local deterministic mock transport" : "Backend not configured";
+  if (value === "deterministic-mock") {
+    return "Local deterministic mock transport";
+  }
+  if (value === "local-development-proxy") {
+    return "Local development proxy at 127.0.0.1";
+  }
+  return "Backend not configured";
 }

@@ -5,12 +5,19 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
-    "build": "tsc --noEmit && vite build --mode extension && vite build --mode content && node scripts/validate-content-script-build.mjs",
+    "build": "tsc --noEmit && npm run build:backend && vite build --mode extension && vite build --mode content && node scripts/validate-content-script-build.mjs",
+    "build:extension": "tsc --noEmit && vite build --mode extension && vite build --mode content && node scripts/validate-content-script-build.mjs",
+    "build:backend": "tsc -p backend/tsconfig.json",
+    "start:backend": "node .backend-dist/backend/src/server.js",
+    "test:backend": "npm run build:backend && node --test tests/backend/*.mjs",
+    "test:e2e:5c": "VITE_ELEMENT_CATCHER_BACKEND_URL=http://127.0.0.1:8787 npm run build && node --test tests/backend/*.mjs && RUN_5C_LOOPBACK=1 playwright test tests/e2e/generation-5c-loopback.spec.ts",
     "preview": "vite preview --host 127.0.0.1",
     "test:e2e": "npm run build && playwright test",
     "test:e2e:headed": "npm run build && PW_HEADED=1 playwright test --headed"
   },
   "dependencies": {
+    "openai": "^6.48.0",
+    "pngjs": "^7.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
@@ -18,6 +25,7 @@
     "@playwright/test": "^1.61.1",
     "@types/chrome": "^0.0.287",
     "@types/node": "^26.1.1",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "^19.0.2",
     "@types/react-dom": "^19.0.2",
     "@vitejs/plugin-react": "^4.3.4",
