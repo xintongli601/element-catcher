@@ -15,6 +15,9 @@ export function readBackendConfig(env: NodeJS.ProcessEnv = process.env): Backend
   if (!apiKey || !model || !extensionOrigin) {
     throw new Error("configuration_unavailable");
   }
+  if (!isValidChromeExtensionOrigin(extensionOrigin)) {
+    throw new Error("configuration_unavailable");
+  }
 
   return {
     apiKey,
@@ -24,4 +27,8 @@ export function readBackendConfig(env: NodeJS.ProcessEnv = process.env): Backend
     port: 8787,
     configurationVersion: "5c-local-dev"
   };
+}
+
+export function isValidChromeExtensionOrigin(value: string) {
+  return /^chrome-extension:\/\/[a-p]{32}$/.test(value);
 }

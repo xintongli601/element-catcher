@@ -1,9 +1,10 @@
 import OpenAI from "openai";
-import { RESPONSE_JSON_SCHEMA } from "../validation/backend-validation.js";
+import { RESPONSE_JSON_SCHEMA, validateBackendResponse } from "../validation/backend-validation.js";
 import type { ComponentGenerationRequestV1, ComponentGenerationResponseV1, ProviderAdapter } from "../contracts/contracts.js";
 import { BackendSafeError } from "../contracts/contracts.js";
 
 export const OPENAI_MAX_OUTPUT_TOKENS = 20_000;
+export const OPENAI_MAX_RETRIES = 0;
 
 type OpenAIResponsesClient = {
   responses: {
@@ -11,16 +12,20 @@ type OpenAIResponsesClient = {
   };
 };
 
+export type OpenAIClientFactory = (options: { apiKey: string; maxRetries: 0 }) => OpenAIResponsesClient;
+
 export function createOpenAIProvider({
   apiKey,
   model,
-  client
+  client,
+  clientFactory = createProductionOpenAIClient
 }: {
   apiKey: string;
   model: string;
   client?: OpenAIResponsesClient;
+  clientFactory?: OpenAIClientFactory;
 }): ProviderAdapter {
-  const openai = client ?? new OpenAI({ apiKey });
+  const openai = client ?? clientFactory({ apiKey, maxRetries: OPENAI_MAX_RETRIES });
   return {
     async generate(request, signal) {
       try {
@@ -31,6 +36,10 @@ export function createOpenAIProvider({
       }
     }
   };
+}
+
+export function createProductionOpenAIClient(options: { apiKey: string; maxRetries: 0 }): OpenAIResponsesClient {
+  return new OpenAI(options);
 }
 
 export function buildResponsesRequest(model: string, request: ComponentGenerationRequestV1) {
@@ -93,30 +102,74 @@ export function buildResponsesRequest(model: string, request: ComponentGeneratio
 }
 
 function normalizeOpenAIResponse(response: unknown): ComponentGenerationResponseV1 {
-  const text = extractText(response);
-  if (!text) {
-    throw new BackendSafeError("malformed_response", 502);
-  }
+  assertCompletedResponse(response);
+  const text = extractSingleAssistantText(response);
   try {
-    return JSON.parse(text) as ComponentGenerationResponseV1;
+    return validateBackendResponse(JSON.parse(text));
   } catch {
     throw new BackendSafeError("malformed_response", 502);
   }
 }
 
-function extractText(response: unknown) {
-  if (!response || typeof response !== "object") {
-    return undefined;
-  }
-  const outputText = (response as { output_text?: unknown }).output_text;
-  if (typeof outputText === "string") {
-    return outputText;
-  }
-  const status = (response as { status?: unknown }).status;
-  if (status === "incomplete") {
+function assertCompletedResponse(response: unknown): asserts response is Record<string, unknown> {
+  if (!isPlainObject(response)) {
     throw new BackendSafeError("malformed_response", 502);
   }
-  return undefined;
+  if (response.status !== "completed" || "error" in response || response.incomplete_details !== undefined || hasRefusalContent(response)) {
+    throw new BackendSafeError("malformed_response", 502);
+  }
+}
+
+function extractSingleAssistantText(response: Record<string, unknown>) {
+  const texts = collectOutputTexts(response);
+  if (texts.length !== 1 || texts[0].trim().startsWith("```")) {
+    throw new BackendSafeError("malformed_response", 502);
+  }
+  return texts[0];
+}
+
+function collectOutputTexts(response: Record<string, unknown>) {
+  const output = response.output;
+  if (!Array.isArray(output) || output.length === 0) {
+    throw new BackendSafeError("malformed_response", 502);
+  }
+  const texts: string[] = [];
+  for (const item of output) {
+    if (!isPlainObject(item) || isToolItem(item)) {
+      throw new BackendSafeError("malformed_response", 502);
+    }
+    if (item.type !== "message" || item.role !== "assistant" || !Array.isArray(item.content)) {
+      throw new BackendSafeError("malformed_response", 502);
+    }
+    for (const content of item.content) {
+      if (!isPlainObject(content) || content.type === "refusal" || "refusal" in content) {
+        throw new BackendSafeError("malformed_response", 502);
+      }
+      if (content.type !== "output_text" || typeof content.text !== "string") {
+        throw new BackendSafeError("malformed_response", 502);
+      }
+      texts.push(content.text);
+    }
+  }
+  return texts;
+}
+
+function hasRefusalContent(value: unknown): boolean {
+  if (Array.isArray(value)) {
+    return value.some(hasRefusalContent);
+  }
+  if (!isPlainObject(value)) {
+    return false;
+  }
+  if (value.type === "refusal" || typeof value.refusal === "string") {
+    return true;
+  }
+  return Object.values(value).some(hasRefusalContent);
+}
+
+function isToolItem(value: Record<string, unknown>) {
+  const type = typeof value.type === "string" ? value.type : "";
+  return type.includes("tool") || type.includes("function_call") || type.includes("file_search") || type.includes("web_search") || type.includes("code_interpreter");
 }
 
 function normalizeProviderError(error: unknown) {
@@ -126,6 +179,12 @@ function normalizeProviderError(error: unknown) {
   if (error instanceof Error && error.name === "AbortError") {
     return new BackendSafeError("timeout", 504);
   }
+  if (error instanceof Error && (error.name === "APIConnectionTimeoutError" || error.name === "TimeoutError")) {
+    return new BackendSafeError("timeout", 504);
+  }
+  if (error instanceof Error && error.name === "APIConnectionError") {
+    return new BackendSafeError("network_unavailable", 502);
+  }
   const status = typeof (error as { status?: unknown })?.status === "number" ? (error as { status: number }).status : 0;
   if (status === 401 || status === 403) {
     return new BackendSafeError("configuration_unavailable", 500);
@@ -133,8 +192,19 @@ function normalizeProviderError(error: unknown) {
   if (status === 429) {
     return new BackendSafeError("rate_limited", 429);
   }
+  if (status === 400 || status === 404 || status === 422) {
+    return new BackendSafeError("provider_rejected", 502);
+  }
   if (status >= 500) {
     return new BackendSafeError("network_unavailable", 502);
   }
   return new BackendSafeError("provider_rejected", 502);
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }

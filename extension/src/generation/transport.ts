@@ -33,6 +33,13 @@ const RESPONSE_BODY_LIMIT_BYTES = 100_000;
 
 export function createGenerationTransport(): { transport: GenerationTransport; endpointCategory: "backend-unconfigured" | "deterministic-mock" | "local-development-proxy" } {
   const harness = typeof window !== "undefined" ? window.__EC_GENERATION_TEST_HARNESS__ : undefined;
+  return createGenerationTransportForEnvironment(import.meta.env.VITE_ELEMENT_CATCHER_BACKEND_URL, harness);
+}
+
+export function createGenerationTransportForEnvironment(
+  backendUrl: string | undefined,
+  harness?: GenerationTestHarness
+): { transport: GenerationTransport; endpointCategory: "backend-unconfigured" | "deterministic-mock" | "local-development-proxy" } {
   if (harness) {
     return {
       endpointCategory: "deterministic-mock",
@@ -40,7 +47,6 @@ export function createGenerationTransport(): { transport: GenerationTransport; e
     };
   }
 
-  const backendUrl = import.meta.env.VITE_ELEMENT_CATCHER_BACKEND_URL;
   if (backendUrl === LOOPBACK_BACKEND_ORIGIN) {
     return {
       endpointCategory: "local-development-proxy",
@@ -60,7 +66,7 @@ export const unavailableGenerationTransport: GenerationTransport = {
   }
 };
 
-function createHttpGenerationTransport(endpoint: string): GenerationTransport {
+export function createHttpGenerationTransport(endpoint: string): GenerationTransport {
   return {
     async generate(request, signal) {
       let response: Response;
@@ -114,8 +120,22 @@ function parseBackendErrorCode(value: unknown): GenerationBackendErrorCodeV1 {
   if (!value || typeof value !== "object") {
     return "network_unavailable";
   }
+  if ((value as { contractVersion?: unknown }).contractVersion !== GENERATION_CONTRACT_VERSION) {
+    return "network_unavailable";
+  }
+  const envelopeKeys = Object.keys(value);
+  if (envelopeKeys.length !== 2 || !envelopeKeys.includes("contractVersion") || !envelopeKeys.includes("error")) {
+    return "network_unavailable";
+  }
   const error = (value as { error?: unknown }).error;
   if (!error || typeof error !== "object") {
+    return "network_unavailable";
+  }
+  const errorKeys = Object.keys(error);
+  if (errorKeys.length !== 2 || !errorKeys.includes("code") || !errorKeys.includes("message")) {
+    return "network_unavailable";
+  }
+  if (typeof (error as { message?: unknown }).message !== "string") {
     return "network_unavailable";
   }
   const code = (error as { code?: unknown }).code;

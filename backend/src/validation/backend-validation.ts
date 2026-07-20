@@ -10,6 +10,8 @@ import {
   PNG_DATA_URL_PREFIX,
   PNG_SIGNATURE,
   PSEUDO_STYLE_KEYS,
+  REQUESTED_OUTPUT,
+  REQUESTED_OUTPUT_FIELDS,
   RESPONSE_JSON_SCHEMA,
   SOURCE_URL_POLICY_REASON,
   TAG_NAME_PATTERN,
@@ -49,7 +51,7 @@ export function validateBackendRequest(value: unknown): ComponentGenerationReque
 
 export function validateBackendResponse(value: unknown): ComponentGenerationResponseV1 {
   try {
-    assertAllowedObjectKeys(value, ["contractVersion", "componentName", "framework", "styling", "code", "summary", "approximationNotes"]);
+    assertAllowedObjectKeys(value, ["contractVersion", "componentName", "framework", "styling", "code", "summary", "approximationNotes", "metadata"]);
     const response = value as ComponentGenerationResponseV1;
     if (
       response.contractVersion !== 1 ||
@@ -68,6 +70,14 @@ export function validateBackendResponse(value: unknown): ComponentGenerationResp
       codePointLength(response.approximationNotes) > GENERATION_LIMITS.approximationNotesCodePoints
     ) {
       throw new Error();
+    }
+    if (response.metadata !== undefined) {
+      assertAllowedObjectKeys(response.metadata, ["providerLabel", "providerModelLabel"]);
+      for (const metadataValue of Object.values(response.metadata as Record<string, unknown>)) {
+        if (typeof metadataValue !== "string" || codePointLength(metadataValue) > GENERATION_LIMITS.providerMetadataCodePoints) {
+          throw new Error();
+        }
+      }
     }
     return response;
   } catch {
@@ -134,10 +144,11 @@ function validateRequestedOutput(value: unknown) {
   assertExactObjectKeys(value, ["framework", "styling", "fields"]);
   const output = value as Record<string, unknown>;
   if (
-    output.framework !== "react" ||
-    output.styling !== "tailwind" ||
+    output.framework !== REQUESTED_OUTPUT.framework ||
+    output.styling !== REQUESTED_OUTPUT.styling ||
     !Array.isArray(output.fields) ||
-    output.fields.join(",") !== "componentName,code,summary,approximationNotes"
+    output.fields.length !== REQUESTED_OUTPUT_FIELDS.length ||
+    output.fields.some((field, index) => field !== REQUESTED_OUTPUT_FIELDS[index])
   ) {
     throw new Error();
   }

@@ -1,35 +1,12 @@
 import {
   GENERATION_CONTRACT_VERSION,
+  type ComponentGenerationRequestV1,
+  type ComponentGenerationResponseV1,
   type GenerationBackendErrorCodeV1,
   type GenerationBackendErrorResponseV1
 } from "../../../extension/src/shared/generation-contract.js";
 
-export type ComponentGenerationRequestV1 = {
-  contractVersion: 1;
-  screenshot: {
-    mediaType: "image/png";
-    width: number;
-    height: number;
-    byteLength: number;
-    dataUrl: string;
-  };
-  captureContext: Record<string, unknown>;
-  requestedOutput: {
-    framework: "react";
-    styling: "tailwind";
-    fields: ["componentName", "code", "summary", "approximationNotes"];
-  };
-};
-
-export type ComponentGenerationResponseV1 = {
-  contractVersion: 1;
-  componentName: string;
-  framework: "react";
-  styling: "tailwind";
-  code: string;
-  summary: string;
-  approximationNotes: string;
-};
+export type { ComponentGenerationRequestV1, ComponentGenerationResponseV1 };
 
 export type ProviderAdapter = {
   generate(request: ComponentGenerationRequestV1, signal: AbortSignal): Promise<ComponentGenerationResponseV1>;

@@ -70,6 +70,13 @@ export type GenerationBackendErrorResponseV1 = {
   };
 };
 
+export const REQUESTED_OUTPUT_FIELDS = ["componentName", "code", "summary", "approximationNotes"] as const;
+export const REQUESTED_OUTPUT = {
+  framework: "react",
+  styling: "tailwind",
+  fields: REQUESTED_OUTPUT_FIELDS
+} as const;
+
 export const TRANSMITTED_ATTRIBUTE_NAMES = [
   "id",
   "class",
@@ -123,6 +130,147 @@ export const COMPUTED_STYLE_KEYS = [
 
 export const BOX_EDGE_KEYS = ["top", "right", "bottom", "left"] as const;
 export const PSEUDO_STYLE_KEYS = ["content", "display", "color", "backgroundColor", "width", "height"] as const;
+
+export type TransmittedBoxEdgesV1 = {
+  top?: string;
+  right?: string;
+  bottom?: string;
+  left?: string;
+};
+
+export type TransmittedDomNodeV1 = {
+  tagName: string;
+  attributes: Partial<Record<typeof TRANSMITTED_ATTRIBUTE_NAMES[number], string>>;
+  textPreview?: string;
+  children: TransmittedDomNodeV1[];
+};
+
+export type TransmittedChildSummaryV1 = {
+  tagName: string;
+  semanticRole?: string;
+  textPreview?: string;
+  childCount: number;
+};
+
+export type TransmittedComputedStylesV1 = Partial<Record<typeof COMPUTED_STYLE_KEYS[number], string>> & {
+  padding?: TransmittedBoxEdgesV1;
+  margin?: TransmittedBoxEdgesV1;
+};
+
+export type TransmittedPseudoStylesV1 = {
+  exists: boolean;
+} & Partial<Record<typeof PSEUDO_STYLE_KEYS[number], string>>;
+
+export type TransmittedTypographySummaryV1 = {
+  primaryFont?: string;
+  scale?: string[];
+  weights?: string[];
+  notes?: string;
+};
+
+export type TransmittedColorSummaryV1 = {
+  foreground?: string;
+  background?: string;
+  accent?: string;
+  border?: string;
+  roles?: Array<{
+    role: string;
+    value: string;
+  }>;
+};
+
+export type TransmittedLayoutSummaryV1 = {
+  display?: string;
+  direction?: string;
+  alignment?: string;
+  density?: "compact" | "comfortable" | "spacious";
+  notes?: string;
+};
+
+export type TransmittedSpacingSummaryV1 = {
+  padding?: TransmittedBoxEdgesV1;
+  margin?: TransmittedBoxEdgesV1;
+  gap?: string;
+  notes?: string;
+};
+
+export type ExactCaptureContextProjectionV1 = {
+  library: {
+    title?: string;
+    componentType?: string;
+    tags: string[];
+  };
+  element: {
+    tagName: string;
+    semanticRole?: string;
+    rect: {
+      width: number;
+      height: number;
+    };
+  };
+  dom: {
+    sanitizedSnapshot: TransmittedDomNodeV1;
+    childSummary: TransmittedChildSummaryV1[];
+  };
+  styles: {
+    computed: TransmittedComputedStylesV1;
+    before?: TransmittedPseudoStylesV1;
+    after?: TransmittedPseudoStylesV1;
+  };
+  summaries: {
+    componentType?: string;
+    typography: TransmittedTypographySummaryV1;
+    colors: TransmittedColorSummaryV1;
+    layout: TransmittedLayoutSummaryV1;
+    spacing: TransmittedSpacingSummaryV1;
+  };
+  pageTitlePolicy: {
+    included: false;
+    reason: typeof PAGE_TITLE_POLICY_REASON;
+  };
+  sourceUrlPolicy: {
+    included: false;
+    reason: typeof SOURCE_URL_POLICY_REASON;
+  };
+};
+
+export type ComponentGenerationRequestWithoutDataUrlV1 = {
+  contractVersion: typeof GENERATION_CONTRACT_VERSION;
+  screenshot: {
+    mediaType: "image/png";
+    width: number;
+    height: number;
+    byteLength: number;
+  };
+  captureContext: ExactCaptureContextProjectionV1;
+  requestedOutput: {
+    framework: typeof REQUESTED_OUTPUT.framework;
+    styling: typeof REQUESTED_OUTPUT.styling;
+    fields: typeof REQUESTED_OUTPUT_FIELDS;
+  };
+};
+
+export type ComponentGenerationRequestV1 = ComponentGenerationRequestWithoutDataUrlV1 & {
+  screenshot: ComponentGenerationRequestWithoutDataUrlV1["screenshot"] & {
+    dataUrl: string;
+  };
+};
+
+export type OpaqueGenerationProviderMetadata = {
+  providerLabel?: string;
+  providerModelLabel?: string;
+};
+
+export type ComponentGenerationResponseV1 = {
+  contractVersion: typeof GENERATION_CONTRACT_VERSION;
+  componentName: string;
+  framework: "react";
+  styling: "tailwind";
+  code: string;
+  summary: string;
+  approximationNotes: string;
+  metadata?: OpaqueGenerationProviderMetadata;
+};
 
 export const RESPONSE_JSON_SCHEMA = {
   type: "object",

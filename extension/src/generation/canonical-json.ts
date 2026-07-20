@@ -5,7 +5,7 @@ export type CanonicalJsonValue =
   | number
   | boolean
   | null
-  | CanonicalJsonValue[]
+  | readonly CanonicalJsonValue[]
   | { [key: string]: CanonicalJsonValue | undefined };
 
 export function canonicalJsonStringify(value: CanonicalJsonValue): string {
@@ -43,9 +43,10 @@ function toCanonicalValue(value: CanonicalJsonValue): Exclude<CanonicalJsonValue
     return value.map(toCanonicalValue);
   }
 
+  const objectValue = value as { [key: string]: CanonicalJsonValue | undefined };
   const result: { [key: string]: CanonicalJsonValue } = {};
-  for (const key of Object.keys(value).sort()) {
-    const child = value[key];
+  for (const key of Object.keys(objectValue).sort()) {
+    const child = objectValue[key];
     if (child !== undefined) {
       result[key] = toCanonicalValue(child);
     }

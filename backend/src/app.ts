@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { GENERATION_CONTRACT_VERSION, GENERATION_LIMITS } from "../../extension/src/shared/generation-contract.js";
-import type { BackendConfig } from "./config.js";
+import { isValidChromeExtensionOrigin, type BackendConfig } from "./config.js";
 import type { ProviderAdapter } from "./contracts/contracts.js";
 import { BackendSafeError, safeErrorResponse, statusForCode } from "./contracts/contracts.js";
 import { validateBackendRequest, validateBackendResponse } from "./validation/backend-validation.js";
@@ -44,13 +44,17 @@ export function createApp({
     let screenshotBytes: number | undefined;
     let screenshotWidth: number | undefined;
     let screenshotHeight: number | undefined;
+    let corsAllowed = false;
 
     try {
       applyBaseHeaders(response);
       validateRouteAndMethod(request);
-      validateOriginAndHeaders(request, config);
+      validateRequestOrigin(request, config);
+      corsAllowed = true;
+      validateRequestHeaders(request);
       if (request.method === "OPTIONS") {
-        writeJson(response, 204, undefined, config);
+        validatePreflightHeaders(request);
+        writeJson(response, 204, undefined, config, corsAllowed);
         status = 204;
         outcome = "ok";
         return;
@@ -69,7 +73,7 @@ export function createApp({
       try {
         const providerResponse = await provider.generate(generationRequest, controller.signal);
         const validated = validateBackendResponse(providerResponse);
-        writeJson(response, 200, validated, config);
+        writeJson(response, 200, validated, config, corsAllowed);
         status = 200;
         outcome = "ok";
       } finally {
@@ -79,7 +83,7 @@ export function createApp({
       const safe = normalizeError(error);
       status = safe.status;
       outcome = safe.code;
-      writeJson(response, status, safeErrorResponse(safe.code), config);
+      writeJson(response, status, safeErrorResponse(safe.code), config, corsAllowed);
     } finally {
       logger.log({
         correlationId,
@@ -107,10 +111,13 @@ function validateRouteAndMethod(request: IncomingMessage) {
   }
 }
 
-function validateOriginAndHeaders(request: IncomingMessage, config: BackendConfig) {
-  if (request.headers.origin !== config.extensionOrigin) {
+function validateRequestOrigin(request: IncomingMessage, config: BackendConfig) {
+  if (!isValidChromeExtensionOrigin(config.extensionOrigin) || request.headers.origin !== config.extensionOrigin) {
     throw new BackendSafeError("request_validation_failed", 403);
   }
+}
+
+function validateRequestHeaders(request: IncomingMessage) {
   if (request.method === "OPTIONS") {
     return;
   }
@@ -122,7 +129,31 @@ function validateOriginAndHeaders(request: IncomingMessage, config: BackendConfi
     throw new BackendSafeError("request_validation_failed", 400);
   }
   const declared = request.headers["content-length"];
-  if (typeof declared === "string" && Number(declared) > GENERATION_LIMITS.serializedRequestBytes) {
+  if (declared !== undefined) {
+    validateContentLength(declared);
+  }
+}
+
+function validatePreflightHeaders(request: IncomingMessage) {
+  if (request.headers["access-control-request-method"] !== "POST") {
+    throw new BackendSafeError("request_validation_failed", 400);
+  }
+  const requestedHeaders = parseRequestedHeaders(request.headers["access-control-request-headers"]);
+  const allowedHeaders = new Set(["content-type", "x-element-catcher-contract-version"]);
+  if (requestedHeaders.length === 0 || requestedHeaders.some((header) => !allowedHeaders.has(header))) {
+    throw new BackendSafeError("request_validation_failed", 400);
+  }
+}
+
+function validateContentLength(value: string | string[]) {
+  if (Array.isArray(value) || !/^(0|[1-9][0-9]*)$/.test(value)) {
+    throw new BackendSafeError("request_validation_failed", 400);
+  }
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new BackendSafeError("request_validation_failed", 400);
+  }
+  if (parsed > GENERATION_LIMITS.serializedRequestBytes) {
     throw new BackendSafeError("request_too_large", 413);
   }
 }
@@ -131,18 +162,31 @@ function readLimitedBody(request: IncomingMessage) {
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
+    let overLimit = false;
     request.on("data", (chunk: Buffer) => {
       size += chunk.byteLength;
       if (size > GENERATION_LIMITS.serializedRequestBytes) {
-        reject(new BackendSafeError("request_too_large", 413));
-        request.destroy();
+        overLimit = true;
         return;
       }
       chunks.push(chunk);
     });
-    request.on("end", () => resolve(Buffer.concat(chunks)));
+    request.on("end", () => {
+      if (overLimit) {
+        reject(new BackendSafeError("request_too_large", 413));
+        return;
+      }
+      resolve(Buffer.concat(chunks, size));
+    });
     request.on("error", reject);
   });
+}
+
+function parseRequestedHeaders(value: string | string[] | undefined) {
+  if (typeof value !== "string") {
+    return [];
+  }
+  return value.split(",").map((header) => header.trim().toLowerCase()).filter(Boolean);
 }
 
 function parseJson(body: Buffer) {
@@ -172,8 +216,10 @@ function applyCors(response: ServerResponse, config: BackendConfig) {
   response.setHeader("Access-Control-Allow-Headers", ALLOWED_HEADERS);
 }
 
-function writeJson(response: ServerResponse, status: number, body: unknown, config: BackendConfig) {
-  applyCors(response, config);
+function writeJson(response: ServerResponse, status: number, body: unknown, config: BackendConfig, corsAllowed: boolean) {
+  if (corsAllowed) {
+    applyCors(response, config);
+  }
   response.statusCode = status;
   response.end(body === undefined ? "" : JSON.stringify(body));
 }

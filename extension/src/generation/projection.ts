@@ -6,6 +6,7 @@ import {
   GENERATION_LIMITS,
   PAGE_TITLE_POLICY_REASON,
   PSEUDO_STYLE_KEYS,
+  REQUESTED_OUTPUT,
   SOURCE_TO_TRANSMITTED_ATTRIBUTES,
   SOURCE_URL_POLICY_REASON,
   TAG_NAME_PATTERN
@@ -47,11 +48,7 @@ export function buildGenerationRequestWithoutDataUrl({
       byteLength: screenshot.byteLength
     },
     captureContext: buildExactCaptureContextProjection(record),
-    requestedOutput: {
-      framework: "react",
-      styling: "tailwind",
-      fields: ["componentName", "code", "summary", "approximationNotes"]
-    }
+    requestedOutput: REQUESTED_OUTPUT
   };
 
   return request;
