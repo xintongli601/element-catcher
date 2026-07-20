@@ -10,6 +10,7 @@ import {
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
 import { boundText, getCaptureDisplayTitle, normalizedOptionalText } from "./display-format";
 import { CapturePreview } from "./CapturePreview";
+import { GenerationWorkflow } from "./GenerationWorkflow";
 
 export type SavedCaptureDetailState =
   | {
@@ -288,6 +289,10 @@ function SavedCaptureDetailContent({
             savedCapture={savedCapture}
             saveState={saveState}
             onEdit={startEditing}
+          />
+          <GenerationWorkflow
+            savedCapture={savedCapture}
+            imageSrc={currentObjectUrlState.status === "ready" ? currentObjectUrlState.objectUrl : null}
           />
           <DeleteCapturePanel onDelete={startDeletion} deleteButtonRef={deleteButtonRef} />
         </>

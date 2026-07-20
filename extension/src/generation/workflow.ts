@@ -1,0 +1,126 @@
+import { validateCaptureRecordV1 } from "../capture/capture-record-v1";
+import { loadSavedCaptureById, type SavedCaptureReadModel } from "../storage/capture-save";
+import { digestBlob } from "../storage/screenshot-asset";
+import { GenerationError, toGenerationError } from "./errors";
+import { buildGenerationRequestWithoutDataUrl } from "./projection";
+import type {
+  ComponentGenerationLocalContextV1,
+  ComponentGenerationRequestV1,
+  ComponentGenerationResponseV1,
+  GenerationReviewModel,
+  GenerationTransport
+} from "./types";
+import { verifyScreenshotAsset, blobToPngDataUrl } from "./screenshot";
+import { computeReviewFingerprint } from "./fingerprint";
+import { createFullRequest, validateFullRequest, validateGenerationResponse, validateRequestWithoutDataUrl } from "./request-validation";
+import { GENERATION_CONTRACT_VERSION } from "./limits";
+
+export async function prepareGenerationReview(
+  savedCapture: SavedCaptureReadModel,
+  endpointCategory: GenerationReviewModel["endpointCategory"]
+): Promise<GenerationReviewModel> {
+  try {
+    validateCaptureRecordV1(savedCapture.record);
+    const screenshot = await verifyScreenshotAsset(savedCapture.asset);
+    const sourceRecordValidationDigest = await digestBlob(new Blob([JSON.stringify(savedCapture.record)], { type: "application/json" }));
+    const requestWithoutDataUrl = buildGenerationRequestWithoutDataUrl({
+      record: savedCapture.record,
+      screenshot
+    });
+    validateRequestWithoutDataUrl(requestWithoutDataUrl);
+    const reviewFingerprint = await computeReviewFingerprint({
+      requestWithoutDataUrl,
+      screenshotDigest: screenshot.digest,
+      screenshotByteLength: screenshot.byteLength,
+      screenshotWidth: screenshot.width,
+      screenshotHeight: screenshot.height
+    });
+
+    const localContext: ComponentGenerationLocalContextV1 = {
+      contractVersion: GENERATION_CONTRACT_VERSION,
+      sourceCaptureId: savedCapture.record.id,
+      sourceCaptureSavedAt: savedCapture.savedAt,
+      sourceRecordWrapperId: savedCapture.record.id,
+      sourceRecordValidationDigest,
+      screenshotStorageKey: savedCapture.record.assets.screenshot.storageKey,
+      screenshotBlobDigest: screenshot.digest,
+      reviewFingerprint,
+      reviewedRequestWithoutDataUrl: requestWithoutDataUrl
+    };
+
+    return {
+      localContext,
+      screenshot: {
+        mediaType: "image/png",
+        width: screenshot.width,
+        height: screenshot.height,
+        byteLength: screenshot.byteLength
+      },
+      endpointCategory
+    };
+  } catch (error) {
+    throw toGenerationError(error);
+  }
+}
+
+export async function generateFromReview({
+  localContext,
+  transport,
+  signal
+}: {
+  localContext: ComponentGenerationLocalContextV1;
+  transport: GenerationTransport;
+  signal: AbortSignal;
+}): Promise<ComponentGenerationResponseV1> {
+  let dataUrl: string | undefined;
+
+  try {
+    const latest = await loadSavedCaptureById(localContext.sourceCaptureId);
+    validateCaptureRecordV1(latest.record);
+    const screenshot = await verifyScreenshotAsset(latest.asset);
+    const requestWithoutDataUrl = buildGenerationRequestWithoutDataUrl({
+      record: latest.record,
+      screenshot
+    });
+    validateRequestWithoutDataUrl(requestWithoutDataUrl);
+    const fingerprint = await computeReviewFingerprint({
+      requestWithoutDataUrl,
+      screenshotDigest: screenshot.digest,
+      screenshotByteLength: screenshot.byteLength,
+      screenshotWidth: screenshot.width,
+      screenshotHeight: screenshot.height
+    });
+    if (fingerprint !== localContext.reviewFingerprint) {
+      throw new GenerationError("review_fingerprint_mismatch");
+    }
+
+    dataUrl = await blobToPngDataUrl(screenshot.blob);
+    const request: ComponentGenerationRequestV1 = createFullRequest(requestWithoutDataUrl, dataUrl);
+    validateFullRequest(request);
+    const response = await transport.generate(request, signal);
+    validateGenerationResponse(response);
+
+    const afterResponse = await loadSavedCaptureById(localContext.sourceCaptureId);
+    const afterScreenshot = await verifyScreenshotAsset(afterResponse.asset);
+    const afterRequest = buildGenerationRequestWithoutDataUrl({
+      record: afterResponse.record,
+      screenshot: afterScreenshot
+    });
+    const afterFingerprint = await computeReviewFingerprint({
+      requestWithoutDataUrl: afterRequest,
+      screenshotDigest: afterScreenshot.digest,
+      screenshotByteLength: afterScreenshot.byteLength,
+      screenshotWidth: afterScreenshot.width,
+      screenshotHeight: afterScreenshot.height
+    });
+    if (afterFingerprint !== localContext.reviewFingerprint) {
+      throw new GenerationError("review_fingerprint_mismatch");
+    }
+
+    return response;
+  } catch (error) {
+    throw toGenerationError(error, "malformed_response");
+  } finally {
+    dataUrl = undefined;
+  }
+}

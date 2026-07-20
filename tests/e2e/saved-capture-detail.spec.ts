@@ -242,8 +242,6 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
       /search/i,
       /filter/i,
       /recapture/i,
-      /generate/i,
-      /ai/i,
       /cloud/i,
       /sign in/i,
       /authenticate/i,

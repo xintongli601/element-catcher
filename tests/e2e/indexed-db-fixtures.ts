@@ -154,7 +154,7 @@ export async function replaceWrapperWithIdMismatch(page: Page, seededCapture: Se
   await runDatabaseOperation(page, "replaceWrapperWithIdMismatch", { seededCapture });
 }
 
-function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
+export function createCaptureRecordFixture(spec: CaptureFixtureSpec): CaptureRecord {
   const crop = createRect(spec.width, spec.height);
   return {
     schemaVersion: 1,
