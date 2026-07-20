@@ -121,7 +121,6 @@ export async function generateFromReview({
     throwIfAborted(signal);
     validateGenerationResponse(response);
     throwIfAborted(signal);
-    throwIfAborted(signal);
     const pendingEntry: GeneratedComponentVersionEntryV1 = {
       id: createGeneratedComponentVersionId(),
       sourceCaptureId: localContext.sourceCaptureId,

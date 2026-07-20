@@ -3,14 +3,18 @@ import {
   CAPTURE_RECORD_STORE_NAME,
   ELEMENT_CATCHER_DATABASE_VERSION,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
+  createInvalidVersionTwoDatabase,
+  deleteRecordWrapper,
   readAllRecordWrappers,
   readAllScreenshotAssetSnapshots,
   readGeneratedStoreInfo,
   readGeneratedVersions,
+  readRawDatabaseSnapshot,
   SCREENSHOT_ASSET_STORE_NAME,
   putGeneratedVersion,
   readPersistenceCounts,
   readRecordWrapper,
+  replaceRecordWrapper,
   readVersionOneSnapshots,
   readScreenshotAssetSnapshot,
   resetAndSeedSavedCaptures,
@@ -206,6 +210,26 @@ test.describe("Milestone 5D generated component persistence", () => {
     await expect(page.getByRole("button", { name: "Retry saving" })).toHaveCount(0);
   });
 
+  test("late close after committed persistence does not reinterpret the saved version as failed", async ({ context, extensionId }) => {
+    await installMockHarness(context, "success");
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page);
+    await page.reload();
+    const target = seeded[0];
+
+    await page.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
+    await page.getByRole("button", { name: "Generate component" }).click();
+    await page.getByLabel(/Data is leaving your device/).check();
+    await page.getByRole("button", { name: "Send to AI and generate" }).click();
+    await expect(page.getByRole("heading", { name: "Saved generated version" })).toBeVisible();
+    expect(await readGeneratedVersions(page, target.record.id)).toHaveLength(1);
+
+    await page.getByRole("button", { name: "Close result" }).click();
+    await expect(page.getByText("1 generated version saved locally.")).toBeVisible();
+    expect(await readGeneratedVersions(page, target.record.id)).toHaveLength(1);
+    await expect(page.getByText(/could not be saved|could not verify|cancelled/i)).toHaveCount(0);
+  });
+
   test("version reads are newest-first, use id tie-breaks, and hide malformed entries", async ({ sidePanelPage }) => {
     const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
     await sidePanelPage.reload();
@@ -314,6 +338,43 @@ test.describe("Milestone 5D generated component persistence", () => {
     expect(await readGeneratedVersions(sidePanelPage, target.record.id)).toEqual([firstVersion, secondVersion]);
   });
 
+  test("list path removes missing-source orphans and preserves another valid source", async ({ sidePanelPage }) => {
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
+    await sidePanelPage.reload();
+    const target = seeded[0];
+    const other = seeded[1];
+    const orphanOne = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:00:00.000Z", "OrphanOne", "55555555-5555-5555-5555-555555555555");
+    const orphanTwo = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:05:00.000Z", "OrphanTwo", "66666666-6666-6666-6666-666666666666");
+    const otherVersion = createGeneratedVersionEntry(other.record.id, other.savedAt, "2026-07-18T13:10:00.000Z", "OtherKept", "77777777-7777-7777-7777-777777777777");
+    await putGeneratedVersion(sidePanelPage, orphanOne);
+    await putGeneratedVersion(sidePanelPage, orphanTwo);
+    await putGeneratedVersion(sidePanelPage, otherVersion);
+    await deleteRecordWrapper(sidePanelPage, target.record.id);
+
+    await sidePanelPage.getByRole("button", { name: `Open saved capture: ${other.title}` }).click();
+    await expect(sidePanelPage.getByText("1 generated version saved locally.")).toBeVisible();
+    expect(await readGeneratedVersions(sidePanelPage, target.record.id)).toEqual([]);
+    expect(await readGeneratedVersions(sidePanelPage, other.record.id)).toEqual([otherVersion]);
+  });
+
+  test("list path removes malformed-source orphans", async ({ sidePanelPage }) => {
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
+    await sidePanelPage.reload();
+    const target = seeded[0];
+    const version = createGeneratedVersionEntry(target.record.id, target.savedAt, "2026-07-18T13:20:00.000Z", "MalformedSourceVersion", "88888888-8888-8888-8888-888888888888");
+    await putGeneratedVersion(sidePanelPage, version);
+    await replaceRecordWrapper(sidePanelPage, {
+      id: target.record.id,
+      value: {
+        ...target.record,
+        id: "capture-ffffffff-ffff-ffff-ffff-ffffffffffff"
+      },
+      savedAt: target.savedAt
+    });
+
+    await expect(readGeneratedVersions(sidePanelPage, target.record.id)).resolves.toEqual([]);
+  });
+
   test("migration failure during generated-version index creation aborts version 2 and preserves version 1 data", async ({ sidePanelPage }) => {
     await resetAndSeedVersionOneDatabase(sidePanelPage);
     const before = await readVersionOneSnapshots(sidePanelPage);
@@ -350,6 +411,18 @@ test.describe("Milestone 5D generated component persistence", () => {
       screenshotAssets: before.assets.length,
       generatedComponentVersions: 0
     });
+  });
+
+  test("invalid version 2 generated-version schema fails closed without version 3 repair", async ({ sidePanelPage }) => {
+    await createInvalidVersionTwoDatabase(sidePanelPage);
+    const before = await readRawDatabaseSnapshot(sidePanelPage);
+    expect(before.version).toBe(2);
+    expect(before.stores).toEqual([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
+
+    await sidePanelPage.reload();
+    await expect(sidePanelPage.getByText(/Could not load the Capture Library/)).toBeVisible();
+    const after = await readRawDatabaseSnapshot(sidePanelPage);
+    expect(after).toEqual(before);
   });
 });
 

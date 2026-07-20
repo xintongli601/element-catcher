@@ -489,7 +489,7 @@ export async function addGeneratedComponentVersion({
             if (!source) {
               throw new PersistenceError("not-found", "Generated version source capture was not found.");
             }
-            validateRecordEntry(source);
+            validateGeneratedVersionSource(source, entry.sourceCaptureId);
             if (source.id !== entry.sourceCaptureId || source.savedAt !== expectedSourceSavedAt) {
               throw new PersistenceError("readback", "Generated version source capture changed before persistence.");
             }
@@ -608,12 +608,6 @@ export async function addGeneratedComponentVersion({
           if (settled) {
             return;
           }
-          try {
-            throwIfAborted(signal);
-          } catch (error) {
-            reject(error);
-            return;
-          }
           if (!confirmedEntry) {
             reject(new PersistenceError("readback", "Generated version persistence completed without a validated read-back."));
             return;
@@ -646,17 +640,21 @@ export async function getGeneratedComponentVersionById(id: string) {
             validateGeneratedComponentVersionEntryV1(entry);
             const sourceRequest = recordStore.get(entry.sourceCaptureId);
             sourceRequest.onsuccess = () => {
-              if (!sourceRequest.result) {
+              try {
+                validateGeneratedVersionSource(sourceRequest.result as StoredRecordEntry | undefined, entry.sourceCaptureId);
+                result = entry;
+              } catch {
                 versionStore.delete(entry.id);
                 result = undefined;
-              } else {
-                result = entry;
               }
             };
             sourceRequest.onerror = () => {
               requestError = sourceRequest.error;
             };
           } catch {
+            if (typeof id === "string") {
+              versionStore.delete(id);
+            }
             result = undefined;
           }
         };
@@ -673,14 +671,42 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
   return withDatabase(
     (database) =>
       new Promise<GeneratedComponentVersionEntryV1[]>((resolve, reject) => {
-        const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
-        const index = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME).index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
+        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
+        const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const versionStore = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+        const index = versionStore.index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
+        const sourceRequest = recordStore.get(sourceCaptureId);
         const request = index.getAll(sourceCaptureId);
         let entries: GeneratedComponentVersionEntryV1[] = [];
+        let sourceValid = false;
         let requestError: DOMException | null = null;
+        let completedReads = 0;
 
-        request.onsuccess = () => {
-          entries = (request.result as unknown[]).flatMap((candidate) => {
+        const maybeProcess = () => {
+          completedReads += 1;
+          if (completedReads !== 2) {
+            return;
+          }
+
+          try {
+            validateGeneratedVersionSource(sourceRequest.result as StoredRecordEntry | undefined, sourceCaptureId);
+            sourceValid = true;
+          } catch {
+            sourceValid = false;
+          }
+
+          const candidates = request.result as unknown[];
+          if (!sourceValid) {
+            for (const candidate of candidates) {
+              if (isGeneratedVersionIdCandidate(candidate)) {
+                versionStore.delete(candidate.id);
+              }
+            }
+            entries = [];
+            return;
+          }
+
+          entries = candidates.flatMap((candidate) => {
             try {
               validateGeneratedComponentVersionEntryV1(candidate);
               return candidate.sourceCaptureId === sourceCaptureId ? [candidate] : [];
@@ -689,6 +715,11 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
             }
           });
         };
+        sourceRequest.onsuccess = maybeProcess;
+        sourceRequest.onerror = () => {
+          requestError = sourceRequest.error;
+        };
+        request.onsuccess = maybeProcess;
         request.onerror = () => {
           requestError = request.error;
         };
@@ -976,6 +1007,41 @@ function validateRecordEntry(record: StoredRecordEntry) {
   if (record.savedAt !== undefined && !isNormalizedIsoTimestamp(record.savedAt)) {
     throw new PersistenceError("validation", "Invalid savedAt timestamp.");
   }
+}
+
+function validateGeneratedVersionSource(source: StoredRecordEntry | undefined, sourceCaptureId: string) {
+  if (!source) {
+    throw new PersistenceError("not-found", "Generated version source capture was not found.");
+  }
+
+  validateRecordEntry(source);
+  const record = source.value;
+  if (
+    record.schemaVersion !== 1 ||
+    typeof record.id !== "string" ||
+    source.id !== record.id ||
+    record.id !== sourceCaptureId ||
+    !record.assets ||
+    typeof record.assets !== "object" ||
+    Array.isArray(record.assets)
+  ) {
+    throw new PersistenceError("validation", "Generated version source capture was invalid.");
+  }
+
+  const screenshot = (record.assets as JsonObject).screenshot;
+  if (
+    !screenshot ||
+    typeof screenshot !== "object" ||
+    Array.isArray(screenshot) ||
+    typeof (screenshot as JsonObject).storageKey !== "string" ||
+    (screenshot as JsonObject).mediaType !== "image/png"
+  ) {
+    throw new PersistenceError("reference-mismatch", "Generated version source screenshot reference was invalid.");
+  }
+}
+
+function isGeneratedVersionIdCandidate(value: unknown): value is { id: string } {
+  return !!value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string";
 }
 
 function assertDeletionPreconditions({
