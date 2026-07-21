@@ -4,11 +4,19 @@
 
 Milestone 5 reconstructs React + Tailwind component versions from a verified saved screenshot plus a bounded projection of a structured `CaptureRecord`. The model input is an explicit outbound request contract, not the live page, not raw webpage code, not raw storage data, and not a full-page clone request.
 
-Milestone 5 does not execute generated code. It produces, validates, and later persists structured text output for generated component versions.
+Milestone 5 does not execute generated code. It produces, validates, and persists structured text output for generated component versions.
 
 Milestone 5 does not include isolated preview, natural-language revision, regeneration comparison, or export. Those capabilities belong to Milestones 6 and 7.
 
-Milestone 5A is this architecture document only. It does not implement AI generation, call an AI API, add backend runtime code, change extension source, change tests, change the database schema, change the Manifest, or update Roadmap statuses.
+Milestone 5A was this architecture document only. It did not implement AI generation, call an AI API, add backend runtime code, change extension source, change tests, change the database schema, change the Manifest, or update Roadmap statuses.
+
+## Implementation status
+
+Milestones 5A through 5D are implemented and independently accepted. The final accepted Milestone 5 outcome includes exact request projection, visible Review data, explicit consent before transmission, stale-review fingerprint protection, a local development proxy, backend-only provider secrets, OpenAI Responses API normalization, safe backend and extension errors, generated-version database migration and store, abortable generation and persistence, stable generated-version IDs, idempotent saving, persistence read-back verification, complete source `CaptureRecord v1` validation, orphan cleanup, source-deletion cascade, and inert generated-code display.
+
+Milestone 5 does not execute or render generated code.
+
+Isolated preview, natural-language revision, regeneration management, and version comparison belong to Milestone 6. Export belongs to Milestone 7.
 
 Official OpenAI references used for OpenAI-specific claims:
 
@@ -666,18 +674,18 @@ Option B: create a separate `generatedComponentVersions` IndexedDB store linked 
 - Makes future preview, revision, and comparison naturally version-entity work.
 - Avoids rewriting the screenshot or source capture during generation persistence.
 
-Authoritative recommendation: use Option B, but only as a future database version 2 recommendation.
+Implemented decision: use Option B. Milestone 5D implemented IndexedDB database version 2 with a separate generated-version store.
 
-Proposed future store:
+Implemented store:
 
 ```text
 generatedComponentVersions
 ```
 
-Proposed future wrapper:
+Implemented wrapper:
 
 ```ts
-type GeneratedComponentVersionEntry = {
+type GeneratedComponentVersionEntryV1 = {
   id: string;
   sourceCaptureId: string;
   sourceCaptureSavedAt: string;
@@ -687,10 +695,8 @@ type GeneratedComponentVersionEntry = {
 };
 ```
 
-Future persistence rules:
+Implemented persistence rules:
 
-- Implement database version 2 only in a later separately approved task.
-- No generated-version store may be implemented until source deletion and orphan handling policy receives separate approval.
 - `keyPath`: `id`.
 - Indexes: one non-unique index on `sourceCaptureId`.
 - Source lookup: query by `sourceCaptureId`, then sort newest-first by `createdAt` with `id` tie-breaker.
@@ -702,10 +708,12 @@ Future persistence rules:
 - Generated version uses `add` semantics, not overwrite.
 - Success requires read-back verification.
 - Invalid generated-version entries fail safely and are not treated as valid generated output.
-- Orphan behavior remains explicitly unresolved for Milestone 5D.
-- Source deletion behavior remains explicitly unresolved for Milestone 5D.
-
-Do not implement this migration in Milestone 5A.
+- Complete source `CaptureRecord v1` validation is required for generated-version persistence and read paths.
+- Missing or invalid source captures make linked generated versions orphaned and invalid.
+- Read paths clean or prevent orphans using actual IndexedDB primary keys.
+- Source deletion cascades to linked generated versions.
+- Original `CaptureRecord` data and screenshot assets are not mutated by generation persistence.
+- Screenshot Blob and data URL are not duplicated into generated versions.
 
 ## 14. Generation state machine
 
@@ -888,14 +896,14 @@ Optional live test:
 - Must set `store: false`.
 - Must not use provider tools, background mode, Conversations, or Files API upload.
 
-## 19. Implementation staging
+## 19. Accepted implementation staging
 
-Milestone 5A:
+Milestone 5A accepted:
 
 - This architecture document.
 - No runtime implementation.
 
-Milestone 5B:
+Milestone 5B accepted:
 
 - Local context and outbound request contracts.
 - Request whitelist/projection builder.
@@ -905,9 +913,8 @@ Milestone 5B:
 - Provider-neutral mock transport.
 - Deterministic tests.
 - No real OpenAI call.
-- No database migration yet.
 
-Milestone 5C:
+Milestone 5C accepted:
 
 - Local Node backend proxy.
 - OpenAI Responses API provider adapter.
@@ -916,15 +923,17 @@ Milestone 5C:
 - Environment configuration.
 - Safe normalized errors.
 - Logging allowlist.
-- Optional synthetic live smoke.
+- Deterministic backend and loopback validation without committing or exposing a real API secret.
 
-Milestone 5D:
+Milestone 5D accepted:
 
-- Generated-version persistence policy approval first.
-- `generatedComponentVersions` database migration only after approval.
+- `generatedComponentVersions` database migration.
 - Atomic version persistence.
 - Read-back.
 - Source linkage.
+- Complete source `CaptureRecord v1` validation.
+- Orphan cleanup.
+- Source-deletion cascade.
 - Final Milestone 5 regression.
 
 ## 20. Architecture diagrams
@@ -1003,7 +1012,5 @@ Validated response
 - Timeline for hosted production backend.
 - Whether page title opt-in belongs in 5B or later.
 - Selected initial model and acceptable maximum per-generation cost.
-- Source deletion policy for generated versions.
-- Orphan handling policy for generated versions.
 
-API-key security, provider-neutral extension boundaries, default transmission projection, stale-review protection, OpenAI `store: false`, provider-tool prohibition, and logging boundaries are not open decisions. They are fixed by this document.
+API-key security, provider-neutral extension boundaries, default transmission projection, stale-review protection, OpenAI `store: false`, provider-tool prohibition, generated-version source-deletion cascade, orphan cleanup, and logging boundaries are not open decisions. They are fixed by this document and the accepted Milestone 5 implementation.

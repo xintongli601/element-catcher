@@ -2,13 +2,15 @@
 
 `CaptureRecord` is the normalized, serializable source of truth for an Element Catcher capture.
 
-It is not a live DOM reference, not raw `outerHTML`, and not just screenshot history. It is a JSON-compatible record that can power the local Capture Library, Capture Preview, search, AI reconstruction, generated component versions, and future export.
+It is not a live DOM reference, not raw `outerHTML`, and not just screenshot history. It is a JSON-compatible record that powers Capture Preview, the local Capture Library, search and filtering, AI reconstruction input, and future export workflows.
+
+The current CaptureRecord schema version remains `1`.
 
 ## Principles
 
 - Use plain JSON-compatible data.
 - Do not store `HTMLElement`, `Node`, `DOMRect`, `CSSStyleDeclaration`, or other browser runtime objects.
-- Store screenshot data through an asset reference, not a required inline image string.
+- Store screenshot data through an asset reference, not an inline image string.
 - Keep original capture data separate from generated component versions.
 - Use `schemaVersion` for migration.
 - Prefer semantic summaries over large raw content.
@@ -17,8 +19,6 @@ It is not a live DOM reference, not raw `outerHTML`, and not just screenshot his
 ## Field Groups
 
 ### Required Capture-Time Fields
-
-These fields are required when a complete Milestone 3 capture is created:
 
 - `schemaVersion`
 - `id`
@@ -37,10 +37,10 @@ These fields are required when a complete Milestone 3 capture is created:
 - `summaries.layout`
 - `summaries.spacing`
 - `assets.screenshot`
+- `library.tags`
+- `generatedVersions`
 
 ### Optional Capture-Time Fields
-
-These fields may be missing when unavailable or unsafe:
 
 - `source.faviconUrl`
 - `element.semanticRole`
@@ -53,16 +53,12 @@ These fields may be missing when unavailable or unsafe:
 
 ### User-Editable Library Metadata
 
-These fields are edited by the user in the local Capture Library:
-
 - `library.title`
 - `library.componentType`
 - `library.tags`
 - `library.notes`
 
-### AI-Derived Fields
-
-These fields may be filled by future AI or heuristic processing:
+### Derived and Compatibility Fields
 
 - `summaries.componentType`
 - `summaries.layout`
@@ -71,16 +67,7 @@ These fields may be filled by future AI or heuristic processing:
 - `summaries.spacing`
 - `generatedVersions`
 
-### Future Fields
-
-Future versions may add:
-
-- More framework targets
-- Export metadata
-- Preview settings
-- User-defined design tokens
-- Local-only embedding/search metadata
-- Cloud sync metadata if cloud sync is ever added
+`CaptureRecord.generatedVersions` remains part of the version 1 contract. New CaptureRecords initialize it as an empty array. Milestone 5 does not write generated history into this field; it is preserved unchanged for CaptureRecord compatibility. Persisted generated versions use a separate IndexedDB store and envelope.
 
 ## TypeScript Interfaces
 
@@ -285,14 +272,49 @@ export type GeneratedComponentVersion = {
 };
 ```
 
-Milestone 3C uses a temporary cropped screenshot result before local asset storage exists. That intermediate result is not a persisted `ScreenshotAssetReference` and does not create a `storageKey`. In the persisted `ScreenshotAssetReference`, `width` and `height` represent encoded cropped-asset pixel dimensions, and `crop` represents the clamped viewport CSS-pixel rectangle used to create the crop. A stable `storageKey` is created only when the cropped screenshot is placed into a local asset store in a later stage.
+Persisted screenshots use `ScreenshotAssetReference`. `width` and `height` represent encoded cropped-asset pixel dimensions, and `crop` represents the clamped viewport CSS-pixel rectangle used to create the crop. Screenshot Blob data is stored in the `screenshotAssets` store and is not duplicated into `CaptureRecord` or generated versions.
+
+## Generated-Version Persistence Envelope
+
+Milestone 5 persists generated component versions outside `CaptureRecord`:
+
+```ts
+type GeneratedComponentVersionEntryV1 = {
+  id: string;
+  sourceCaptureId: string;
+  sourceCaptureSavedAt: string;
+  sourceReviewFingerprint: string;
+  createdAt: string;
+  value: ComponentGenerationResponseV1;
+};
+```
+
+Persistence details:
+
+```text
+store: generatedComponentVersions
+keyPath: id
+index: sourceCaptureId
+unique: false
+```
+
+Clarifications:
+
+- The envelope is not embedded into `CaptureRecord`.
+- `CaptureRecord.generatedVersions` is not populated by Milestone 5.
+- Screenshot Blob and screenshot data URL are not duplicated into generated versions.
+- Raw provider responses and provider response IDs are not persisted.
+- Source deletion cascades to associated generated versions.
+- Missing or invalid source captures make linked versions orphaned and invalid.
+- Normal application behavior cleans or prevents orphans.
+- Original `CaptureRecord` data is not mutated by generation.
 
 ## Example Shape
 
 ```ts
 const capture: CaptureRecord = {
   schemaVersion: 1,
-  id: "capture_01",
+  id: "capture-00000000-0000-0000-0000-000000000001",
   createdAt: "2026-07-16T10:00:00.000Z",
   source: {
     url: "https://example.com/dashboard",
@@ -373,7 +395,7 @@ const capture: CaptureRecord = {
   },
   assets: {
     screenshot: {
-      storageKey: "screenshots/capture_01.png",
+      storageKey: "screenshots/capture-00000000-0000-0000-0000-000000000001.png",
       mediaType: "image/png",
       width: 640,
       height: 840,
@@ -401,7 +423,7 @@ const capture: CaptureRecord = {
 
 ## Privacy Safeguards
 
-CaptureRecord creation must follow these safeguards:
+CaptureRecord creation and generation must follow these safeguards:
 
 - Do not save password values.
 - Do not save input or textarea values by default.
@@ -411,7 +433,9 @@ CaptureRecord creation must follow these safeguards:
 - Remove event-handler attributes.
 - Avoid persisting hidden sensitive content.
 - Store only supported, visible, user-selected element context.
-- Warn before future AI transmission.
+- Show Review data and require explicit consent before AI transmission.
+- Keep source URL, page title, local persistence identifiers, screenshot storage key, browser storage, and cookies out of the approved Milestone 5 outbound generation contract.
+- Keep provider credentials backend-only.
 
 ## Sanitization Rules
 
@@ -425,9 +449,21 @@ DOM sanitization should:
 - Limit maximum depth and child count.
 - Preserve useful non-sensitive attributes such as `id`, `class`, `role`, `aria-label`, and `data-*` only when safe.
 
+Excluded from generated-version persistence and outbound generation contracts:
+
+- Arbitrary hidden content.
+- Raw `outerHTML`.
+- Live DOM.
+- Unrelated captures.
+- Extension logs.
+- Screenshot storage keys.
+- IndexedDB wrappers.
+- Provider response IDs.
+- Raw provider responses.
+
 ## Migration Strategy
 
-Future schema migrations should use explicit versioned functions:
+Future schema migrations should use explicit versioned functions. Milestone 5 generated-version persistence does not change the `CaptureRecord` schema version.
 
 ```ts
 export type UnknownCaptureRecord = JsonObject & {

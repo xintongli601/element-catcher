@@ -1,10 +1,39 @@
 # Element Catcher
 
-Element Catcher is a local-first Chrome extension project for capturing UI inspiration from supported webpages and rebuilding it as reusable front-end code. The product is aimed at designers, product managers, front-end learners, and indie makers who want a faster way to collect, organize, study, and reuse interface patterns from pages they can already view in their own browser.
+Element Catcher is a local-first Chrome extension for capturing UI inspiration from supported webpages, saving it into a personal Capture Library, organizing it, and rebuilding it as reusable React + Tailwind source code.
 
-The refined positioning is: "Capture UI inspiration. Rebuild it as reusable code." Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are useful supporting capabilities, but the product's core direction is the full workflow: Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse.
+The product direction is:
 
-Milestone 3A supports a focused locked-selection workflow. The extension can be built, loaded as an unpacked Chrome extension, opened as a side panel, and used to start selection mode on ordinary supported webpages. Hovered DOM elements receive a temporary overlay highlight, clicking locks the highlighted element, Parent and Child controls refine along a deterministic path, and Confirm returns the final selected metadata. Milestone 3B.1 adds a privacy-safe intermediate DOM extraction package for confirmed selections, Milestone 3B.2 adds bounded normalized style extraction and semantic summaries, and Milestone 3C adds current-viewport screenshot capture with bounded element cropping. Screenshots are still temporary; local capture storage, Capture Library, and AI generation are intentionally not implemented yet.
+```text
+Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
+```
+
+Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Generated code is currently displayed only as inert source text; it is not rendered, executed, revised, compared, or exported by the extension.
+
+## Current Capabilities
+
+- Capture supported visible webpage elements with hover highlighting, click-to-lock selection, Parent/Child refinement, and Confirm.
+- Build a complete `CaptureRecord v1` with source context, viewport data, selected-element metadata, sanitized DOM, normalized styles, summaries, and screenshot asset reference.
+- Save captures locally in IndexedDB with persisted screenshot Blobs.
+- Reopen saved captures in a local Capture Library.
+- Edit user-managed title, component type, tags, and notes.
+- Delete captures atomically.
+- Search and filter the local Capture Library.
+- Review exact AI-generation outbound data before transmission.
+- Require explicit consent before sending the screenshot and approved structured projection through the configured backend.
+- Generate React + Tailwind component source through the provider-neutral transport and local backend/proxy when configured.
+- Save generated versions locally in a separate `generatedComponentVersions` store linked to the source capture.
+- Display generated code as inert plain text.
+
+## Local-First and AI Boundary
+
+Captures remain local by default. Saved `CaptureRecord` metadata and screenshot assets are stored under the extension origin in IndexedDB. Generated versions are stored separately from the original capture, and generation does not mutate the original `CaptureRecord`.
+
+AI generation uses the configured local backend/proxy path. The extension does not contain provider API keys, and provider secrets must remain server-side. Before any generation request is sent, Element Catcher shows the exact approved outbound projection and requires explicit consent. The outbound contract excludes source URL, page title, local persistence identifiers, screenshot storage keys, browser storage, cookies, and raw wrappers.
+
+The local proxy is a development/demo topology. It is not a production multi-user backend, and it does not add authentication, quotas, budgets, abuse monitoring, or hosted operations.
+
+No real OpenAI request was made during automated acceptance. The provider adapter and loopback path were validated deterministically without committing or exposing a real API secret.
 
 ## Prerequisites
 
@@ -52,57 +81,39 @@ npm run preview
 ## Completed Milestones
 
 - Milestone 1: Chrome Extension Manifest V3 scaffold, TypeScript build setup, React side panel, background service worker, content script entry, and plain CSS UI.
-- Milestone 2: Selection mode and element highlighting on supported ordinary webpages, including hover overlay, click-to-select, Escape cancellation, cleanup, and minimal selected-element confirmation.
-- Milestone 2.5: Product positioning and Capture architecture reset, including the `CaptureRecord v1` schema in `docs/CAPTURE_SCHEMA.md`.
+- Milestone 2: Selection mode and element highlighting on supported ordinary webpages.
+- Milestone 2.5: Product positioning and Capture architecture reset, including the `CaptureRecord v1` schema.
+- Milestone 3: Reliable element capture, CaptureRecord assembly, screenshot asset persistence, Capture Preview, and explicit local Save.
+- Milestone 4: Personal Capture Library with list, reopen, metadata editing, deletion, search, and filtering.
+- Milestone 5: AI React + Tailwind reconstruction with explicit Review data, consent-gated transport, local backend/proxy integration, Responses API adapter, and separate local generated-version persistence.
+
+Current milestone:
+
+- Milestone 6: Isolated Preview and Version Management.
 
 See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
-## Selection Mode
-
-Open the Element Catcher side panel and click `Start Capture` on an ordinary webpage. Move the pointer across page elements to preview the current target with a temporary overlay, then click the highlighted element to lock it. Use `Parent` or `Child` to refine the locked target along the deterministic refinement path, then click `Confirm` to select the final element. Press `Escape` or use the side panel `Cancel` button to leave selection mode without selecting anything.
-
-Selection mode records only in-memory capture metadata for this stage: tag name, bounding rectangle, page URL, optional short text preview, optional element ID, optional class names, optional semantic role, a privacy-safe intermediate DOM/style extraction package after Confirm, and a temporary cropped screenshot of the currently visible viewport area. It does not save captures locally.
-
-## Capture Architecture
-
-The future capture workflow is:
-
-```text
-Raw webpage element
-  -> Capture extractor
-  -> Normalized CaptureRecord
-  -> Local Capture Library
-  -> AI component generator
-  -> Generated component versions
-  -> Reuse or export
-```
-
-The normalized `CaptureRecord` is planned as the source of truth for Capture Preview, local library entries, search, AI generation, generated component versions, and future export. Raw DOM references will not be persisted.
-
-## Known Limitations
+## Supported Page Limitations
 
 - Selection mode is limited to supported `http://` and `https://` webpages where the content script is available.
 - Element Catcher can support many login-only, intranet, permissioned, dynamic, and localhost pages, but it does not work on every visible browser page.
 - Restricted pages such as `chrome://` pages, Chrome Web Store pages, browser-controlled UI, and some extension pages cannot be selected.
-- Cross-origin iframe support is not implemented in Milestone 2.
+- Cross-origin iframe contents are not accessible to the extension.
 - Closed shadow roots and browser UI cannot be inspected.
+- The product must not bypass access controls or capture content the user cannot already view.
 
-## Revised Roadmap
+## Current Roadmap
 
-- Milestone 3: Reliable Element Capture, including locked selection, parent/child navigation, source URL and page title, screenshot capture and cropping, sanitized DOM snapshot, normalized computed style extraction, semantic summaries, Capture Preview, one valid `CaptureRecord`, and local persistence.
-- Milestone 4: Personal Capture Library with list, reopen, edit title, tags, notes, component type, delete, search, and filter.
-- Milestone 5: AI React + Tailwind Reconstruction using screenshot plus structured CaptureRecord input, saving generated versions.
-- Milestone 6: Isolated Preview and Version Management with preview, natural-language revision, regeneration, multiple versions, and comparison.
-- Milestone 7: Export and Future Expansion, potentially including code file export, GitHub workflow, Figma integration, additional frameworks, cloud sync, and team collaboration.
+- Milestones 1-5: Completed.
+- Milestone 6: Current. Isolated generated-component preview, natural-language revision, regeneration management, multiple-version management, and comparison remain unimplemented.
+- Milestone 7: Planned. Export and future expansion remain unimplemented.
 
 ## Intentionally Unimplemented
 
-- Complete `CaptureRecord` creation
-- Stable screenshot asset storage
-- Capture preview
-- Local capture library storage
-- Capture Library search and organization
-- React + Tailwind component generation
-- AI API integration
-- Figma export
-- Authentication, backend services, cloud sync, and payments
+- Isolated rendered preview of generated code.
+- Natural-language revision.
+- Regeneration management.
+- Version comparison.
+- Export.
+- Figma export.
+- Authentication, hosted production multi-user backend operations, cloud sync, team collaboration, payments, quotas, and account management.

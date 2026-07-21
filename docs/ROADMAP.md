@@ -858,7 +858,7 @@ Acceptance status: Completed. Milestone 4E passed production build and classic c
 
 ## Milestone 5 - AI React + Tailwind Reconstruction
 
-Status: Current
+Status: Completed
 
 Objective: Generate readable, reusable React + Tailwind component versions from a screenshot reference plus structured `CaptureRecord` input.
 
@@ -890,9 +890,11 @@ Acceptance criteria:
 - The original capture data is not mutated by generation.
 - Users receive an appropriate warning before any external AI transmission.
 
+Acceptance status: Completed. Milestone 5 is accepted as the completed and independently accepted Milestones 5A through 5D: provider-neutral architecture and privacy boundary; exact outbound CaptureRecord projection with visible Review data and explicit consent before transmission; local backend/proxy topology with backend-only provider secrets; OpenAI Responses API adapter with normalized React + Tailwind response output and safe backend/extension error contracts; separate generated-version persistence in IndexedDB database version 2 with exactly three stores, `captureRecords`, `screenshotAssets`, and `generatedComponentVersions`, plus one non-unique `generatedComponentVersions.sourceCaptureId` index; complete source linkage, full `CaptureRecord v1` validation, original CaptureRecord and screenshot immutability, persistence read-back before success, stable IDs, idempotent Retry saving, and abortable transport and persistence; deterministic newest-first generated-version listing in Saved Capture Detail; orphan detection and cleanup; source-deletion cascade; inert plain-text generated code display with no execution or rendered preview; and automated backend, loopback, and extension-runtime regression. Automated acceptance made zero real OpenAI requests; the provider adapter and local loopback path were validated deterministically without committing or exposing a real API secret.
+
 ## Milestone 6 - Isolated Preview and Version Management
 
-Status: Planned
+Status: Current
 
 Objective: Let users preview, revise, regenerate, compare, and manage generated component versions in isolation.
 

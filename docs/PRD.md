@@ -2,321 +2,285 @@
 
 ## 1. Product Overview
 
-Element Catcher is a local-first Chrome extension for capturing UI inspiration from supported webpages currently visible in the user's browser and rebuilding it as reusable front-end code.
+Element Catcher is a local-first Chrome extension for capturing UI inspiration from supported webpages and rebuilding it as reusable front-end code.
 
-The refined positioning is:
+Positioning:
 
 > Capture UI inspiration. Rebuild it as reusable code.
 
-The product is not primarily differentiated by element inspection, raw CSS extraction, Tailwind export, or element screenshots. Those are useful supporting capabilities, but competing tools already provide them. Element Catcher should instead focus on the full reuse workflow:
+The product is not a full CSS inspector, full-page cloning tool, publishing platform, or enterprise design-to-code suite. Its durable value is the workflow from local capture to organized reusable component source.
 
-```text
-Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
-```
+## 2. Current Product State
 
-The long-term product flow is:
+Milestones 1 through 5 are completed. Milestone 6 is current.
 
-```text
-Raw webpage element
-  -> Capture extractor
-  -> Normalized CaptureRecord
-  -> Local Capture Library
-  -> AI component generator
-  -> Generated component versions
-  -> Reuse or export
-```
+Implemented:
 
-Element Catcher should remain lighter and more focused than full-site cloning, visual CSS editing, enterprise design-to-code suites, website publishing tools, or team design-system platforms.
+- Reliable supported-page element capture.
+- Click-to-lock selection with Parent/Child refinement.
+- Current-visible-tab screenshot capture and cropping.
+- `CaptureRecord v1` creation and validation.
+- Persisted screenshot assets.
+- Local Capture Library.
+- Saved-capture reopen.
+- User-managed metadata editing for title, component type, tags, and notes.
+- Atomic deletion.
+- Search and filtering.
+- React + Tailwind generation through the configured provider-neutral backend path.
+- Review data and explicit consent before outbound AI transmission.
+- Local generated-version persistence in a separate IndexedDB store.
+- Inert source-text display of generated code.
 
-## 2. Project History and Current State
+Current next product stage:
 
-Milestone 1 established the Chrome Extension Manifest V3 scaffold, TypeScript build setup, React side panel, background service worker, content script entry, and plain CSS UI.
+- Isolated generated-component preview.
+- Version management.
+- Natural-language revision.
+- Regeneration management.
+- Version comparison.
 
-Milestone 2 implemented selection mode and element highlighting. The user can start selection from the side panel, hover DOM elements on ordinary supported webpages, see a temporary overlay, click to select an element, cancel with Escape, and see minimal selected-element metadata in the side panel.
-
-Milestone 2.5 is a documentation and architecture reset. It does not implement new extension functionality. It clarifies the product direction before screenshot capture, DOM/CSS extraction, local persistence, Capture Library, or AI generation are built.
+These Milestone 6 capabilities are not implemented yet.
 
 ## 3. Problem Statement
 
-Designers, product managers, front-end learners, and indie makers often notice useful UI patterns while browsing: a pricing card, comment box, dashboard widget, navigation pattern, form layout, or polished call-to-action. Existing workflows usually produce passive references such as screenshots, bookmarks, and notes. These references are easy to collect but hard to reuse.
+Designers, product managers, front-end learners, and indie makers often notice useful UI patterns while browsing: a pricing card, comment box, dashboard widget, navigation pattern, form layout, or polished call-to-action. Existing workflows often produce passive references such as screenshots, bookmarks, and notes. These references are easy to collect but hard to reuse.
 
-Element inspection tools can show dimensions, CSS, screenshots, or Tailwind-like values, but raw inspection data is not enough. A single "Copy Tailwind" action does not create a reusable asset workflow. Users still need to organize the inspiration, understand the component's role, reconstruct it cleanly, preview generated versions, and return to it later.
-
-URL-to-design and screenshot-to-code products can help in adjacent workflows, but they often focus on public pages, full-page conversion, or one-off generation. Element Catcher is intended for local-first capture from supported pages already visible in the user's browser, including many login-only, intranet, permissioned, dynamic, and localhost pages, while respecting browser and extension restrictions.
+Element Catcher turns supported visible webpage elements into structured local captures, lets users organize them, and can rebuild them as React + Tailwind source code while preserving the original capture as an immutable reference.
 
 ## 4. Target Users
 
-The first target users remain:
+- UI/UX students.
+- Junior product designers.
+- Product managers learning design.
+- Front-end beginners.
+- Indie makers.
+- Portfolio builders collecting interaction and component references.
 
-- UI/UX students
-- Junior product designers
-- Product managers learning design
-- Front-end beginners
-- Indie makers
-- Portfolio builders collecting interaction and component references
+The strongest early user is someone building a design or front-end portfolio who wants to collect UI patterns, study how interfaces are structured, and turn inspiration into organized reusable assets.
 
-The strongest early user is someone building a design or front-end portfolio. They browse real products, collect UI patterns, study how interfaces are structured, and want to turn inspiration into organized, editable, reusable front-end assets.
-
-## 5. Product Positioning
-
-Element Catcher should be positioned as a local-first UI inspiration capture and reusable asset workflow.
-
-The product should not be framed as:
-
-- A complete CSS inspector
-- A QA measurement tool
-- A full-page cloning tool
-- A media scraper
-- A website publishing platform
-- An enterprise collaboration suite
-
-Element inspection, dimensions, CSS viewing, element screenshots, and Tailwind export are supporting capabilities. The product's durable value should come from transforming raw webpage observations into a structured CaptureRecord, storing that record in a personal library, and using it to generate reusable component versions.
-
-## 6. Product Differentiation
+## 5. Product Differentiation
 
 Element Catcher sits between inspiration libraries, browser inspection tools, and AI code generators.
 
-The differentiation is the workflow, not any single extraction feature:
+The differentiation is the workflow:
 
 1. Capture from supported webpages already visible in the user's browser.
-2. Normalize raw screenshot, DOM, CSS, and semantic summaries into a stable CaptureRecord.
-3. Store captures locally as reusable assets, not just screenshots.
-4. Let the user organize captures with titles, tags, notes, and component types.
+2. Normalize screenshot, DOM, CSS, and semantic summaries into a stable `CaptureRecord`.
+3. Store captures locally as reusable assets.
+4. Organize captures with title, tags, notes, and component type.
 5. Generate React + Tailwind component versions from screenshot plus structured capture data.
 6. Preserve generated versions separately from the original capture.
-7. Support reuse, comparison, and eventual export without becoming a full publishing platform.
+7. Hand off to isolated preview, revision, comparison, and eventual export without becoming a full publishing platform.
 
-Interaction patterns worth borrowing from existing tools include accurate hover highlighting, click-to-lock selection, Escape to cancel, dimensions, parent/child navigation, and fixed side-panel interaction. These should serve the capture workflow rather than become a full inspector product.
+## 6. Supported Page Limitations
 
-## 7. Supported Page Limitations
+Element Catcher can capture from supported webpages currently visible in the user's browser, including many login-only, intranet, permissioned, dynamic, and localhost pages.
 
-Element Catcher should use accurate language about page support.
+It must not claim to work on every browser page. Known limitations include:
 
-The product can capture from supported webpages currently visible in the user's browser, including many login-only, intranet, permissioned, dynamic, and localhost pages.
-
-It should not claim to work on literally every visible browser page. Known limitations include:
-
-- Chrome internal pages such as `chrome://` pages
-- Chrome Web Store pages
-- Browser-controlled UI
-- Extension pages where content scripts cannot run
-- Inaccessible cross-origin iframe contents
-- Closed shadow roots
-- Pages where the extension content script is blocked, unavailable, or not reloaded
+- Chrome internal pages such as `chrome://` pages.
+- Chrome Web Store pages.
+- Browser-controlled UI.
+- Extension pages where content scripts cannot run.
+- Inaccessible cross-origin iframe contents.
+- Closed shadow roots.
+- Pages where the extension content script is blocked, unavailable, or not reloaded.
 
 The product must not bypass access controls or capture content the user cannot already view.
 
-## 8. Local-First Principle
+## 7. Local-First and AI Transmission
 
-Element Catcher should be local-first by default.
+Captures remain local by default. Saved capture metadata and screenshot assets are stored in IndexedDB under the extension origin. The local Capture Library is the primary store for saved inspiration assets.
 
-Captured records should stay on the user's device unless the user explicitly chooses to export them or send data to an AI API. The local Capture Library is the primary store for saved inspiration assets.
+Outbound AI behavior is current, explicit, and consent-gated:
 
-Future AI generation should warn users before transmitting screenshots, text previews, DOM summaries, or style summaries to an external model. Users should be warned not to send sensitive personal information, private messages, confidential business data, protected content, passwords, payment information, or private identifiers.
+- The extension rereads and validates the saved capture and screenshot before generation.
+- The user sees the approved outbound projection before sending.
+- Explicit consent is required for every generation attempt.
+- The screenshot and approved structured projection are sent only through the configured backend.
+- Source URL, page title, favicon URL, local persistence identifiers, screenshot storage keys, wrapper data, browser storage, and cookies are excluded from the approved outbound contract.
+- API credentials remain backend-only and must never enter extension source, browser storage, IndexedDB, logs, or generated bundles.
 
-## 9. Core User Flow
+The local backend/proxy is a development/demo topology, not a production multi-user backend. No real OpenAI request was made during automated acceptance; the provider adapter and local loopback path were deterministically validated without committing or exposing a real API secret.
 
-The revised core user flow is:
+## 8. Core User Flow
 
-1. The user opens a supported webpage.
-2. The user opens the Element Catcher side panel.
-3. The user starts selection mode.
-4. The user hovers and selects a UI element.
-5. The extension locks the selected element and offers parent/child refinement.
-6. The extension captures a screenshot reference and extracts sanitized, limited source data.
-7. The extension builds a normalized `CaptureRecord`.
-8. The user reviews a Capture Preview.
-9. The user saves the record into the local Capture Library.
-10. The user organizes the capture with title, component type, tags, and notes.
-11. The user generates one or more React + Tailwind component versions.
-12. The user previews, revises, compares, reuses, or exports generated versions.
+Implemented:
 
-Milestone 2 currently covers only steps 2-4 at a minimal level.
+```text
+Capture -> Save -> Organize -> Rebuild
+```
 
-## 10. Structured Capture Concept
+Implemented details:
+
+1. Open a supported webpage.
+2. Open the Element Catcher side panel.
+3. Start selection mode.
+4. Hover, lock, and refine a UI element.
+5. Confirm the final selected element.
+6. Capture and crop a screenshot.
+7. Build a normalized `CaptureRecord v1`.
+8. Review the Capture Preview.
+9. Save the capture into the local Capture Library.
+10. Organize the capture with title, component type, tags, and notes.
+11. Review outbound generation data.
+12. Consent to send the approved projection through the configured backend.
+13. Generate React + Tailwind source.
+14. Persist the generated version separately from the original capture.
+
+Current/future:
+
+```text
+Preview -> Revise -> Compare -> Reuse/Export
+```
+
+Isolated generated-code preview, natural-language revision, regeneration management, version comparison, reuse workflow polish, and export are not implemented.
+
+## 9. Structured Capture Concept
 
 A capture is not just a screenshot. A capture is a normalized, serializable record that combines visual reference, source context, sanitized structure, normalized style information, semantic summaries, and user library metadata.
 
-The normalized `CaptureRecord` should become the source of truth for:
+The normalized `CaptureRecord` is the source of truth for:
 
-- Local library entries
-- Capture preview
-- Search and filtering
-- AI generation input
-- Generated component versions
-- Future export workflows
+- Local library entries.
+- Capture preview.
+- Search and filtering.
+- AI generation input.
+- Future preview, comparison, and export workflows.
 
-The raw webpage element itself must never be stored as a live DOM reference. Raw `outerHTML` must not be stored without sanitization. Large image data should be referenced as an asset rather than embedded directly in every metadata record.
+Generated versions are intentionally persisted outside the original `CaptureRecord` in a separate IndexedDB store.
 
-## 11. Capture Library Concept
+## 10. Capture Library Concept
 
-The Capture Library is not screenshot history. Each entry should be a structured reusable asset.
+The Capture Library is implemented as a personal local-first library of structured reusable assets.
 
-Future library features should include:
+Implemented library features:
 
-- Capture list
-- Reopen capture
-- Edit title
-- Tags
-- Notes
-- Component type
-- Delete
-- Search
-- Filter
+- Capture list.
+- Reopen capture.
+- Edit title.
+- Edit component type.
+- Edit tags.
+- Edit notes.
+- Delete.
+- Search.
+- Filter.
 
-The library should remain personal and local-first in the MVP. Cloud sync and team sharing are future possibilities, not v0.1 requirements.
+Cloud sync and team sharing remain future possibilities, not v0.1 requirements.
 
-## 12. AI Reconstruction Concept
+## 11. AI Reconstruction Concept
 
-AI reconstruction should use both the screenshot reference and the structured CaptureRecord. The model should not blindly copy messy website code or internal class names. It should produce readable, reusable React + Tailwind code inspired by the captured UI element.
+AI reconstruction uses both the persisted screenshot Blob and a bounded structured projection of the saved `CaptureRecord`. The model must not blindly copy messy website code or internal class names. It produces readable React + Tailwind source inspired by the captured UI element.
 
-The AI input should eventually include:
+The approved outbound input includes:
 
-- Cropped screenshot reference
-- Sanitized DOM summary
-- Normalized computed style summary
-- Typography summary
-- Color roles
-- Layout summary
-- Spacing summary
-- Component type and user intent where available
+- PNG screenshot data URL created only after consent.
+- Sanitized DOM summary.
+- Normalized computed style summary.
+- Typography summary.
+- Color roles.
+- Layout summary.
+- Spacing summary.
+- Selected element tag, role, and dimensions.
+- User-managed title, component type, and tags where available.
 
-The output should include:
+The output includes:
 
-- Component name
-- React + Tailwind code
-- Component summary
-- Approximation notes
-- Generated version metadata
+- Component name.
+- React + Tailwind code.
+- Component summary.
+- Approximation notes.
 
-## 13. Generated Component Versions
+Generated code is displayed as inert source text. It is not executed or rendered in Milestone 5.
 
-Generated components should be stored conceptually separate from the original CaptureRecord.
+## 12. Generated Component Versions
 
-A single capture may produce multiple generated versions. Future versions may support natural-language revision, regeneration, comparison, and export. Generated versions should preserve their relationship to the source capture without mutating the original capture data.
+Generated component versions are stored separately from the original `CaptureRecord`.
 
-## 14. MVP Boundaries and Revised Roadmap
+Implemented persistence architecture:
 
-Completed Milestone 1: Extension scaffold.
+```text
+IndexedDB version: 2
 
-Completed Milestone 2: Selection mode and element highlighting.
+Stores:
+- captureRecords
+- screenshotAssets
+- generatedComponentVersions
 
-Milestone 2.5: Product positioning and Capture architecture reset.
+Index:
+- generatedComponentVersions.sourceCaptureId
+```
 
-Revised Milestone 3: Reliable Element Capture.
+Generated-version persistence validates the complete source `CaptureRecord`, source linkage, screenshot reference, response shape, stable generated-version ID, idempotent retry behavior, read-back, cancellation, orphan cleanup, deletion cascade, and deterministic newest-first ordering.
 
-Milestone 3 should eventually include:
+## 13. Roadmap
 
-- Click-to-lock selected element
-- Tag, role, and dimensions
-- Parent/child element navigation
-- Source URL and page title
-- Element screenshot capture and cropping
-- Sanitized DOM snapshot
-- Normalized computed style extraction
-- Optional pseudo-element style extraction
-- Semantic design-property summaries
-- Capture Preview
-- Creation of one valid CaptureRecord
-- Local persistence of the completed CaptureRecord
+- Milestone 1: Completed - extension scaffold.
+- Milestone 2: Completed - selection mode and element highlighting.
+- Milestone 2.5: Completed - product positioning and Capture architecture reset.
+- Milestone 3: Completed - reliable element capture, CaptureRecord assembly, screenshot persistence, Capture Preview, and Save.
+- Milestone 4: Completed - personal Capture Library.
+- Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
+- Milestone 6: Current - isolated preview and version management.
+- Milestone 7: Planned - export and future expansion.
 
-Milestone 4: Personal Capture Library.
+## 14. Success Criteria
 
-Future scope:
-
-- Capture list
-- Reopen capture
-- Edit title
-- Tags
-- Notes
-- Component type
-- Delete
-- Search
-- Filter
-
-Milestone 5: AI React + Tailwind Reconstruction.
-
-Future scope:
-
-- Screenshot plus structured CaptureRecord input
-- React + Tailwind output
-- Component name
-- Component summary
-- Approximation notes
-- Save generated version
-
-Milestone 6: Isolated Preview and Version Management.
-
-Future scope:
-
-- Isolated component preview
-- Natural-language revision
-- Regeneration
-- Multiple generated versions
-- Compare versions
-
-Milestone 7: Export and Future Expansion.
-
-Future scope may include:
-
-- Code file export
-- GitHub workflow
-- Figma integration
-- Additional frameworks
-- Cloud sync
-- Team collaboration
-
-## 15. Success Criteria
-
-The revised MVP is successful if a user can capture a UI element from a supported webpage, save it as a structured local asset, and later use it to generate a readable reusable React + Tailwind component.
+The current MVP is successful when a user can capture a UI element from a supported webpage, save it as a structured local asset, organize it, and use it to generate a readable reusable React + Tailwind component source version without mutating the original capture.
 
 For product and portfolio purposes, success means the project demonstrates:
 
-- A real inspiration-to-reuse workflow
-- Local-first capture and library thinking
-- Clear differentiation from raw inspection and full-site cloning
-- Accurate browser support boundaries
-- Privacy-conscious data handling
-- A stable CaptureRecord schema
-- A focused milestone roadmap
+- A real inspiration-to-reuse workflow.
+- Local-first capture and library thinking.
+- Clear differentiation from raw inspection and full-site cloning.
+- Accurate browser support boundaries.
+- Privacy-conscious data handling.
+- A stable `CaptureRecord` schema.
+- A focused milestone roadmap.
 
 The generated component does not need to be pixel-perfect. It should preserve core structure, visual style, layout intent, and reusable design properties.
 
-## 16. Non-Goals
+## 15. Non-Goals
 
-Element Catcher v0.1 will not include:
+Element Catcher v0.1 does not include:
 
-- Complete visual CSS editor
-- Large typography, shadow, gradient, or spacing editing panels
-- Full-page cloning
-- Multi-page cloning
-- Image scraping
-- Video scraping
-- Complete page HTML export
-- Website publishing
-- Figma export
-- GitHub export
-- Team collaboration
-- Cloud sync
-- Multiple framework generation
-- Enterprise workflow
-- Payment
-- Authentication
-- Drag-to-box selection unless later validated as necessary
+- Complete visual CSS editor.
+- Large typography, shadow, gradient, or spacing editing panels.
+- Full-page cloning.
+- Multi-page cloning.
+- Image scraping.
+- Video scraping.
+- Complete page HTML export.
+- Website publishing.
+- Isolated generated-code preview before Milestone 6.
+- Natural-language revision before Milestone 6.
+- Version comparison before Milestone 6.
+- Export before Milestone 7.
+- Figma export.
+- GitHub export.
+- Team collaboration.
+- Cloud sync.
+- Multiple framework generation.
+- Enterprise workflow.
+- Payment.
+- Authentication.
+- Production hosted multi-user backend operations.
+- Drag-to-box selection unless later validated as necessary.
 
-## 17. Privacy and Ethical Boundaries
+## 16. Privacy and Ethical Boundaries
 
-Element Catcher should be framed as a tool for personal design inspiration, study, and component recreation. It should not be positioned as a tool to steal UI, scrape media, bypass access controls, or extract confidential information.
+Element Catcher is a tool for personal design inspiration, study, and component recreation. It must not be positioned as a tool to steal UI, scrape media, bypass access controls, or extract confidential information.
 
-Privacy safeguards should include:
+Privacy safeguards include:
 
-- Keep CaptureRecords local by default.
+- Keep captures local by default.
 - Do not save password values.
 - Do not save input or textarea values by default.
 - Limit captured text length.
 - Sanitize DOM before persistence.
 - Remove scripts and event-handler attributes.
 - Avoid persisting hidden sensitive content.
-- Warn before future AI transmission.
-
-A later version may explore local-only model options, but this is not required for v0.1.
+- Show Review data before AI transmission.
+- Require explicit consent before sending the screenshot and approved projection to the configured backend.
+- Keep provider credentials backend-only.
+- Preserve generated versions separately from the source capture.
