@@ -139,6 +139,10 @@ export async function readGeneratedVersions(page: Page, sourceCaptureId?: string
   return runDatabaseOperation<{ sourceCaptureId?: string }, unknown[]>(page, "readGeneratedVersions", { sourceCaptureId });
 }
 
+export async function readGeneratedVersionKeys(page: Page, sourceCaptureId?: string) {
+  return runDatabaseOperation<{ sourceCaptureId?: string }, IDBValidKey[]>(page, "readGeneratedVersionKeys", { sourceCaptureId });
+}
+
 export async function putGeneratedVersion(page: Page, entry: unknown) {
   await runDatabaseOperation(page, "putGeneratedVersion", { entry });
 }
@@ -608,46 +612,20 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
             if (!sourceCaptureId) {
               return await getAllValues(database, generatedComponentVersionStoreName);
             }
-            return await new Promise((resolve, reject) => {
-              const transaction = database.transaction([captureRecordStoreName, generatedComponentVersionStoreName], "readwrite");
-              const sourceStore = transaction.objectStore(captureRecordStoreName);
-              const versionStore = transaction.objectStore(generatedComponentVersionStoreName);
-              const versionRequest = versionStore.index("sourceCaptureId").getAll(sourceCaptureId);
-              const sourceRequest = sourceStore.get(sourceCaptureId);
-              let versions: Array<{ id?: unknown; sourceCaptureId?: unknown }> = [];
-              let source: { id?: unknown; value?: { id?: unknown; schemaVersion?: unknown } } | undefined;
-              let completed = 0;
-              let result: unknown[] = [];
+            return await getAllValuesByIndex(database, generatedComponentVersionStoreName, "sourceCaptureId", sourceCaptureId);
+          } finally {
+            database.close();
+          }
+        },
+        readGeneratedVersionKeys: async (value) => {
+          const { sourceCaptureId } = value as { sourceCaptureId?: string };
+          const database = await openDatabase();
 
-              const maybeResolve = () => {
-                completed += 1;
-                if (completed !== 2) {
-                  return;
-                }
-                if (!source || source.id !== sourceCaptureId || !source.value || source.value.id !== sourceCaptureId || source.value.schemaVersion !== 1) {
-                  for (const version of versions) {
-                    if (typeof version.id === "string") {
-                      versionStore.delete(version.id);
-                    }
-                  }
-                  result = [];
-                  return;
-                }
-                result = versions.filter((version) => version.sourceCaptureId === sourceCaptureId);
-              };
-
-              versionRequest.onsuccess = () => {
-                versions = versionRequest.result as Array<{ id?: unknown; sourceCaptureId?: unknown }>;
-                maybeResolve();
-              };
-              sourceRequest.onsuccess = () => {
-                source = sourceRequest.result as { id?: unknown; value?: { id?: unknown; schemaVersion?: unknown } } | undefined;
-                maybeResolve();
-              };
-              transaction.oncomplete = () => resolve(result);
-              transaction.onabort = () => reject(transaction.error);
-              transaction.onerror = () => reject(transaction.error);
-            });
+          try {
+            if (!sourceCaptureId) {
+              return await getAllKeys(database, generatedComponentVersionStoreName);
+            }
+            return await getAllKeysByIndex(database, generatedComponentVersionStoreName, "sourceCaptureId", sourceCaptureId);
           } finally {
             database.close();
           }
@@ -1115,6 +1093,18 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
 
       async function getAllValues(database: IDBDatabase, storeName: string) {
         return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).getAll());
+      }
+
+      async function getAllValuesByIndex(database: IDBDatabase, storeName: string, indexName: string, query: IDBValidKey) {
+        return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).index(indexName).getAll(query));
+      }
+
+      async function getAllKeys(database: IDBDatabase, storeName: string) {
+        return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).getAllKeys());
+      }
+
+      async function getAllKeysByIndex(database: IDBDatabase, storeName: string, indexName: string, query: IDBValidKey) {
+        return requestResult(database.transaction(storeName, "readonly").objectStore(storeName).index(indexName).getAllKeys(query));
       }
 
       async function countStore(database: IDBDatabase, storeName: string) {

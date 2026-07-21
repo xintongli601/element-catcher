@@ -1,4 +1,5 @@
 import type { JsonObject, JsonValue, SerializableRect } from "../shared/capture-schema";
+import { validateCaptureRecordV1 } from "../capture/capture-record-v1";
 import {
   GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
@@ -7,6 +8,7 @@ import {
   type GeneratedComponentVersionEntryV1
 } from "../shared/generated-version-contract";
 import { assertJsonCompatible } from "../shared/json";
+import { createScreenshotStorageKey } from "../shared/screenshot-storage";
 import { PersistenceError, toPersistenceError } from "./persistence-errors";
 
 declare global {
@@ -22,14 +24,30 @@ declare global {
         componentName: string;
       }>;
     };
+    __EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE_ENABLED__?: true;
+    __EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__?: {
+      addGeneratedComponentVersion(input: {
+        entry: GeneratedComponentVersionEntryV1;
+        expectedSourceSavedAt: string;
+        expectedReviewFingerprint: string;
+        expectedSourceRecordValue: JsonObject;
+      }): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1>>;
+      getGeneratedComponentVersionById(id: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1 | undefined>>;
+      listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1[]>>;
+    };
   }
 }
+
+type GeneratedVersionStorageBridgeResult<T> =
+  | { ok: true; value: T }
+  | { ok: false; code: string; name: string; message: string };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
 export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
 export { GENERATED_COMPONENT_VERSION_STORE_NAME };
+export { createScreenshotStorageKey };
 
 export type StoredScreenshotAsset = {
   storageKey: string;
@@ -51,14 +69,6 @@ export type PersistenceBundle = {
   asset: StoredScreenshotAsset;
   record: StoredRecordEntry;
 };
-
-export function createScreenshotStorageKey(id: string) {
-  if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(id)) {
-    throw new PersistenceError("encoding", "Invalid screenshot storage id.");
-  }
-
-  return `screenshots/${id}.png`;
-}
 
 export async function addScreenshotAsset(asset: StoredScreenshotAsset) {
   validateScreenshotAsset(asset);
@@ -676,7 +686,8 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
         const versionStore = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
         const index = versionStore.index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
         const sourceRequest = recordStore.get(sourceCaptureId);
-        const request = index.getAll(sourceCaptureId);
+        const valuesRequest = index.getAll(sourceCaptureId);
+        const keysRequest = index.getAllKeys(sourceCaptureId);
         let entries: GeneratedComponentVersionEntryV1[] = [];
         let sourceValid = false;
         let requestError: DOMException | null = null;
@@ -684,7 +695,7 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
 
         const maybeProcess = () => {
           completedReads += 1;
-          if (completedReads !== 2) {
+          if (completedReads !== 3) {
             return;
           }
 
@@ -695,12 +706,10 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
             sourceValid = false;
           }
 
-          const candidates = request.result as unknown[];
+          const candidates = valuesRequest.result as unknown[];
           if (!sourceValid) {
-            for (const candidate of candidates) {
-              if (isGeneratedVersionIdCandidate(candidate)) {
-                versionStore.delete(candidate.id);
-              }
+            for (const key of keysRequest.result) {
+              versionStore.delete(key);
             }
             entries = [];
             return;
@@ -719,9 +728,13 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
         sourceRequest.onerror = () => {
           requestError = sourceRequest.error;
         };
-        request.onsuccess = maybeProcess;
-        request.onerror = () => {
-          requestError = request.error;
+        valuesRequest.onsuccess = maybeProcess;
+        valuesRequest.onerror = () => {
+          requestError = valuesRequest.error;
+        };
+        keysRequest.onsuccess = maybeProcess;
+        keysRequest.onerror = () => {
+          requestError = keysRequest.error;
         };
         transaction.oncomplete = () => resolve(entries.sort(compareGeneratedVersionsNewestFirst));
         transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
@@ -1015,33 +1028,22 @@ function validateGeneratedVersionSource(source: StoredRecordEntry | undefined, s
   }
 
   validateRecordEntry(source);
-  const record = source.value;
-  if (
-    record.schemaVersion !== 1 ||
-    typeof record.id !== "string" ||
-    source.id !== record.id ||
-    record.id !== sourceCaptureId ||
-    !record.assets ||
-    typeof record.assets !== "object" ||
-    Array.isArray(record.assets)
-  ) {
-    throw new PersistenceError("validation", "Generated version source capture was invalid.");
+  try {
+    validateCaptureRecordV1(source.value);
+  } catch (error) {
+    throw toPersistenceError(error, "validation");
   }
 
-  const screenshot = (record.assets as JsonObject).screenshot;
+  if (source.id !== source.value.id || source.value.id !== sourceCaptureId) {
+    throw new PersistenceError("validation", "Generated version source capture linkage was invalid.");
+  }
+
   if (
-    !screenshot ||
-    typeof screenshot !== "object" ||
-    Array.isArray(screenshot) ||
-    typeof (screenshot as JsonObject).storageKey !== "string" ||
-    (screenshot as JsonObject).mediaType !== "image/png"
+    source.value.assets.screenshot.mediaType !== "image/png" ||
+    source.value.assets.screenshot.storageKey !== createScreenshotStorageKey(source.value.id)
   ) {
     throw new PersistenceError("reference-mismatch", "Generated version source screenshot reference was invalid.");
   }
-}
-
-function isGeneratedVersionIdCandidate(value: unknown): value is { id: string } {
-  return !!value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string";
 }
 
 function assertDeletionPreconditions({
@@ -1114,6 +1116,51 @@ function storedScreenshotAssetsMatch(left: StoredScreenshotAsset, right: StoredS
     rectsEqual(left.crop, right.crop)
   );
 }
+
+function installGeneratedVersionStorageTestBridge() {
+  if (
+    typeof window === "undefined" ||
+    (window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE_ENABLED__ !== true && window.navigator.webdriver !== true)
+  ) {
+    return;
+  }
+
+  window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__ = {
+    async addGeneratedComponentVersion(input) {
+      return bridgeResult(() =>
+        addGeneratedComponentVersion({
+          ...input,
+          signal: new AbortController().signal
+        })
+      );
+    },
+    async getGeneratedComponentVersionById(id) {
+      return bridgeResult(() => getGeneratedComponentVersionById(id));
+    },
+    async listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId) {
+      return bridgeResult(() => listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId));
+    }
+  };
+}
+
+async function bridgeResult<T>(operation: () => Promise<T>): Promise<GeneratedVersionStorageBridgeResult<T>> {
+  try {
+    return {
+      ok: true,
+      value: await operation()
+    };
+  } catch (error) {
+    const normalized = toPersistenceError(error);
+    return {
+      ok: false,
+      code: normalized.code,
+      name: normalized.name,
+      message: normalized.message
+    };
+  }
+}
+
+installGeneratedVersionStorageTestBridge();
 
 function rectsEqual(left: SerializableRect, right: SerializableRect) {
   return (

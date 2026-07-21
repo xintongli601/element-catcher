@@ -10,7 +10,7 @@ import type {
   StructuredCaptureExtraction
 } from "../shared/capture-schema";
 import { assertJsonCompatible } from "../shared/json";
-import { createScreenshotStorageKey } from "../storage/indexed-db";
+import { createScreenshotStorageKey } from "../shared/screenshot-storage";
 import { PersistenceError } from "../storage/persistence-errors";
 
 const CAPTURE_SCHEMA_VERSION = 1 satisfies CaptureSchemaVersion;
