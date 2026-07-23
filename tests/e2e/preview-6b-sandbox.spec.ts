@@ -120,16 +120,9 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
       message: "malformed render message"
     });
 
-    const oldWindows = await getPreviewWindowTokens(sidePanelPage);
-    await sidePanelPage.evaluate(() => {
-      const host = document.querySelector(".preview-sandbox-host-frame") as HTMLIFrameElement | null;
-      const render = document.querySelector(".preview-sandbox-render-frame") as HTMLIFrameElement | null;
-      Object.assign(window, {
-        __ecOldPreviewHost: host?.contentWindow ?? null,
-        __ecOldPreviewRender: render?.contentWindow ?? null
-      });
-    });
+    await assertUnrelatedSourceMessagesIgnored(sidePanelPage, session);
 
+    const oldWindows = await getPreviewWindowTokens(sidePanelPage);
     await sidePanelPage.getByRole("button", { name: "Close trusted fixture preview" }).click();
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
 
@@ -141,34 +134,6 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     expect(reopenedSession.sessionNonce).not.toBe(session.sessionNonce);
     expect(reopenedWindows.hostWindowToken).not.toBe(oldWindows.hostWindowToken);
     expect(reopenedWindows.renderWindowToken).not.toBe(oldWindows.renderWindowToken);
-    await sidePanelPage.evaluate(() => {
-      const oldHost = (window as unknown as { __ecOldPreviewHost?: WindowProxy | null }).__ecOldPreviewHost;
-      const oldRender = (window as unknown as { __ecOldPreviewRender?: WindowProxy | null }).__ecOldPreviewRender;
-      oldHost?.postMessage(
-        {
-          contractVersion: 1,
-          type: "preview.host.failure",
-          requestId: "preview-00000000000000000000000000000000",
-          sessionNonce: "00000000000000000000000000000000",
-          category: "runtime_failed",
-          message: "old host failure"
-        },
-        "*"
-      );
-      oldRender?.postMessage(
-        {
-          contractVersion: 1,
-          type: "preview.render.failure",
-          requestId: "preview-00000000000000000000000000000000",
-          sessionNonce: "00000000000000000000000000000000",
-          category: "runtime_failed",
-          message: "old render failure"
-        },
-        "*"
-      );
-    });
-    await expect(sidePanelPage.getByText("old host failure")).toHaveCount(0);
-    await expect(sidePanelPage.getByText("old render failure")).toHaveCount(0);
 
     await sidePanelPage.getByRole("button", { name: "Close trusted fixture preview" }).click();
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
@@ -199,6 +164,36 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     const reopenedSession = await getRecordedPreviewSession(page);
     expect(reopenedSession.requestId).not.toBe("");
     expect(reopenedSession.sessionNonce).not.toBe("");
+    await page.close();
+  });
+
+  test("disposes both sibling frames on non-timeout runtime failure and reopens successfully", async ({ context, extensionId }) => {
+    const page = await openSidePanelPage(context, extensionId);
+    const httpRequests: string[] = [];
+    page.on("request", (request) => {
+      if (/^https?:/.test(request.url())) {
+        httpRequests.push(request.url());
+      }
+    });
+
+    await failRenderRealmWithRuntimeFailure(context, extensionId);
+    const target = await seedGeneratedPreviewFixture(page);
+    await installPreviewMessageRecorder(page);
+    await openGeneratedPreview(page, target.title);
+
+    await expect(page.getByText("Trusted fixture runtime failure.")).toBeVisible();
+    await expect(page.locator(".preview-sandbox-frame")).toHaveCount(0);
+    await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toHaveCount(0);
+    await expect(page.locator("pre.generated-code code")).toContainText("return <div>AI source must stay inert</div>;");
+    expect(httpRequests).toEqual([]);
+    const failedSession = await getRecordedPreviewSession(page);
+
+    await page.getByRole("button", { name: "Close trusted fixture preview" }).click();
+    await page.getByRole("button", { name: "Open trusted fixture preview" }).click();
+    await assertSiblingFramesAndTrustedFixture(page);
+    const reopenedSession = await getRecordedPreviewSession(page);
+    expect(reopenedSession.requestId).not.toBe(failedSession.requestId);
+    expect(reopenedSession.sessionNonce).not.toBe(failedSession.sessionNonce);
     await page.close();
   });
 });
@@ -250,6 +245,61 @@ async function assertInvalidRenderMessageIgnored(page: Page, message: Record<str
   await getFrame(page, "src/preview/render-realm.html").evaluate((payload) => window.parent.postMessage(payload, "*"), message);
   await expect(page.getByText(String(message.message ?? ""))).toHaveCount(0);
   await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+}
+
+async function assertUnrelatedSourceMessagesIgnored(page: Page, session: { requestId: string; sessionNonce: string }) {
+  await page.evaluate(() => {
+    const existing = document.querySelector("[data-preview-test-source='unrelated']");
+    if (existing?.parentElement) {
+      existing.parentElement.removeChild(existing);
+    }
+    const iframe = document.createElement("iframe");
+    iframe.dataset.previewTestSource = "unrelated";
+    iframe.src = "about:blank";
+    document.body.append(iframe);
+  });
+
+  const unrelatedElement = await page.locator("iframe[data-preview-test-source='unrelated']").elementHandle();
+  const unrelatedFrame = await unrelatedElement?.contentFrame();
+  if (!unrelatedFrame) {
+    throw new Error("Expected unrelated source iframe.");
+  }
+
+  await unrelatedFrame.evaluate(
+    (message) => {
+      window.parent.postMessage(message, "*");
+    },
+    {
+      contractVersion: 1,
+      type: "preview.host.failure",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "unrelated host source"
+    }
+  );
+  await expect(page.getByText("unrelated host source")).toHaveCount(0);
+  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+
+  await unrelatedFrame.evaluate(
+    (message) => {
+      window.parent.postMessage(message, "*");
+    },
+    {
+      contractVersion: 1,
+      type: "preview.render.failure",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "unrelated render source"
+    }
+  );
+  await expect(page.getByText("unrelated render source")).toHaveCount(0);
+  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+
+  await page.locator("iframe[data-preview-test-source='unrelated']").evaluate((iframe) => {
+    iframe.parentElement?.removeChild(iframe);
+  });
 }
 
 async function installPreviewMessageRecorder(page: Page) {
@@ -311,6 +361,49 @@ async function blockRenderRealm(context: BrowserContext, extensionId: string) {
       status: 200,
       contentType: "application/javascript",
       body: ""
+    });
+    await context.unroute(renderRealmBundlePattern);
+  });
+}
+
+async function failRenderRealmWithRuntimeFailure(context: BrowserContext, extensionId: string) {
+  const renderRealmBundlePattern = new RegExp(`^chrome-extension://${extensionId}/assets/previewRenderRealm\\.js$`);
+  await context.route(renderRealmBundlePattern, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: `
+let activeSession = null;
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || typeof message !== "object") {
+    return;
+  }
+  if (message.type === "preview.render.init") {
+    activeSession = {
+      requestId: message.requestId,
+      sessionNonce: message.sessionNonce
+    };
+    window.parent.postMessage({
+      contractVersion: 1,
+      type: "preview.render.ready",
+      requestId: activeSession.requestId,
+      sessionNonce: activeSession.sessionNonce
+    }, "*");
+    return;
+  }
+  if (message.type === "preview.render.request" && activeSession) {
+    window.parent.postMessage({
+      contractVersion: 1,
+      type: "preview.render.failure",
+      requestId: message.requestId,
+      sessionNonce: message.sessionNonce,
+      category: "runtime_failed",
+      message: "Trusted fixture runtime failure."
+    }, "*");
+  }
+});
+`
     });
     await context.unroute(renderRealmBundlePattern);
   });

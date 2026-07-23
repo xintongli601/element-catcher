@@ -52,7 +52,6 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
       }
 
       dispose("timeout", true);
-      setFramesMounted(false);
       setState({ status: "failed", message: PREVIEW_TIMEOUT_MESSAGE });
     }, PREVIEW_TIMEOUT_MS + 1_000);
 
@@ -169,7 +168,7 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
     }
 
     if (message.type === "preview.host.failure") {
-      finishWithFailure(message.message);
+      finishWithFailure(message);
     }
   };
 
@@ -247,21 +246,13 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
     });
   };
 
-  const finishWithFailure = (message: string) => {
+  const finishWithFailure = (message: Extract<PreviewHostToSidePanelMessageV1, { type: "preview.host.failure" }>) => {
     if (lifecycleRef.current === "terminal" || lifecycleRef.current === "disposed") {
       return;
     }
 
-    if (message === PREVIEW_TIMEOUT_MESSAGE) {
-      dispose("timeout", true);
-      setFramesMounted(false);
-      setState({ status: "failed", message });
-      return;
-    }
-
-    lifecycleRef.current = "terminal";
-    clearPreviewTimeout();
-    setState({ status: "failed", message });
+    dispose(message.category === "timed_out" ? "timeout" : "error", true);
+    setState({ status: "failed", message: message.message });
   };
 
   const dispose = (reason: PreviewDisposeV1["reason"], unmountFrames: boolean) => {
