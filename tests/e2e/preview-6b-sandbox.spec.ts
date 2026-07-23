@@ -2,6 +2,8 @@ import { test, expect, openSidePanelPage } from "./extension-fixture";
 import { putGeneratedVersion, resetAndSeedSavedCaptures } from "./indexed-db-fixtures";
 import type { BrowserContext, Page } from "@playwright/test";
 
+type PreviewSession = { requestId: string; sessionNonce: string };
+
 test.describe("Milestone 6B preview sandbox foundation", () => {
   test("renders only the trusted packaged React fixture inside disposable sibling sandbox pages", async ({ sidePanelPage }) => {
     const httpRequests: string[] = [];
@@ -48,80 +50,6 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     expect(renderRuntime.sessionStorage).not.toBe("available");
     expect(renderRuntime.indexedDB).not.toBe("available");
 
-    await assertInvalidHostMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.host.failure",
-      requestId: session.requestId,
-      sessionNonce: "00000000000000000000000000000000",
-      category: "runtime_failed",
-      message: "wrong host nonce"
-    });
-
-    await assertInvalidRenderMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.render.failure",
-      requestId: session.requestId,
-      sessionNonce: "00000000000000000000000000000000",
-      category: "runtime_failed",
-      message: "wrong render nonce"
-    });
-
-    await assertInvalidHostMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.host.failure",
-      requestId: "preview-00000000000000000000000000000000",
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "stale host request"
-    });
-
-    await assertInvalidRenderMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.render.failure",
-      requestId: "preview-00000000000000000000000000000000",
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "stale render request"
-    });
-
-    await assertInvalidHostMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.host.failure",
-      requestId: session.requestId,
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "unknown host field",
-      code: "export function ShouldNotCross() {}"
-    });
-
-    await assertInvalidRenderMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.render.failure",
-      requestId: session.requestId,
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "unknown render field",
-      source: "untrusted generated source"
-    });
-
-    await assertInvalidHostMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.host.failure",
-      requestId: session.requestId,
-      category: "runtime_failed",
-      message: "malformed host message"
-    });
-
-    await assertInvalidRenderMessageIgnored(sidePanelPage, {
-      contractVersion: 1,
-      type: "preview.render.failure",
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "malformed render message"
-    });
-
-    await assertUnrelatedSourceMessagesIgnored(sidePanelPage, session);
-
     const oldWindows = await getPreviewWindowTokens(sidePanelPage);
     await sidePanelPage.getByRole("button", { name: "Close trusted fixture preview" }).click();
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
@@ -138,6 +66,149 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     await sidePanelPage.getByRole("button", { name: "Close trusted fixture preview" }).click();
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
   });
+
+  const activeInvalidCases: Array<{
+    name: string;
+    inject: (page: Page, session: PreviewSession) => Promise<void>;
+    rejectedMessage: string;
+  }> = [
+    {
+      name: "rejects wrong host nonce only",
+      rejectedMessage: "wrong host nonce",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/host.html", {
+          contractVersion: 1,
+          type: "preview.host.failure",
+          requestId: session.requestId,
+          sessionNonce: "00000000000000000000000000000000",
+          category: "runtime_failed",
+          message: "wrong host nonce"
+        })
+    },
+    {
+      name: "rejects wrong render nonce only",
+      rejectedMessage: "wrong render nonce",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/render-realm.html", {
+          contractVersion: 1,
+          type: "preview.render.failure",
+          requestId: session.requestId,
+          sessionNonce: "00000000000000000000000000000000",
+          category: "runtime_failed",
+          message: "wrong render nonce"
+        })
+    },
+    {
+      name: "rejects stale host requestId only",
+      rejectedMessage: "stale host request",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/host.html", {
+          contractVersion: 1,
+          type: "preview.host.failure",
+          requestId: "preview-00000000000000000000000000000000",
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "stale host request"
+        })
+    },
+    {
+      name: "rejects stale render requestId only",
+      rejectedMessage: "stale render request",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/render-realm.html", {
+          contractVersion: 1,
+          type: "preview.render.failure",
+          requestId: "preview-00000000000000000000000000000000",
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "stale render request"
+        })
+    },
+    {
+      name: "rejects unknown host field only",
+      rejectedMessage: "unknown host field",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/host.html", {
+          contractVersion: 1,
+          type: "preview.host.failure",
+          requestId: session.requestId,
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "unknown host field",
+          code: "export function ShouldNotCross() {}"
+        })
+    },
+    {
+      name: "rejects unknown render field only",
+      rejectedMessage: "unknown render field",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/render-realm.html", {
+          contractVersion: 1,
+          type: "preview.render.failure",
+          requestId: session.requestId,
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "unknown render field",
+          source: "untrusted generated source"
+        })
+    },
+    {
+      name: "rejects malformed host message only",
+      rejectedMessage: "malformed host message",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/host.html", {
+          contractVersion: 1,
+          type: "preview.host.failure",
+          requestId: session.requestId,
+          category: "runtime_failed",
+          message: "malformed host message"
+        })
+    },
+    {
+      name: "rejects malformed render message only",
+      rejectedMessage: "malformed render message",
+      inject: (page, session) =>
+        postFromPreviewFrame(page, "src/preview/render-realm.html", {
+          contractVersion: 1,
+          type: "preview.render.failure",
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "malformed render message"
+        })
+    },
+    {
+      name: "rejects unrelated host source only",
+      rejectedMessage: "unrelated host source",
+      inject: (page, session) =>
+        postFromUnrelatedFrame(page, {
+          contractVersion: 1,
+          type: "preview.host.failure",
+          requestId: session.requestId,
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "unrelated host source"
+        })
+    },
+    {
+      name: "rejects unrelated render source only",
+      rejectedMessage: "unrelated render source",
+      inject: (page, session) =>
+        postFromUnrelatedFrame(page, {
+          contractVersion: 1,
+          type: "preview.render.failure",
+          requestId: session.requestId,
+          sessionNonce: session.sessionNonce,
+          category: "runtime_failed",
+          message: "unrelated render source"
+        })
+    }
+  ];
+
+  for (const invalidCase of activeInvalidCases) {
+    test(`active rendering ${invalidCase.name}`, async ({ context, extensionId }) => {
+      await runActiveInvalidMessageCase(context, extensionId, invalidCase);
+    });
+  }
 
   test("disposes both sibling frames on timeout and reopens with a fresh successful session", async ({ context, extensionId }) => {
     const page = await openSidePanelPage(context, extensionId);
@@ -235,19 +306,55 @@ async function assertSiblingFramesAndTrustedFixture(page: Page) {
   await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
 }
 
-async function assertInvalidHostMessageIgnored(page: Page, message: Record<string, unknown>) {
-  await getFrame(page, "src/preview/host.html").evaluate((payload) => window.parent.postMessage(payload, "*"), message);
-  await expect(page.getByText(String(message.message ?? ""))).toHaveCount(0);
+async function runActiveInvalidMessageCase(
+  context: BrowserContext,
+  extensionId: string,
+  invalidCase: {
+    inject: (page: Page, session: PreviewSession) => Promise<void>;
+    rejectedMessage: string;
+  }
+) {
+  const page = await openSidePanelPage(context, extensionId);
+  const httpRequests: string[] = [];
+  page.on("request", (request) => {
+    if (/^https?:/.test(request.url())) {
+      httpRequests.push(request.url());
+    }
+  });
+  await pauseRenderRealm(context, extensionId);
+  const target = await seedGeneratedPreviewFixture(page);
+  await installPreviewMessageRecorder(page);
+  await openGeneratedPreview(page, target.title);
+
+  const session = await getRecordedRenderRequestSession(page);
+  await assertPreviewStillActive(page);
+  await invalidCase.inject(page, session);
+  await assertPreviewStillActive(page);
+  await expect(page.getByText(invalidCase.rejectedMessage)).toHaveCount(0);
+
+  await completePausedPreviewSuccessfully(page, session);
   await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+  await expect(page.locator(".preview-sandbox-frame")).toHaveCount(2);
+  expect(httpRequests).toEqual([]);
+  await page.getByRole("button", { name: "Close trusted fixture preview" }).click();
+  await expect(page.locator(".preview-sandbox-frame")).toHaveCount(0);
+  await page.close();
 }
 
-async function assertInvalidRenderMessageIgnored(page: Page, message: Record<string, unknown>) {
-  await getFrame(page, "src/preview/render-realm.html").evaluate((payload) => window.parent.postMessage(payload, "*"), message);
-  await expect(page.getByText(String(message.message ?? ""))).toHaveCount(0);
-  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+async function assertPreviewStillActive(page: Page) {
+  await expect(page.locator(".preview-sandbox-frame")).toHaveCount(2);
+  await expect(page.locator(".preview-sandbox-status-ready")).toHaveCount(0);
+  await expect(page.locator(".preview-sandbox-status-failed")).toHaveCount(0);
+  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toHaveCount(0);
+  await expect(page.getByText(/Trusted preview fixture timed out/)).toHaveCount(0);
+  await expect(page.getByText("Trusted fixture runtime failure.")).toHaveCount(0);
 }
 
-async function assertUnrelatedSourceMessagesIgnored(page: Page, session: { requestId: string; sessionNonce: string }) {
+async function postFromPreviewFrame(page: Page, pathSuffix: string, message: Record<string, unknown>) {
+  await getFrame(page, pathSuffix).evaluate((payload) => window.parent.postMessage(payload, "*"), message);
+}
+
+async function postFromUnrelatedFrame(page: Page, message: Record<string, unknown>) {
   await page.evaluate(() => {
     const existing = document.querySelector("[data-preview-test-source='unrelated']");
     if (existing?.parentElement) {
@@ -269,36 +376,23 @@ async function assertUnrelatedSourceMessagesIgnored(page: Page, session: { reque
     (message) => {
       window.parent.postMessage(message, "*");
     },
-    {
-      contractVersion: 1,
-      type: "preview.host.failure",
-      requestId: session.requestId,
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "unrelated host source"
-    }
+    message
   );
-  await expect(page.getByText("unrelated host source")).toHaveCount(0);
-  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
-
-  await unrelatedFrame.evaluate(
-    (message) => {
-      window.parent.postMessage(message, "*");
-    },
-    {
-      contractVersion: 1,
-      type: "preview.render.failure",
-      requestId: session.requestId,
-      sessionNonce: session.sessionNonce,
-      category: "runtime_failed",
-      message: "unrelated render source"
-    }
-  );
-  await expect(page.getByText("unrelated render source")).toHaveCount(0);
-  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
 
   await page.locator("iframe[data-preview-test-source='unrelated']").evaluate((iframe) => {
     iframe.parentElement?.removeChild(iframe);
+  });
+}
+
+async function completePausedPreviewSuccessfully(page: Page, session: PreviewSession) {
+  await postFromPreviewFrame(page, "src/preview/render-realm.html", {
+    contractVersion: 1,
+    type: "preview.render.success",
+    requestId: session.requestId,
+    sessionNonce: session.sessionNonce,
+    width: 320,
+    height: 180,
+    warnings: []
   });
 }
 
@@ -341,6 +435,30 @@ async function getRecordedPreviewSession(page: Page) {
   });
 }
 
+async function getRecordedRenderRequestSession(page: Page) {
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ source: string; data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+        const request = [...messages].reverse().find((message) => {
+          const data = message.data as { type?: string };
+          return message.source === "host" && data.type === "preview.render.request";
+        })?.data as { requestId?: string; sessionNonce?: string } | undefined;
+        return request?.requestId && request.sessionNonce ? `${request.requestId}:${request.sessionNonce}` : "";
+      });
+    })
+    .not.toBe("");
+
+  return page.evaluate(() => {
+    const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ source: string; data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+    const request = [...messages].reverse().find((message) => {
+      const data = message.data as { type?: string };
+      return message.source === "host" && data.type === "preview.render.request";
+    })?.data as { requestId: string; sessionNonce: string };
+    return { requestId: request.requestId, sessionNonce: request.sessionNonce };
+  });
+}
+
 async function recordedMessagesContainExecutableSource(page: Page) {
   return page.evaluate(() => {
     const forbiddenKeys = new Set(["code", "source", "html", "jsx", "tsx", "javascript", "script", "css", "tailwind", "componentSource", "generatedCode", "compiledCode"]);
@@ -361,6 +479,38 @@ async function blockRenderRealm(context: BrowserContext, extensionId: string) {
       status: 200,
       contentType: "application/javascript",
       body: ""
+    });
+    await context.unroute(renderRealmBundlePattern);
+  });
+}
+
+async function pauseRenderRealm(context: BrowserContext, extensionId: string) {
+  const renderRealmBundlePattern = new RegExp(`^chrome-extension://${extensionId}/assets/previewRenderRealm\\.js$`);
+  await context.route(renderRealmBundlePattern, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: `
+let activeSession = null;
+window.addEventListener("message", (event) => {
+  const message = event.data;
+  if (!message || typeof message !== "object") {
+    return;
+  }
+  if (message.type === "preview.render.init") {
+    activeSession = {
+      requestId: message.requestId,
+      sessionNonce: message.sessionNonce
+    };
+    window.parent.postMessage({
+      contractVersion: 1,
+      type: "preview.render.ready",
+      requestId: activeSession.requestId,
+      sessionNonce: activeSession.sessionNonce
+    }, "*");
+  }
+});
+`
     });
     await context.unroute(renderRealmBundlePattern);
   });
