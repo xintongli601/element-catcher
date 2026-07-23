@@ -19,8 +19,11 @@ type PreviewSandboxState =
 
 type LifecycleState = "loading" | "readying" | "rendering" | "terminal" | "disposed";
 
+const PREVIEW_TIMEOUT_MESSAGE = "Trusted preview fixture timed out.";
+
 export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId?: PreviewFixtureId }) {
   const [state, setState] = useState<PreviewSandboxState>({ status: "loading" });
+  const [framesMounted, setFramesMounted] = useState(true);
   const hostFrameRef = useRef<HTMLIFrameElement | null>(null);
   const renderFrameRef = useRef<HTMLIFrameElement | null>(null);
   const lifecycleRef = useRef<LifecycleState>("loading");
@@ -48,8 +51,9 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
         return;
       }
 
-      setState({ status: "failed", message: "Trusted preview fixture timed out." });
-      dispose("timeout");
+      dispose("timeout", true);
+      setFramesMounted(false);
+      setState({ status: "failed", message: PREVIEW_TIMEOUT_MESSAGE });
     }, PREVIEW_TIMEOUT_MS + 1_000);
 
     const handleMessage = (event: MessageEvent) => {
@@ -72,7 +76,7 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
 
     window.addEventListener("message", handleMessage);
     return () => {
-      dispose("close");
+      dispose("close", false);
       window.removeEventListener("message", handleMessage);
     };
   }, [session]);
@@ -248,12 +252,19 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
       return;
     }
 
+    if (message === PREVIEW_TIMEOUT_MESSAGE) {
+      dispose("timeout", true);
+      setFramesMounted(false);
+      setState({ status: "failed", message });
+      return;
+    }
+
     lifecycleRef.current = "terminal";
     clearPreviewTimeout();
     setState({ status: "failed", message });
   };
 
-  const dispose = (reason: PreviewDisposeV1["reason"]) => {
+  const dispose = (reason: PreviewDisposeV1["reason"], unmountFrames: boolean) => {
     if (lifecycleRef.current === "disposed") {
       return;
     }
@@ -269,12 +280,11 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
     };
     hostFrameRef.current?.contentWindow?.postMessage(disposeMessage, "*");
     renderFrameRef.current?.contentWindow?.postMessage(disposeMessage, "*");
-    hostFrameRef.current?.remove();
-    renderFrameRef.current?.remove();
-    hostFrameRef.current = null;
-    renderFrameRef.current = null;
     hostReadyRef.current = false;
     renderReadyRef.current = false;
+    if (unmountFrames) {
+      setFramesMounted(false);
+    }
   };
 
   const clearPreviewTimeout = () => {
@@ -292,8 +302,6 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
     <section
       className="preview-sandbox-panel"
       aria-labelledby="preview-sandbox-heading"
-      data-preview-request-id={session.requestId}
-      data-preview-session-nonce={session.sessionNonce}
     >
       <div className="preview-sandbox-header">
         <h4 id="preview-sandbox-heading">Isolated preview</h4>
@@ -304,22 +312,24 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
       <p className="preview-sandbox-note">
         This isolated foundation renders a packaged trusted fixture only. Generated AI code is not previewed.
       </p>
-      <div className="preview-sandbox-frame-row">
-        <iframe
-          ref={hostFrameRef}
-          className="preview-sandbox-frame preview-sandbox-host-frame"
-          title="Element Catcher isolated preview host"
-          src={hostUrl}
-          onLoad={postInitToHost}
-        />
-        <iframe
-          ref={renderFrameRef}
-          className="preview-sandbox-frame preview-sandbox-render-frame"
-          title="Element Catcher isolated trusted fixture render realm"
-          src={renderUrl}
-          onLoad={postInitToRender}
-        />
-      </div>
+      {framesMounted ? (
+        <div className="preview-sandbox-frame-row">
+          <iframe
+            ref={hostFrameRef}
+            className="preview-sandbox-frame preview-sandbox-host-frame"
+            title="Element Catcher isolated preview host"
+            src={hostUrl}
+            onLoad={postInitToHost}
+          />
+          <iframe
+            ref={renderFrameRef}
+            className="preview-sandbox-frame preview-sandbox-render-frame"
+            title="Element Catcher isolated trusted fixture render realm"
+            src={renderUrl}
+            onLoad={postInitToRender}
+          />
+        </div>
+      ) : null}
       {state.status === "ready" ? (
         <p className="preview-sandbox-note" role="status">
           Trusted fixture rendered in an isolated sandbox realm ({state.width}x{state.height}).

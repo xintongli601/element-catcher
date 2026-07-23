@@ -1,9 +1,9 @@
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import { putGeneratedVersion, resetAndSeedSavedCaptures } from "./indexed-db-fixtures";
-import type { Page } from "@playwright/test";
+import type { BrowserContext, Page } from "@playwright/test";
 
 test.describe("Milestone 6B preview sandbox foundation", () => {
-  test("renders only the trusted packaged React fixture inside disposable packaged sandbox pages", async ({ sidePanelPage }) => {
+  test("renders only the trusted packaged React fixture inside disposable sibling sandbox pages", async ({ sidePanelPage }) => {
     const httpRequests: string[] = [];
     sidePanelPage.on("request", (request) => {
       if (/^https?:/.test(request.url())) {
@@ -11,11 +11,8 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
       }
     });
 
-    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
-    await sidePanelPage.reload();
-    const target = seeded[0];
-    const generatedVersion = createGeneratedVersionEntry(target.record.id, target.savedAt);
-    await putGeneratedVersion(sidePanelPage, generatedVersion);
+    const target = await seedGeneratedPreviewFixture(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
 
     const manifest = await sidePanelPage.evaluate(async () => {
       const response = await fetch(chrome.runtime.getURL("manifest.json"));
@@ -35,31 +32,11 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     expect(manifest.content_security_policy?.sandbox).toContain("connect-src 'none'");
     expect(manifest.content_security_policy?.sandbox).toContain("worker-src 'none'");
 
-    await sidePanelPage.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
-    await sidePanelPage.getByRole("button", { name: /PreviewFixture/ }).click();
-    await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
-    await expect(sidePanelPage.locator("pre.generated-code code")).toContainText("export function PreviewFixture");
-
-    await sidePanelPage.getByRole("button", { name: "Open trusted fixture preview" }).click();
-    const hostFrameElement = sidePanelPage.locator(".preview-sandbox-host-frame");
-    const renderFrameElement = sidePanelPage.locator(".preview-sandbox-render-frame");
-    const renderFrame = sidePanelPage.frameLocator(".preview-sandbox-render-frame");
-
-    await expect(sidePanelPage.locator(".preview-sandbox-frame")).toHaveCount(2);
-    await expect(hostFrameElement).toHaveAttribute("src", /src\/preview\/host\.html$/);
-    await expect(renderFrameElement).toHaveAttribute("src", /src\/preview\/render-realm\.html$/);
-    await expect(hostFrameElement).not.toHaveAttribute("srcdoc", /.*/);
-    await expect(renderFrameElement).not.toHaveAttribute("srcdoc", /.*/);
-    await expect(hostFrameElement).not.toHaveAttribute("src", /^blob:|^data:/);
-    await expect(renderFrameElement).not.toHaveAttribute("src", /^blob:|^data:/);
-    await expect(sidePanelPage.locator(".preview-sandbox-panel > .preview-sandbox-frame-row > iframe")).toHaveCount(2);
-    await expect(sidePanelPage.frameLocator(".preview-sandbox-host-frame").locator("iframe")).toHaveCount(0);
-    await expect(renderFrame.getByText("Trusted packaged fixture")).toBeVisible();
-    await expect(renderFrame.getByRole("heading", { name: "Preview sandbox boundary" })).toBeVisible();
-    await expect(renderFrame.locator("[data-renderer='react-create-root']")).toBeVisible();
-    await expect(renderFrame.getByText("AI source must stay inert")).toHaveCount(0);
-    await expect(sidePanelPage.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await assertSiblingFramesAndTrustedFixture(sidePanelPage);
+    const session = await getRecordedPreviewSession(sidePanelPage);
     await expect(sidePanelPage.locator("pre.generated-code code")).toContainText("return <div>AI source must stay inert</div>;");
+    expect(await recordedMessagesContainExecutableSource(sidePanelPage)).toBe(false);
     expect(httpRequests).toEqual([]);
 
     const hostRuntime = await getFrameRuntimeSnapshot(sidePanelPage, "src/preview/host.html");
@@ -71,39 +48,79 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     expect(renderRuntime.sessionStorage).not.toBe("available");
     expect(renderRuntime.indexedDB).not.toBe("available");
 
-    await getFrame(sidePanelPage, "src/preview/host.html").evaluate(() => {
-      window.parent.postMessage(
-        {
-          contractVersion: 1,
-          type: "preview.host.failure",
-          requestId: "preview-00000000000000000000000000000000",
-          sessionNonce: "00000000000000000000000000000000",
-          category: "runtime_failed",
-          message: "wrong host nonce",
-          code: "export function ShouldNotCross() {}"
-        },
-        "*"
-      );
+    await assertInvalidHostMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.host.failure",
+      requestId: session.requestId,
+      sessionNonce: "00000000000000000000000000000000",
+      category: "runtime_failed",
+      message: "wrong host nonce"
     });
-    await expect(sidePanelPage.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
 
-    await getFrame(sidePanelPage, "src/preview/render-realm.html").evaluate(() => {
-      window.parent.postMessage(
-        {
-          contractVersion: 1,
-          type: "preview.render.failure",
-          requestId: "preview-00000000000000000000000000000000",
-          sessionNonce: "00000000000000000000000000000000",
-          category: "runtime_failed",
-          message: "spoofed failure",
-          source: "untrusted generated source"
-        },
-        "*"
-      );
+    await assertInvalidRenderMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.render.failure",
+      requestId: session.requestId,
+      sessionNonce: "00000000000000000000000000000000",
+      category: "runtime_failed",
+      message: "wrong render nonce"
     });
-    await expect(sidePanelPage.getByText("spoofed failure")).toHaveCount(0);
-    await expect(sidePanelPage.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
 
+    await assertInvalidHostMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.host.failure",
+      requestId: "preview-00000000000000000000000000000000",
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "stale host request"
+    });
+
+    await assertInvalidRenderMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.render.failure",
+      requestId: "preview-00000000000000000000000000000000",
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "stale render request"
+    });
+
+    await assertInvalidHostMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.host.failure",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "unknown host field",
+      code: "export function ShouldNotCross() {}"
+    });
+
+    await assertInvalidRenderMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.render.failure",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "unknown render field",
+      source: "untrusted generated source"
+    });
+
+    await assertInvalidHostMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.host.failure",
+      requestId: session.requestId,
+      category: "runtime_failed",
+      message: "malformed host message"
+    });
+
+    await assertInvalidRenderMessageIgnored(sidePanelPage, {
+      contractVersion: 1,
+      type: "preview.render.failure",
+      sessionNonce: session.sessionNonce,
+      category: "runtime_failed",
+      message: "malformed render message"
+    });
+
+    const oldWindows = await getPreviewWindowTokens(sidePanelPage);
     await sidePanelPage.evaluate(() => {
       const host = document.querySelector(".preview-sandbox-host-frame") as HTMLIFrameElement | null;
       const render = document.querySelector(".preview-sandbox-render-frame") as HTMLIFrameElement | null;
@@ -117,10 +134,13 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
 
     await sidePanelPage.getByRole("button", { name: "Open trusted fixture preview" }).click();
-    const reopenedSession = await getPreviewSession(sidePanelPage);
-    await expect(sidePanelPage.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
-    expect(reopenedSession.requestId).not.toBe("");
-    expect(reopenedSession.sessionNonce).not.toBe("");
+    await assertSiblingFramesAndTrustedFixture(sidePanelPage);
+    const reopenedSession = await getRecordedPreviewSession(sidePanelPage);
+    const reopenedWindows = await getPreviewWindowTokens(sidePanelPage);
+    expect(reopenedSession.requestId).not.toBe(session.requestId);
+    expect(reopenedSession.sessionNonce).not.toBe(session.sessionNonce);
+    expect(reopenedWindows.hostWindowToken).not.toBe(oldWindows.hostWindowToken);
+    expect(reopenedWindows.renderWindowToken).not.toBe(oldWindows.renderWindowToken);
     await sidePanelPage.evaluate(() => {
       const oldHost = (window as unknown as { __ecOldPreviewHost?: WindowProxy | null }).__ecOldPreviewHost;
       const oldRender = (window as unknown as { __ecOldPreviewRender?: WindowProxy | null }).__ecOldPreviewRender;
@@ -154,48 +174,146 @@ test.describe("Milestone 6B preview sandbox foundation", () => {
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
   });
 
-  test("creates a fresh preview identity after close and after Side Panel reopen", async ({ context, extensionId }) => {
+  test("disposes both sibling frames on timeout and reopens with a fresh successful session", async ({ context, extensionId }) => {
     const page = await openSidePanelPage(context, extensionId);
-    const seeded = await resetAndSeedSavedCaptures(page);
-    await page.reload();
-    const target = seeded[0];
-    await putGeneratedVersion(page, createGeneratedVersionEntry(target.record.id, target.savedAt));
+    const httpRequests: string[] = [];
+    page.on("request", (request) => {
+      if (/^https?:/.test(request.url())) {
+        httpRequests.push(request.url());
+      }
+    });
 
-    await page.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
-    await page.getByRole("button", { name: /PreviewFixture/ }).click();
-    await page.getByRole("button", { name: "Open trusted fixture preview" }).click();
-    const firstSession = await getPreviewSession(page);
-    await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
-    const firstWindows = await getPreviewWindowTokens(page);
+    await blockRenderRealm(context, extensionId);
+    const target = await seedGeneratedPreviewFixture(page);
+    await installPreviewMessageRecorder(page);
+    await openGeneratedPreview(page, target.title);
+
+    await expect(page.getByText(/Trusted preview fixture timed out/)).toBeVisible({ timeout: 6_000 });
+    await expect(page.locator(".preview-sandbox-frame")).toHaveCount(0);
+    await expect(page.locator("pre.generated-code code")).toContainText("return <div>AI source must stay inert</div>;");
+    expect(httpRequests).toEqual([]);
+
     await page.getByRole("button", { name: "Close trusted fixture preview" }).click();
-    await expect(page.locator("iframe")).toHaveCount(0);
-
     await page.getByRole("button", { name: "Open trusted fixture preview" }).click();
-    const secondSession = await getPreviewSession(page);
-    const secondWindows = await getPreviewWindowTokens(page);
-    expect(secondSession.requestId).not.toBe(firstSession.requestId);
-    expect(secondSession.sessionNonce).not.toBe(firstSession.sessionNonce);
-    expect(secondWindows.hostWindowToken).not.toBe(firstWindows.hostWindowToken);
-    expect(secondWindows.renderWindowToken).not.toBe(firstWindows.renderWindowToken);
+    await assertSiblingFramesAndTrustedFixture(page);
+    const reopenedSession = await getRecordedPreviewSession(page);
+    expect(reopenedSession.requestId).not.toBe("");
+    expect(reopenedSession.sessionNonce).not.toBe("");
     await page.close();
-
-    const reopened = await openSidePanelPage(context, extensionId);
-    await reopened.getByRole("button", { name: `Open saved capture: ${target.title}` }).click();
-    await reopened.getByRole("button", { name: /PreviewFixture/ }).click();
-    await expect(reopened.locator("iframe")).toHaveCount(0);
-    await reopened.getByRole("button", { name: "Open trusted fixture preview" }).click();
-    const reopenedSession = await getPreviewSession(reopened);
-    expect(reopenedSession.requestId).not.toBe(secondSession.requestId);
-    expect(reopenedSession.sessionNonce).not.toBe(secondSession.sessionNonce);
-    await reopened.close();
   });
 });
 
-async function getPreviewSession(page: Page) {
-  return page.locator(".preview-sandbox-panel").evaluate((panel) => ({
-    requestId: panel.getAttribute("data-preview-request-id") ?? "",
-    sessionNonce: panel.getAttribute("data-preview-session-nonce") ?? ""
-  }));
+async function seedGeneratedPreviewFixture(page: Page) {
+  const seeded = await resetAndSeedSavedCaptures(page);
+  await page.reload();
+  const target = seeded[0];
+  await putGeneratedVersion(page, createGeneratedVersionEntry(target.record.id, target.savedAt));
+  return target;
+}
+
+async function openGeneratedPreview(page: Page, title: string) {
+  await page.getByRole("button", { name: `Open saved capture: ${title}` }).click();
+  await page.getByRole("button", { name: /PreviewFixture/ }).click();
+  await expect(page.locator("iframe")).toHaveCount(0);
+  await expect(page.locator("pre.generated-code code")).toContainText("export function PreviewFixture");
+  await page.getByRole("button", { name: "Open trusted fixture preview" }).click();
+}
+
+async function assertSiblingFramesAndTrustedFixture(page: Page) {
+  const hostFrameElement = page.locator(".preview-sandbox-host-frame");
+  const renderFrameElement = page.locator(".preview-sandbox-render-frame");
+  const renderFrame = page.frameLocator(".preview-sandbox-render-frame");
+
+  await expect(page.locator(".preview-sandbox-frame")).toHaveCount(2);
+  await expect(hostFrameElement).toHaveAttribute("src", /src\/preview\/host\.html$/);
+  await expect(renderFrameElement).toHaveAttribute("src", /src\/preview\/render-realm\.html$/);
+  await expect(hostFrameElement).not.toHaveAttribute("srcdoc", /.*/);
+  await expect(renderFrameElement).not.toHaveAttribute("srcdoc", /.*/);
+  await expect(hostFrameElement).not.toHaveAttribute("src", /^blob:|^data:/);
+  await expect(renderFrameElement).not.toHaveAttribute("src", /^blob:|^data:/);
+  await expect(page.locator(".preview-sandbox-panel > .preview-sandbox-frame-row > iframe")).toHaveCount(2);
+  await expect(page.frameLocator(".preview-sandbox-host-frame").locator("iframe")).toHaveCount(0);
+  await expect(renderFrame.getByText("Trusted packaged fixture")).toBeVisible();
+  await expect(renderFrame.getByRole("heading", { name: "Preview sandbox boundary" })).toBeVisible();
+  await expect(renderFrame.locator("[data-renderer='react-create-root']")).toBeVisible();
+  await expect(renderFrame.getByText("AI source must stay inert")).toHaveCount(0);
+  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+}
+
+async function assertInvalidHostMessageIgnored(page: Page, message: Record<string, unknown>) {
+  await getFrame(page, "src/preview/host.html").evaluate((payload) => window.parent.postMessage(payload, "*"), message);
+  await expect(page.getByText(String(message.message ?? ""))).toHaveCount(0);
+  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+}
+
+async function assertInvalidRenderMessageIgnored(page: Page, message: Record<string, unknown>) {
+  await getFrame(page, "src/preview/render-realm.html").evaluate((payload) => window.parent.postMessage(payload, "*"), message);
+  await expect(page.getByText(String(message.message ?? ""))).toHaveCount(0);
+  await expect(page.getByText(/Trusted fixture rendered in an isolated sandbox realm/)).toBeVisible();
+}
+
+async function installPreviewMessageRecorder(page: Page) {
+  await page.evaluate(() => {
+    const store = {
+      messages: [] as Array<{ source: "host" | "render" | "other"; data: unknown }>
+    };
+    Object.assign(window, { __ecPreviewMessages: store });
+    window.addEventListener("message", (event) => {
+      const host = document.querySelector(".preview-sandbox-host-frame") as HTMLIFrameElement | null;
+      const render = document.querySelector(".preview-sandbox-render-frame") as HTMLIFrameElement | null;
+      const source = event.source === host?.contentWindow ? "host" : event.source === render?.contentWindow ? "render" : "other";
+      store.messages.push({ source, data: event.data });
+    });
+  });
+}
+
+async function getRecordedPreviewSession(page: Page) {
+  await expect
+    .poll(async () => {
+      return page.evaluate(() => {
+        const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ source: string; data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+        const ready = [...messages].reverse().find((message) => {
+          const data = message.data as { type?: string };
+          return message.source === "host" && data.type === "preview.host.ready";
+        })?.data as { requestId?: string; sessionNonce?: string } | undefined;
+        return ready?.requestId && ready.sessionNonce ? `${ready.requestId}:${ready.sessionNonce}` : "";
+      });
+    })
+    .not.toBe("");
+
+  return page.evaluate(() => {
+    const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ source: string; data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+    const ready = [...messages].reverse().find((message) => {
+      const data = message.data as { type?: string };
+      return message.source === "host" && data.type === "preview.host.ready";
+    })?.data as { requestId: string; sessionNonce: string };
+    return { requestId: ready.requestId, sessionNonce: ready.sessionNonce };
+  });
+}
+
+async function recordedMessagesContainExecutableSource(page: Page) {
+  return page.evaluate(() => {
+    const forbiddenKeys = new Set(["code", "source", "html", "jsx", "tsx", "javascript", "script", "css", "tailwind", "componentSource", "generatedCode", "compiledCode"]);
+    const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+    return messages.some((message) => {
+      if (!message.data || typeof message.data !== "object" || Array.isArray(message.data)) {
+        return false;
+      }
+      return Object.keys(message.data).some((key) => forbiddenKeys.has(key));
+    });
+  });
+}
+
+async function blockRenderRealm(context: BrowserContext, extensionId: string) {
+  const renderRealmBundlePattern = new RegExp(`^chrome-extension://${extensionId}/assets/previewRenderRealm\\.js$`);
+  await context.route(renderRealmBundlePattern, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: ""
+    });
+    await context.unroute(renderRealmBundlePattern);
+  });
 }
 
 async function getPreviewWindowTokens(page: Page) {
@@ -241,7 +359,6 @@ async function getFrameRuntimeSnapshot(page: Page, pathSuffix: string) {
         return error instanceof DOMException ? error.name : "throws";
       }
     };
-
     return {
       chromeRuntime: typeof (globalThis as unknown as { chrome?: { runtime?: unknown } }).chrome?.runtime,
       localStorage: readStorageState(() => localStorage.length),
