@@ -288,6 +288,84 @@ h2 {
   white-space: pre;
 }
 
+.preview-sandbox-panel {
+  display: grid;
+  gap: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.preview-sandbox-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.preview-sandbox-header h4 {
+  margin: 0;
+  color: #172033;
+  font-size: 14px;
+}
+
+.preview-sandbox-status {
+  margin: 0;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.preview-sandbox-status-loading {
+  background: #f8fafc;
+  color: #42506a;
+}
+
+.preview-sandbox-status-ready {
+  background: #ecfdf5;
+  color: #14532d;
+}
+
+.preview-sandbox-status-failed {
+  background: #fef2f2;
+  color: #7f1d1d;
+}
+
+.preview-sandbox-frame {
+  display: block;
+  width: 100%;
+  min-height: 190px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.preview-sandbox-frame-row {
+  display: grid;
+  gap: 8px;
+}
+
+.preview-sandbox-host-frame {
+  width: 1px;
+  min-height: 1px;
+  height: 1px;
+  border: 0;
+  overflow: hidden;
+}
+
+.preview-sandbox-render-frame {
+  min-height: 190px;
+}
+
+.preview-sandbox-note {
+  margin: 0;
+  color: #42506a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .current-capture h2,
 .capture-library h2,
 .saved-capture-detail h2 {

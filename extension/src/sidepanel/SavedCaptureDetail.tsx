@@ -13,6 +13,7 @@ import type { GeneratedComponentVersionEntryV1 } from "../shared/generated-versi
 import { boundText, getCaptureDisplayTitle, normalizedOptionalText } from "./display-format";
 import { CapturePreview } from "./CapturePreview";
 import { GenerationWorkflow } from "./GenerationWorkflow";
+import { PreviewSandbox } from "./PreviewSandbox";
 
 export type SavedCaptureDetailState =
   | {
@@ -312,6 +313,7 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
     | { status: "failed"; message: string }
   >({ status: "loading" });
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [previewOpenId, setPreviewOpenId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -349,7 +351,14 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
             const expanded = expandedId === entry.id;
             return (
               <article className="generated-version-item" key={entry.id}>
-                <button className="secondary-action compact-action" type="button" onClick={() => setExpandedId(expanded ? null : entry.id)}>
+                <button
+                  className="secondary-action compact-action"
+                  type="button"
+                  onClick={() => {
+                    setExpandedId(expanded ? null : entry.id);
+                    setPreviewOpenId(null);
+                  }}
+                >
                   {entry.value.componentName} - {entry.createdAt}
                 </button>
                 {expanded ? (
@@ -359,6 +368,14 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
                       <MetadataItem label="Approximation notes" value={entry.value.approximationNotes || "No notes"} multiline />
                     </dl>
                     <pre className="generated-code"><code>{entry.value.code}</code></pre>
+                    <button
+                      className="secondary-action compact-action"
+                      type="button"
+                      onClick={() => setPreviewOpenId(previewOpenId === entry.id ? null : entry.id)}
+                    >
+                      {previewOpenId === entry.id ? "Close trusted fixture preview" : "Open trusted fixture preview"}
+                    </button>
+                    {previewOpenId === entry.id ? <PreviewSandbox /> : null}
                   </div>
                 ) : null}
               </article>

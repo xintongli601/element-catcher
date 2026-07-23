@@ -21,5 +21,11 @@
   "permissions": ["activeTab", "sidePanel"],
   "side_panel": {
     "default_path": "src/sidepanel/index.html"
+  },
+  "sandbox": {
+    "pages": ["src/preview/host.html", "src/preview/render-realm.html"]
+  },
+  "content_security_policy": {
+    "sandbox": "sandbox allow-scripts; default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; worker-src 'none'; base-uri 'none'; form-action 'none'"
   }
 }

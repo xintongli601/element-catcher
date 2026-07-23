@@ -1,4 +1,5 @@
 import react from "@vitejs/plugin-react";
+import { buildSync as buildWithEsbuild } from "esbuild";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -15,6 +16,27 @@ function manifestPlugin() {
       const target = resolve(distDir, "manifest.json");
       mkdirSync(dirname(target), { recursive: true });
       copyFileSync(resolve(rootDir, "manifest.json"), target);
+    }
+  };
+}
+
+function previewRenderRealmClassicPlugin(): Plugin {
+  return {
+    name: "element-catcher-preview-render-realm-classic",
+    writeBundle() {
+      const target = resolve(distDir, "assets/previewRenderRealmClassic.js");
+      mkdirSync(dirname(target), { recursive: true });
+      copyFileSync(resolve(rootDir, "src/preview/render-realm.css"), resolve(distDir, "assets/previewRenderRealm.css"));
+      buildWithEsbuild({
+        entryPoints: [resolve(rootDir, "src/preview/render-realm.tsx")],
+        outfile: target,
+        bundle: true,
+        format: "iife",
+        platform: "browser",
+        target: "es2022",
+        jsx: "automatic",
+        logLevel: "silent"
+      });
     }
   };
 }
@@ -57,7 +79,7 @@ export default defineConfig(({ mode }) => {
   return {
     root: rootDir,
     publicDir: "public",
-    plugins: isContentBuild ? [contentScriptGuardPlugin()] : [react(), manifestPlugin()],
+    plugins: isContentBuild ? [contentScriptGuardPlugin()] : [react(), manifestPlugin(), previewRenderRealmClassicPlugin()],
     build: {
       outDir: distDir,
       emptyOutDir: !isContentBuild,
@@ -75,6 +97,8 @@ export default defineConfig(({ mode }) => {
         : {
             input: {
               sidepanel: resolve(rootDir, "src/sidepanel/index.html"),
+              previewHost: resolve(rootDir, "src/preview/host.html"),
+              previewRenderRealm: resolve(rootDir, "src/preview/render-realm.html"),
               background: resolve(rootDir, "src/background/service-worker.ts")
             },
             output: {
