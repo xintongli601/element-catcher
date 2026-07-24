@@ -898,6 +898,14 @@ Status: Current
 
 Objective: Let users preview, revise, regenerate, compare, and manage generated component versions in isolation.
 
+Substage status:
+
+- Milestone 6A - Architecture and threat model: Completed.
+- Milestone 6B - Sandbox runtime foundation with trusted packaged fixtures: Completed.
+- Milestone 6C - Previewable-source validation, compilation and bounded Tailwind rendering: Current.
+- Milestone 6D - Regeneration and natural-language revision: Planned.
+- Milestone 6E - Version comparison and final Milestone 6 regression: Planned.
+
 Included scope:
 
 - Isolated component preview.
@@ -922,6 +930,8 @@ Acceptance criteria:
 - Users can keep multiple generated versions for a single capture.
 - Users can compare versions.
 - Version metadata remains linked to the original CaptureRecord.
+
+Acceptance status: Current. Milestone 6A is completed as the architecture and threat model review. Milestone 6B is completed as the accepted sandbox runtime foundation: the Side Panel trusted extension page owns two sibling packaged sandbox frames, a packaged sandbox host and a packaged sandbox render realm, and uses a narrow trusted relay with strict source-window, exact-key, message-size, requestId, sessionNonce, fixtureId, and lifecycle validation. The accepted foundation renders only one trusted packaged fixture through React createRoot; generated source remains inert text and is not sent, parsed, compiled, transformed, or executed. Timeout and every terminal failure dispose both sandbox frames through React-controlled unmount, and reopen creates fresh requestId, sessionNonce, and WindowProxy identities. Active-session message-defense validation covers nonce, requestId, exact-key, malformed-message, and unrelated source-window rejection. Accepted validation passed `npm run build`, focused Milestone 6B Playwright with 13 tests, backend regression with 6 tests, and full Playwright regression with 121 passing tests plus one existing skipped Milestone 5C loopback test; no flaky or unavailable tests and no real OpenAI request were reported. Residual risk remains that iframe disposal cannot guarantee forced termination of an already-hung browser renderer. Milestone 6C is current but not implemented; generated-component preview of generated source is not yet available.
 
 ## Milestone 7 - Export and Future Expansion
 

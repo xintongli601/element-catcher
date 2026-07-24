@@ -1,12 +1,88 @@
 # Milestone 6A Isolated Preview Architecture Draft
 
+## Implementation Status and Supersession Note
+
+Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Current but not implemented.
+
+This document began as the Milestone 6A architecture draft. Its original nested packaged architecture was a 6A proposal, not the accepted current implementation. Real Chromium feasibility testing showed that a topology where the Side Panel loads a packaged sandbox host, and that host then navigates a second packaged sandbox page, fails unless the second page is exposed through `web_accessible_resources`. That exposure was not approved for Milestone 6B. `srcdoc` was also not selected.
+
+The accepted Milestone 6B foundation uses two Side Panel-owned sibling sandbox frames:
+
+```text
+Side Panel trusted extension page
+  -> packaged sandbox host
+  -> packaged sandbox render realm
+```
+
+The Side Panel performs a narrow trusted relay between the packaged sandbox host and packaged sandbox render realm. Any section below that describes the sandbox host as creating or owning a nested packaged render realm is superseded for current implementation planning by this accepted sibling architecture. Future Milestone 6C work must start from the accepted 6B sibling foundation, not from a host-owned nested packaged render realm, `srcdoc` render realm, or `web_accessible_resources`-based nested render realm.
+
+## Milestone 6B Accepted Foundation
+
+Actual topology:
+
+```text
+Side Panel trusted extension page
+  -> packaged sandbox host iframe
+  -> packaged sandbox render-realm iframe
+```
+
+The host and render-realm iframes are siblings directly owned by the Side Panel. Both sandbox pages are packaged local resources declared in Manifest `sandbox.pages`. No `web_accessible_resources` entry, `srcdoc`, Blob URL, data URL, `allow-same-origin`, `unsafe-inline`, `unsafe-eval`, `wasm-unsafe-eval`, CDN, remote preview resource, backend request, or OpenAI request is part of the accepted 6B preview foundation.
+
+Responsibilities:
+
+- Side Panel trusted extension page: owns user controls, preview lifecycle, the current host and render `WindowProxy` references, request ID, session nonce, fixture ID, failure display, timeout cleanup, and React-controlled iframe mounting.
+- Packaged sandbox host: validates Side Panel messages, requests the trusted fixture render, validates render result messages relayed back from the Side Panel, and emits final success or failure to the Side Panel.
+- Packaged sandbox render realm: renders only the source-controlled trusted packaged fixture through React `createRoot` and returns bounded render success or failure messages.
+
+Message and relay boundary:
+
+- The Side Panel validates the current host and render `WindowProxy` identities.
+- Messages use versioned direction-specific runtime validation.
+- Exact keys, message size, requestId, sessionNonce, and fixtureId are validated.
+- The Side Panel reconstructs clean allowlisted relay objects and does not forward `event.data` directly.
+- Active-session tests independently validate nonce, requestId, exact-key, malformed-message, and unrelated source-window rejection before final Ready or Failed lifecycle state.
+
+Sandbox and execution boundary:
+
+- Sandbox CSP remains strict, with sandbox network and worker access blocked.
+- The sandbox pages have no usable extension API.
+- Storage and cookies are unavailable under the tested environment.
+- The accepted 6B fixture protocol is not a generated-source protocol.
+- Generated source remains inert text. It is not sent through iframe URLs or `postMessage`, parsed, compiled, transformed, executed, injected as HTML/CSS, or passed to `PreviewSandbox`.
+- CaptureRecord and generated-version persistence are not mutated by preview.
+
+Lifecycle:
+
+- Lifecycle covers ready, render, success, failure, timeout, close, dispose, and reopen.
+- Timeout and every terminal failure dispose both sibling sandbox frames.
+- Iframe unmount is controlled through React rather than imperative removal of React-owned iframe nodes.
+- Dispose is idempotent, clears Side Panel timeout state, clears ready flags, sends bounded dispose messages when current `WindowProxy` references are available, and ignores late host/render messages.
+- Reopen creates a fresh component session, requestId, sessionNonce, host iframe, render iframe, and host/render `WindowProxy` identities.
+
+Accepted validation:
+
+- `npm run build` passed.
+- Focused Milestone 6B Playwright passed with 13 tests.
+- Backend regression passed with 6 tests.
+- Full Playwright regression passed with 121 tests and 1 existing skipped Milestone 5C loopback test.
+- No flaky or unavailable tests were reported.
+- No real OpenAI request occurred.
+
+Residual risks:
+
+- Iframe disposal cannot guarantee forced termination of an already-hung browser renderer.
+- A removed browsing context actively sending a new message to its former parent was not directly dynamically reproduced.
+- Protection for stale or removed contexts relies on current `WindowProxy` identity, lifecycle state, requestId, and sessionNonce validation.
+
+Milestone 6B does not approve executing `ComponentGenerationResponseV1.code`, parser installation, compiler installation, Tailwind installation, regex-only JavaScript or JSX security validation, eval, `Function`, WebAssembly or worker-based compilation, generated HTML or CSS injection, generated source transfer into the existing fixture protocol, or changes to storage or generation contracts. Those remain future Milestone 6C proposal topics and require independent review before implementation.
+
 ## 1. Purpose and Scope
 
 This draft defines a future architecture for safely previewing one persisted React + Tailwind generated component version. It is documentation only. It does not implement preview, execute generated code, add a sandbox page, add dependencies, modify the Manifest, modify CSP, change storage, add tests, or call any provider.
 
 Generated code is hostile input. Passing the Milestone 5 response validator means `ComponentGenerationResponseV1` has the expected JSON shape and bounded strings; it does not mean `ComponentGenerationResponseV1.code` is safe to compile, render, or execute.
 
-## 2. Current Implementation Baseline
+## 2. Milestone 6A Historical Baseline
 
 Baseline commit inspected: `d29628416ec9aab0eadca453d846d5ceef8bddf8`.
 
@@ -84,7 +160,7 @@ Risk: if trusted preview-controller code and untrusted generated code share one 
 
 ### Option D - Trusted sandbox host plus nested untrusted render realm
 
-Recommended for later implementation.
+Superseded for the accepted Milestone 6B foundation. This remains historical 6A reasoning and possible future design material only if a later milestone independently approves the required exposure and security boundary changes.
 
 ```text
 Side Panel extension page
@@ -112,7 +188,9 @@ Safer because it avoids generated-code execution. It is incomplete because it ca
 
 ## 6. Recommended Architecture
 
-Primary recommendation: local packaged two-layer isolation.
+Historical 6A recommendation, superseded for the accepted Milestone 6B implementation by the Side Panel-owned sibling sandbox architecture described at the top of this document. The parser/compiler/Tailwind and previewable-source ideas in later sections remain proposals for Milestone 6C, but current implementation planning must not treat the host-owned nested render realm as already accepted.
+
+Primary 6A recommendation: local packaged two-layer isolation.
 
 Trusted contexts:
 
@@ -380,14 +458,14 @@ Retry recreates a completely new preview realm.
 - Comparison is a later Milestone 6 stage.
 - Export remains Milestone 7.
 
-Proposed sequence:
+Current sequence:
 
 ```text
-6A - Architecture and threat model
-6B - Sandbox runtime foundation with trusted fixtures
-6C - Previewable-source compilation and Tailwind rendering
-6D - Regeneration and natural-language revision
-6E - Comparison and final Milestone 6 regression
+6A - Completed - Architecture and threat model
+6B - Completed - Sandbox runtime foundation with trusted packaged fixtures
+6C - Current - Previewable-source validation, compilation and bounded Tailwind rendering
+6D - Planned - Regeneration and natural-language revision
+6E - Planned - Version comparison and final Milestone 6 regression
 ```
 
 Each stage needs independent security review before expanding the amount of generated code that can run.
@@ -403,7 +481,9 @@ No tests are added in Milestone 6A. Later implementation should cover:
 - Playwright extension-runtime tests for no extension API access from sandbox, no IndexedDB/storage/cookie access, no source-page access, no network/external resources, blocked popups/forms/navigation/downloads/workers/service workers, message source/nonce validation, malicious source isolation, hung-preview recovery, repeated open/close, capture switching, version switching, Side Panel close/reopen, CaptureRecord immutability, generated-version persistence immutability, no real AI request, and no unexpected Console errors.
 - Real Chrome manual validation where browser security behavior cannot be reliably asserted in automated fixtures.
 
-## 16. Explicit Non-Goals
+## 16. Milestone 6A Explicit Non-Goals
+
+These non-goals describe the original documentation-only Milestone 6A architecture review. They are historical for 6A and do not override the accepted Milestone 6B foundation status described at the top of this document.
 
 - No preview implementation.
 - No generated-code execution.

@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Generated code is currently displayed only as inert source text; it is not rendered, executed, revised, compared, or exported by the extension.
+Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Milestone 6A and Milestone 6B are completed; Milestone 6C is current; Milestone 6D and Milestone 6E remain planned. Generated code is currently displayed only as inert source text; it is not rendered, executed, revised, compared, or exported by the extension.
 
 ## Current Capabilities
 
@@ -24,6 +24,7 @@ Milestones 1 through 5 are completed. Milestone 6 is the current milestone and i
 - Generate React + Tailwind component source through the provider-neutral transport and local backend/proxy when configured.
 - Save generated versions locally in a separate `generatedComponentVersions` store linked to the source capture.
 - Display generated code as inert plain text.
+- Use an isolated packaged sandbox foundation that currently renders only a fixed trusted packaged React fixture. Generated AI source is not yet rendered, parsed, compiled, transformed, or executed.
 
 ## Local-First and AI Boundary
 
@@ -90,6 +91,11 @@ npm run preview
 Current milestone:
 
 - Milestone 6: Isolated Preview and Version Management.
+  - Milestone 6A: Completed. Architecture and threat model.
+  - Milestone 6B: Completed. Sandbox runtime foundation with trusted packaged fixtures.
+  - Milestone 6C: Current. Previewable-source validation, compilation, and bounded Tailwind rendering.
+  - Milestone 6D: Planned. Regeneration and natural-language revision.
+  - Milestone 6E: Planned. Version comparison and final Milestone 6 regression.
 
 See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
@@ -105,12 +111,15 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 ## Current Roadmap
 
 - Milestones 1-5: Completed.
-- Milestone 6: Current. Isolated generated-component preview, natural-language revision, regeneration management, multiple-version management, and comparison remain unimplemented.
+- Milestone 6: Current. Milestone 6A and 6B are Completed, Milestone 6C is Current, and Milestone 6D and 6E are Planned. Generated-source isolated preview, previewable-source validation, generated JSX/TSX compilation, Tailwind rendering of generated source, natural-language revision, regeneration management, version comparison, and export remain unimplemented.
 - Milestone 7: Planned. Export and future expansion remain unimplemented.
 
 ## Intentionally Unimplemented
 
 - Isolated rendered preview of generated code.
+- Previewable-source validation.
+- Generated JSX/TSX compilation.
+- Tailwind rendering of generated source.
 - Natural-language revision.
 - Regeneration management.
 - Version comparison.
