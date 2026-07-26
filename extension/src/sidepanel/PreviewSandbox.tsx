@@ -1,129 +1,116 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { GeneratedComponentVersionEntryV1 } from "../shared/generated-version-contract";
 import {
+  PREVIEW_PROTOCOL_VERSION,
   PREVIEW_TIMEOUT_MS,
+  assertMatchesPreviewSession,
+  assertPreviewHostToSidePanelMessageV2,
+  assertPreviewRenderToSidePanelMessageV2,
   createPreviewRequestId,
   createPreviewSessionNonce,
-  isPreviewHostToSidePanelMessageV1,
   isPreviewMessageWithinLimit,
-  isPreviewRenderToSidePanelMessageV1,
-  type PreviewDisposeV1,
-  type PreviewFixtureId,
-  type PreviewHostToSidePanelMessageV1,
-  type PreviewRenderToSidePanelMessageV1
+  type PreviewDisposeV2,
+  type PreviewPlanFailureV2,
+  type PreviewPlanSuccessV2,
+  type PreviewRenderFailureV2,
+  type PreviewRenderSuccessV2
 } from "../shared/preview-protocol";
+import { canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PreviewRenderPlanV1 } from "../shared/preview-policy";
 
 type PreviewSandboxState =
-  | { status: "loading" }
-  | { status: "ready"; width: number; height: number; warnings: string[] }
-  | { status: "failed"; message: string };
+  | { status: "loading"; message: string }
+  | { status: "ready"; warnings: string[] }
+  | { status: "unavailable"; message: string }
+  | { status: "failed"; message: string }
+  | { status: "timed-out"; message: string };
 
-type LifecycleState = "loading" | "readying" | "rendering" | "terminal" | "disposed";
+type LifecycleState = "boot" | "awaiting_ready" | "ready" | "planning" | "validating" | "rendering" | "succeeded" | "failed" | "timed_out" | "disposed";
 
-const PREVIEW_TIMEOUT_MESSAGE = "Trusted preview fixture timed out.";
+type Session = {
+  requestId: string;
+  sessionNonce: string;
+  sourceSha256: string;
+  componentName: string;
+  versionId: string;
+};
 
-export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId?: PreviewFixtureId }) {
-  const [state, setState] = useState<PreviewSandboxState>({ status: "loading" });
+export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVersionEntryV1; onClose: () => void }) {
+  const [state, setState] = useState<PreviewSandboxState>({ status: "loading", message: "Loading preview" });
   const [framesMounted, setFramesMounted] = useState(true);
   const hostFrameRef = useRef<HTMLIFrameElement | null>(null);
   const renderFrameRef = useRef<HTMLIFrameElement | null>(null);
-  const lifecycleRef = useRef<LifecycleState>("loading");
+  const lifecycleRef = useRef<LifecycleState>("boot");
   const hostReadyRef = useRef(false);
   const renderReadyRef = useRef(false);
   const timeoutRef = useRef<number | null>(null);
-  const session = useMemo(
-    () => ({
-      requestId: createPreviewRequestId(),
-      sessionNonce: createPreviewSessionNonce(),
-      fixtureId
-    }),
-    [fixtureId]
-  );
+  const activeSessionRef = useRef<Session | null>(null);
+  const planSha256Ref = useRef<string | null>(null);
+  const sourceSentToHostRef = useRef(false);
+  const renderPlanSentRef = useRef(false);
   const hostUrl = chrome.runtime.getURL("src/preview/host.html");
   const renderUrl = chrome.runtime.getURL("src/preview/render-realm.html");
 
+  const sessionSeed = useMemo(() => ({ versionId: entry.id, code: entry.value.code, componentName: entry.value.componentName }), [entry.id, entry.value.code, entry.value.componentName]);
+
   useEffect(() => {
-    lifecycleRef.current = "readying";
+    let cancelled = false;
+    lifecycleRef.current = "boot";
     hostReadyRef.current = false;
     renderReadyRef.current = false;
+    planSha256Ref.current = null;
+    sourceSentToHostRef.current = false;
+    renderPlanSentRef.current = false;
+    setFramesMounted(true);
+    setState({ status: "loading", message: "Loading preview" });
 
-    timeoutRef.current = window.setTimeout(() => {
-      if (lifecycleRef.current === "disposed" || lifecycleRef.current === "terminal") {
-        return;
-      }
-
-      dispose("timeout", true);
-      setState({ status: "failed", message: PREVIEW_TIMEOUT_MESSAGE });
-    }, PREVIEW_TIMEOUT_MS + 1_000);
+    void sha256Hex(sessionSeed.code)
+      .then((sourceSha256) => {
+        if (cancelled) return;
+        activeSessionRef.current = {
+          requestId: createPreviewRequestId(),
+          sessionNonce: createPreviewSessionNonce(),
+          sourceSha256,
+          componentName: sessionSeed.componentName,
+          versionId: sessionSeed.versionId
+        };
+        lifecycleRef.current = "awaiting_ready";
+        startTimeout();
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          lifecycleRef.current = "failed";
+          setState({ status: "unavailable", message: normalizeDiagnostics(error)[0] });
+        }
+      });
 
     const handleMessage = (event: MessageEvent) => {
-      if (lifecycleRef.current === "disposed" || !isPreviewMessageWithinLimit(event.data)) {
-        return;
-      }
-
+      if (lifecycleRef.current === "disposed" || !isPreviewMessageWithinLimit(event.data)) return;
       const hostWindow = hostFrameRef.current?.contentWindow;
       const renderWindow = renderFrameRef.current?.contentWindow;
-
       if (event.source === hostWindow) {
-        handleHostMessage(event.data);
+        void handleHostMessage(event.data);
         return;
       }
-
       if (event.source === renderWindow) {
-        handleRenderMessage(event.data);
+        void handleRenderMessage(event.data);
       }
     };
 
     window.addEventListener("message", handleMessage);
     return () => {
+      cancelled = true;
       dispose("close", false);
       window.removeEventListener("message", handleMessage);
     };
-  }, [session]);
+  }, [sessionSeed]);
 
   const postInitToHost = () => {
-    if (lifecycleRef.current === "disposed") {
-      return;
-    }
-
+    const session = activeSessionRef.current;
+    if (!session || lifecycleRef.current === "disposed") return;
     hostFrameRef.current?.contentWindow?.postMessage(
       {
-        contractVersion: 1,
-        type: "preview.host.init",
-        requestId: session.requestId,
-        sessionNonce: session.sessionNonce,
-        fixtureId: session.fixtureId
-      },
-      "*"
-    );
-  };
-
-  const postInitToRender = () => {
-    if (lifecycleRef.current === "disposed") {
-      return;
-    }
-
-    renderFrameRef.current?.contentWindow?.postMessage(
-      {
-        contractVersion: 1,
-        type: "preview.render.init",
-        requestId: session.requestId,
-        sessionNonce: session.sessionNonce,
-        fixtureId: session.fixtureId
-      },
-      "*"
-    );
-  };
-
-  const maybeStartHost = () => {
-    if (lifecycleRef.current !== "readying" || !hostReadyRef.current || !renderReadyRef.current) {
-      return;
-    }
-
-    lifecycleRef.current = "rendering";
-    hostFrameRef.current?.contentWindow?.postMessage(
-      {
-        contractVersion: 1,
-        type: "preview.host.start",
+        contractVersion: PREVIEW_PROTOCOL_VERSION,
+        type: "preview.host.init.v2",
         requestId: session.requestId,
         sessionNonce: session.sessionNonce
       },
@@ -131,151 +118,178 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
     );
   };
 
-  const handleHostMessage = (message: unknown) => {
-    if (!isPreviewHostToSidePanelMessageV1(message) || !matchesSession(message) || lifecycleRef.current === "terminal") {
-      return;
-    }
-
-    if (message.type === "preview.host.ready") {
-      if (lifecycleRef.current !== "readying") {
-        return;
-      }
-      hostReadyRef.current = true;
-      maybeStartHost();
-      return;
-    }
-
-    if (message.type === "preview.render.request") {
-      if (lifecycleRef.current !== "rendering" || message.fixtureId !== session.fixtureId) {
-        return;
-      }
-      renderFrameRef.current?.contentWindow?.postMessage(
-        {
-          contractVersion: 1,
-          type: "preview.render.request",
-          requestId: message.requestId,
-          sessionNonce: message.sessionNonce,
-          fixtureId: message.fixtureId
-        },
-        "*"
-      );
-      return;
-    }
-
-    if (message.type === "preview.host.success") {
-      finishWithReady(message);
-      return;
-    }
-
-    if (message.type === "preview.host.failure") {
-      finishWithFailure(message);
-    }
-  };
-
-  const handleRenderMessage = (message: unknown) => {
-    if (!isPreviewRenderToSidePanelMessageV1(message) || !matchesSession(message) || lifecycleRef.current === "terminal") {
-      return;
-    }
-
-    if (message.type === "preview.render.ready") {
-      if (lifecycleRef.current !== "readying") {
-        return;
-      }
-      renderReadyRef.current = true;
-      maybeStartHost();
-      return;
-    }
-
-    if (message.type === "preview.render.success") {
-      if (lifecycleRef.current !== "rendering") {
-        return;
-      }
-      postCleanRenderSuccess(message);
-      return;
-    }
-
-    if (message.type === "preview.render.failure") {
-      if (lifecycleRef.current !== "rendering") {
-        return;
-      }
-      postCleanRenderFailure(message);
-    }
-  };
-
-  const postCleanRenderSuccess = (message: Extract<PreviewRenderToSidePanelMessageV1, { type: "preview.render.success" }>) => {
-    hostFrameRef.current?.contentWindow?.postMessage(
+  const postInitToRender = () => {
+    const session = activeSessionRef.current;
+    if (!session || lifecycleRef.current === "disposed") return;
+    renderFrameRef.current?.contentWindow?.postMessage(
       {
-        contractVersion: 1,
-        type: "preview.render.success",
-        requestId: message.requestId,
-        sessionNonce: message.sessionNonce,
-        width: message.width,
-        height: message.height,
-        warnings: message.warnings.slice(0, 8)
+        contractVersion: PREVIEW_PROTOCOL_VERSION,
+        type: "preview.render.init.v2",
+        requestId: session.requestId,
+        sessionNonce: session.sessionNonce
       },
       "*"
     );
   };
 
-  const postCleanRenderFailure = (message: Extract<PreviewRenderToSidePanelMessageV1, { type: "preview.render.failure" }>) => {
+  const maybeRequestPlan = () => {
+    const session = activeSessionRef.current;
+    if (!session || lifecycleRef.current !== "awaiting_ready" || !hostReadyRef.current || !renderReadyRef.current || sourceSentToHostRef.current) return;
+    sourceSentToHostRef.current = true;
+    lifecycleRef.current = "planning";
+    setState({ status: "loading", message: "Loading preview" });
     hostFrameRef.current?.contentWindow?.postMessage(
       {
-        contractVersion: 1,
-        type: "preview.render.failure",
-        requestId: message.requestId,
-        sessionNonce: message.sessionNonce,
-        category: message.category,
-        message: message.message
+        contractVersion: PREVIEW_PROTOCOL_VERSION,
+        type: "preview.source.request.v2",
+        requestId: session.requestId,
+        sessionNonce: session.sessionNonce,
+        expectedComponentName: session.componentName,
+        source: sessionSeed.code,
+        sourceSha256: session.sourceSha256
       },
       "*"
     );
   };
 
-  const finishWithReady = (message: Extract<PreviewHostToSidePanelMessageV1, { type: "preview.host.success" }>) => {
-    if (lifecycleRef.current === "terminal" || lifecycleRef.current === "disposed") {
-      return;
+  const handleHostMessage = async (rawMessage: unknown) => {
+    const session = activeSessionRef.current;
+    if (!session || lifecycleRef.current === "disposed") return;
+    try {
+      assertPreviewHostToSidePanelMessageV2(rawMessage);
+      assertMatchesPreviewSession(rawMessage, session.requestId, session.sessionNonce);
+      if (rawMessage.type === "preview.host.ready.v2") {
+        if (lifecycleRef.current !== "awaiting_ready") return;
+        hostReadyRef.current = true;
+        maybeRequestPlan();
+        return;
+      }
+      if (rawMessage.type === "preview.plan.failure.v2") {
+        if (lifecycleRef.current !== "planning") return;
+        finishWithPlanFailure(rawMessage);
+        return;
+      }
+      if (rawMessage.type === "preview.plan.success.v2") {
+        if (lifecycleRef.current !== "planning") return;
+        lifecycleRef.current = "validating";
+        const cleanPlan = await validatePlanSuccess(rawMessage, session);
+        await postRenderPlan(cleanPlan, rawMessage.planSha256, session);
+      }
+    } catch (error) {
+      finishWithFailure("Preview failed", error);
     }
+  };
 
-    lifecycleRef.current = "terminal";
+  const handleRenderMessage = async (rawMessage: unknown) => {
+    const session = activeSessionRef.current;
+    if (!session || lifecycleRef.current === "disposed") return;
+    try {
+      assertPreviewRenderToSidePanelMessageV2(rawMessage);
+      assertMatchesPreviewSession(rawMessage, session.requestId, session.sessionNonce);
+      if (rawMessage.type === "preview.render.ready.v2") {
+        if (lifecycleRef.current !== "awaiting_ready") return;
+        renderReadyRef.current = true;
+        maybeRequestPlan();
+        return;
+      }
+      if (rawMessage.type === "preview.render.success.v2") {
+        if (lifecycleRef.current !== "rendering") return;
+        finishWithRenderSuccess(rawMessage);
+        return;
+      }
+      if (rawMessage.type === "preview.render.failure.v2") {
+        if (lifecycleRef.current !== "rendering") return;
+        finishWithRenderFailure(rawMessage);
+      }
+    } catch (error) {
+      finishWithFailure("Preview failed", error);
+    }
+  };
+
+  const validatePlanSuccess = async (message: PreviewPlanSuccessV2, session: Session): Promise<PreviewRenderPlanV1> => {
+    if (message.sourceSha256 !== session.sourceSha256) throw new Error("Preview source hash mismatch.");
+    const cleanPlan = validatePreviewRenderPlan(message.renderPlan, session.componentName);
+    if (cleanPlan.sourceSha256 !== session.sourceSha256) throw new Error("Preview plan source hash mismatch.");
+    const planSha256 = await sha256Hex(canonicalStringify(cleanPlan));
+    if (planSha256 !== message.planSha256) throw new Error("Preview plan hash mismatch.");
+    planSha256Ref.current = planSha256;
+    return cleanPlan;
+  };
+
+  const postRenderPlan = async (cleanPlan: PreviewRenderPlanV1, planSha256: string, session: Session) => {
+    if (renderPlanSentRef.current) return;
+    renderPlanSentRef.current = true;
+    lifecycleRef.current = "rendering";
+    renderFrameRef.current?.contentWindow?.postMessage(
+      {
+        contractVersion: PREVIEW_PROTOCOL_VERSION,
+        type: "preview.render.plan.v2",
+        requestId: session.requestId,
+        sessionNonce: session.sessionNonce,
+        sourceSha256: session.sourceSha256,
+        planSha256,
+        renderPlan: validatePreviewRenderPlan(cleanPlan, session.componentName)
+      },
+      "*"
+    );
+  };
+
+  const finishWithRenderSuccess = (_message: PreviewRenderSuccessV2) => {
+    lifecycleRef.current = "succeeded";
     clearPreviewTimeout();
-    setState({
-      status: "ready",
-      width: message.width,
-      height: message.height,
-      warnings: message.warnings
-    });
+    setState({ status: "ready", warnings: [] });
   };
 
-  const finishWithFailure = (message: Extract<PreviewHostToSidePanelMessageV1, { type: "preview.host.failure" }>) => {
-    if (lifecycleRef.current === "terminal" || lifecycleRef.current === "disposed") {
-      return;
-    }
-
-    dispose(message.category === "timed_out" ? "timeout" : "error", true);
-    setState({ status: "failed", message: message.message });
+  const finishWithPlanFailure = (message: PreviewPlanFailureV2) => {
+    finishWithFailure("Preview unavailable", new Error(message.diagnostics[0] ?? "Generated source is outside Previewable Subset V1."));
   };
 
-  const dispose = (reason: PreviewDisposeV1["reason"], unmountFrames: boolean) => {
-    if (lifecycleRef.current === "disposed") {
-      return;
-    }
+  const finishWithRenderFailure = (message: PreviewRenderFailureV2) => {
+    finishWithFailure("Preview failed", new Error(message.diagnostics[0] ?? "Preview render failed."));
+  };
 
+  const finishWithFailure = (label: "Preview unavailable" | "Preview failed", error: unknown) => {
+    if (lifecycleRef.current === "disposed") return;
+    lifecycleRef.current = "failed";
+    clearPreviewTimeout();
+    dispose("terminal-failure", true);
+    setState({ status: label === "Preview unavailable" ? "unavailable" : "failed", message: normalizeDiagnostics(error)[0] });
+  };
+
+  const startTimeout = () => {
+    clearPreviewTimeout();
+    const boundSession = activeSessionRef.current;
+    timeoutRef.current = window.setTimeout(() => {
+      const current = activeSessionRef.current;
+      if (!boundSession || !current || current.requestId !== boundSession.requestId || current.sessionNonce !== boundSession.sessionNonce || lifecycleRef.current === "succeeded" || lifecycleRef.current === "failed" || lifecycleRef.current === "disposed") {
+        return;
+      }
+      lifecycleRef.current = "timed_out";
+      dispose("timeout", true);
+      setState({ status: "timed-out", message: "Preview timed out." });
+    }, PREVIEW_TIMEOUT_MS);
+  };
+
+  const dispose = (reason: PreviewDisposeV2["reason"], unmountFrames: boolean) => {
+    if (lifecycleRef.current === "disposed" && reason !== "timeout") return;
+    const session = activeSessionRef.current;
     lifecycleRef.current = "disposed";
     clearPreviewTimeout();
-    const disposeMessage: PreviewDisposeV1 = {
-      contractVersion: 1,
-      type: "preview.dispose",
-      requestId: session.requestId,
-      sessionNonce: session.sessionNonce,
-      reason
-    };
-    hostFrameRef.current?.contentWindow?.postMessage(disposeMessage, "*");
-    renderFrameRef.current?.contentWindow?.postMessage(disposeMessage, "*");
+    if (session) {
+      const disposeMessage: PreviewDisposeV2 = {
+        contractVersion: PREVIEW_PROTOCOL_VERSION,
+        type: "preview.dispose.v2",
+        requestId: session.requestId,
+        sessionNonce: session.sessionNonce,
+        reason
+      };
+      hostFrameRef.current?.contentWindow?.postMessage(disposeMessage, "*");
+      renderFrameRef.current?.contentWindow?.postMessage(disposeMessage, "*");
+    }
+    activeSessionRef.current = null;
     hostReadyRef.current = false;
     renderReadyRef.current = false;
-    if (unmountFrames) {
-      setFramesMounted(false);
-    }
+    if (unmountFrames) setFramesMounted(false);
   };
 
   const clearPreviewTimeout = () => {
@@ -285,52 +299,45 @@ export function PreviewSandbox({ fixtureId = "trusted-6b-fixture" }: { fixtureId
     }
   };
 
-  const matchesSession = (message: { requestId: string; sessionNonce: string }) => {
-    return message.requestId === session.requestId && message.sessionNonce === session.sessionNonce;
-  };
+  const statusText =
+    state.status === "ready"
+      ? "Preview ready"
+      : state.status === "failed"
+        ? "Preview failed"
+        : state.status === "unavailable"
+          ? "Preview unavailable"
+          : state.status === "timed-out"
+            ? "Preview timed out"
+            : "Loading preview";
 
   return (
-    <section
-      className="preview-sandbox-panel"
-      aria-labelledby="preview-sandbox-heading"
-    >
+    <section className="preview-sandbox-panel" aria-labelledby={`preview-sandbox-heading-${entry.id}`}>
       <div className="preview-sandbox-header">
-        <h4 id="preview-sandbox-heading">Isolated preview</h4>
-        <p className={`preview-sandbox-status preview-sandbox-status-${state.status}`}>
-          {state.status === "ready" ? "Ready" : state.status === "failed" ? "Failed" : "Loading"}
+        <h4 id={`preview-sandbox-heading-${entry.id}`}>Preview</h4>
+        <p className={`preview-sandbox-status preview-sandbox-status-${state.status === "ready" ? "ready" : state.status === "loading" ? "loading" : "failed"}`}>
+          {statusText}
         </p>
       </div>
-      <p className="preview-sandbox-note">
-        This isolated foundation renders a packaged trusted fixture only. Generated AI code is not previewed.
-      </p>
       {framesMounted ? (
         <div className="preview-sandbox-frame-row">
-          <iframe
-            ref={hostFrameRef}
-            className="preview-sandbox-frame preview-sandbox-host-frame"
-            title="Element Catcher isolated preview host"
-            src={hostUrl}
-            onLoad={postInitToHost}
-          />
-          <iframe
-            ref={renderFrameRef}
-            className="preview-sandbox-frame preview-sandbox-render-frame"
-            title="Element Catcher isolated trusted fixture render realm"
-            src={renderUrl}
-            onLoad={postInitToRender}
-          />
+          <iframe ref={hostFrameRef} className="preview-sandbox-frame preview-sandbox-host-frame" title="Element Catcher preview host" src={hostUrl} onLoad={postInitToHost} />
+          <iframe ref={renderFrameRef} className="preview-sandbox-frame preview-sandbox-render-frame" title="Element Catcher preview render realm" src={renderUrl} onLoad={postInitToRender} />
         </div>
       ) : null}
       {state.status === "ready" ? (
         <p className="preview-sandbox-note" role="status">
-          Trusted fixture rendered in an isolated sandbox realm ({state.width}x{state.height}).
+          Preview ready. Generated source stayed source-only; the render realm received a declarative plan.
         </p>
       ) : null}
-      {state.status === "failed" ? (
-        <p className="save-state save-state-failed" role="alert">
-          {state.message}
-        </p>
+      {state.status !== "ready" && state.status !== "loading" ? (
+        <div className="save-state save-state-failed" role="alert">
+          <p>{state.message}</p>
+          <button className="secondary-action compact-action" type="button" onClick={onClose}>
+            Close preview
+          </button>
+        </div>
       ) : null}
+      {state.status === "loading" ? <p className="save-state save-state-saving">{state.message}</p> : null}
     </section>
   );
 }

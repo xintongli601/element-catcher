@@ -1,173 +1,136 @@
 import {
-  PREVIEW_TIMEOUT_MS,
+  assertMatchesPreviewSession,
+  assertPreviewSidePanelToHostMessageV2,
   isPreviewMessageWithinLimit,
-  isPreviewSidePanelToHostMessageV1,
-  type PreviewDisposeV1,
-  type PreviewHostFailureV1,
-  type PreviewHostInitV1,
-  type PreviewHostSuccessV1,
-  type PreviewRenderFailureV1,
-  type PreviewRenderRequestV1,
-  type PreviewRenderSuccessV1
+  type PreviewDisposeV2,
+  type PreviewHostInitV2,
+  type PreviewPlanFailureV2,
+  type PreviewPlanSuccessV2,
+  type PreviewSourceRequestV2
 } from "../shared/preview-protocol";
+import { canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PlanFailureCategory } from "../shared/preview-policy";
+import { buildPreviewRenderPlanFromSource } from "./previewable-subset";
 import "./host.css";
 
-type HostSession = PreviewHostInitV1 & {
+type HostLifecycle = "boot" | "ready" | "planning" | "succeeded" | "failed" | "disposed";
+type HostSession = PreviewHostInitV2 & {
   parentWindow: WindowProxy;
-  started: boolean;
-  pendingRender: boolean;
-  terminal: boolean;
+  lifecycle: HostLifecycle;
+  sourceRequestsReceived: number;
 };
 
 let activeSession: HostSession | null = null;
-let timeoutId: number | null = null;
-let disposed = false;
 
 window.addEventListener("message", (event) => {
-  if (event.source !== window.parent || !isPreviewMessageWithinLimit(event.data) || !isPreviewSidePanelToHostMessageV1(event.data)) {
+  void handleMessage(event);
+});
+
+async function handleMessage(event: MessageEvent) {
+  if (event.source !== window.parent || !isPreviewMessageWithinLimit(event.data)) {
     return;
   }
 
-  if (!activeSession) {
-    if (disposed || event.data.type !== "preview.host.init") {
+  try {
+    assertPreviewSidePanelToHostMessageV2(event.data);
+    if (!activeSession) {
+      if (event.data.type !== "preview.host.init.v2") return;
+      startSession(event.data, event.source);
       return;
     }
 
-    startSession(event.data, event.source);
-    return;
-  }
+    if (event.source !== activeSession.parentWindow) return;
+    assertMatchesPreviewSession(event.data, activeSession.requestId, activeSession.sessionNonce);
 
-  if (!matchesSession(event.data) || event.source !== activeSession.parentWindow || activeSession.terminal) {
-    return;
-  }
+    if (event.data.type === "preview.dispose.v2") {
+      dispose(event.data);
+      return;
+    }
 
-  if (event.data.type === "preview.dispose") {
-    dispose(event.data);
-    return;
+    if (event.data.type !== "preview.source.request.v2") return;
+    await handleSourceRequest(event.data);
+  } catch (error) {
+    postPlanFailure("policy", error);
   }
+}
 
-  if (event.data.type === "preview.host.start") {
-    requestTrustedFixtureRender();
-    return;
-  }
-
-  if ((event.data.type === "preview.render.success" || event.data.type === "preview.render.failure") && activeSession.pendingRender) {
-    acceptRenderTerminal(event.data);
-  }
-});
-
-function startSession(initMessage: PreviewHostInitV1, parentWindow: WindowProxy) {
-  activeSession = {
-    ...initMessage,
-    parentWindow,
-    started: false,
-    pendingRender: false,
-    terminal: false
-  };
-  disposed = false;
+function startSession(init: PreviewHostInitV2, parentWindow: WindowProxy) {
+  activeSession = { ...init, parentWindow, lifecycle: "ready", sourceRequestsReceived: 0 };
   parentWindow.postMessage(
     {
-      contractVersion: 1,
-      type: "preview.host.ready",
-      requestId: initMessage.requestId,
-      sessionNonce: initMessage.sessionNonce
+      contractVersion: 2,
+      type: "preview.host.ready.v2",
+      requestId: init.requestId,
+      sessionNonce: init.sessionNonce
     },
     "*"
   );
-  timeoutId = window.setTimeout(() => {
-    if (!activeSession || disposed || activeSession.terminal) {
-      return;
-    }
+}
 
-    postHostFailure({
-      contractVersion: 1,
-      type: "preview.render.failure",
+async function handleSourceRequest(message: PreviewSourceRequestV2) {
+  if (!activeSession || activeSession.lifecycle !== "ready") {
+    postPlanFailure("policy", new Error("Host is not ready for another source request."));
+    return;
+  }
+
+  activeSession.sourceRequestsReceived += 1;
+  if (activeSession.sourceRequestsReceived > 1) {
+    postPlanFailure("limit", new Error("Only one preview source request is allowed per host session."));
+    return;
+  }
+
+  activeSession.lifecycle = "planning";
+  try {
+    const candidatePlan = await buildPreviewRenderPlanFromSource({
+      source: message.source,
+      expectedComponentName: message.expectedComponentName,
+      sourceSha256: message.sourceSha256
+    });
+    const renderPlan = validatePreviewRenderPlan(candidatePlan, message.expectedComponentName);
+    const planSha256 = await sha256Hex(canonicalStringify(renderPlan));
+    activeSession.lifecycle = "succeeded";
+    const success: PreviewPlanSuccessV2 = {
+      contractVersion: 2,
+      type: "preview.plan.success.v2",
       requestId: activeSession.requestId,
       sessionNonce: activeSession.sessionNonce,
-      category: "timed_out",
-      message: "Trusted preview fixture timed out."
-    });
-  }, PREVIEW_TIMEOUT_MS);
-}
-
-function requestTrustedFixtureRender() {
-  if (!activeSession || disposed || activeSession.started) {
-    return;
-  }
-
-  activeSession.started = true;
-  activeSession.pendingRender = true;
-  const request: PreviewRenderRequestV1 = {
-    contractVersion: 1,
-    type: "preview.render.request",
-    requestId: activeSession.requestId,
-    sessionNonce: activeSession.sessionNonce,
-    fixtureId: activeSession.fixtureId
-  };
-  activeSession.parentWindow.postMessage(request, "*");
-}
-
-function acceptRenderTerminal(message: PreviewRenderSuccessV1 | PreviewRenderFailureV1) {
-  if (!activeSession || disposed || activeSession.terminal) {
-    return;
-  }
-
-  if (message.type === "preview.render.success") {
-    clearPreviewTimeout();
-    activeSession.terminal = true;
-    activeSession.pendingRender = false;
-    const success: PreviewHostSuccessV1 = {
-      contractVersion: 1,
-      type: "preview.host.success",
-      requestId: message.requestId,
-      sessionNonce: message.sessionNonce,
-      width: message.width,
-      height: message.height,
-      warnings: message.warnings
+      sourceSha256: message.sourceSha256,
+      planSha256,
+      renderPlan
     };
     activeSession.parentWindow.postMessage(success, "*");
-    return;
+  } catch (error) {
+    postPlanFailure(errorCategory(error), error);
   }
-
-  postHostFailure(message);
 }
 
-function postHostFailure(message: PreviewRenderFailureV1) {
-  if (!activeSession || disposed || activeSession.terminal) {
+function postPlanFailure(category: PlanFailureCategory, error: unknown) {
+  if (!activeSession || activeSession.lifecycle === "disposed" || activeSession.lifecycle === "failed" || activeSession.lifecycle === "succeeded") {
     return;
   }
-
-  clearPreviewTimeout();
-  activeSession.terminal = true;
-  activeSession.pendingRender = false;
-  const failure: PreviewHostFailureV1 = {
-    contractVersion: 1,
-    type: "preview.host.failure",
-    requestId: message.requestId,
-    sessionNonce: message.sessionNonce,
-    category: message.category,
-    message: message.message
+  activeSession.lifecycle = "failed";
+  const failure: PreviewPlanFailureV2 = {
+    contractVersion: 2,
+    type: "preview.plan.failure.v2",
+    requestId: activeSession.requestId,
+    sessionNonce: activeSession.sessionNonce,
+    category,
+    diagnostics: normalizeDiagnostics(error)
   };
   activeSession.parentWindow.postMessage(failure, "*");
 }
 
-function dispose(message: PreviewDisposeV1) {
-  if (!matchesSession(message)) {
+function dispose(message: PreviewDisposeV2) {
+  if (!activeSession || message.requestId !== activeSession.requestId || message.sessionNonce !== activeSession.sessionNonce) {
     return;
   }
-
-  disposed = true;
-  clearPreviewTimeout();
+  activeSession.lifecycle = "disposed";
   activeSession = null;
 }
 
-function clearPreviewTimeout() {
-  if (timeoutId !== null) {
-    window.clearTimeout(timeoutId);
-    timeoutId = null;
+function errorCategory(error: unknown): PlanFailureCategory {
+  const category = (error as { category?: unknown })?.category;
+  if (category === "syntax" || category === "program-envelope" || category === "component-name" || category === "policy" || category === "limit") {
+    return category;
   }
-}
-
-function matchesSession(message: { requestId: string; sessionNonce: string }) {
-  return activeSession?.requestId === message.requestId && activeSession.sessionNonce === message.sessionNonce;
+  return "internal";
 }

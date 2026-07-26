@@ -373,9 +373,9 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
                       type="button"
                       onClick={() => setPreviewOpenId(previewOpenId === entry.id ? null : entry.id)}
                     >
-                      {previewOpenId === entry.id ? "Close trusted fixture preview" : "Open trusted fixture preview"}
+                      {previewOpenId === entry.id ? "Close preview" : "Preview"}
                     </button>
-                    {previewOpenId === entry.id ? <PreviewSandbox /> : null}
+                    {previewOpenId === entry.id ? <PreviewSandbox entry={entry} onClose={() => setPreviewOpenId(null)} /> : null}
                   </div>
                 ) : null}
               </article>

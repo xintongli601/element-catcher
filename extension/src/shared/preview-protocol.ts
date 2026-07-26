@@ -1,117 +1,122 @@
-export const PREVIEW_PROTOCOL_VERSION = 1;
-export const PREVIEW_MESSAGE_MAX_BYTES = 4096;
-export const PREVIEW_TIMEOUT_MS = 3_000;
+import {
+  DISPOSE_REASONS,
+  PLAN_FAILURE_CATEGORIES,
+  PREVIEW_LIMITS,
+  PREVIEW_PROTOCOL_VERSION,
+  RENDER_FAILURE_CATEGORIES,
+  assertExactObjectKeys,
+  assertPlainData,
+  type DisposeReason,
+  type PlanFailureCategory,
+  type PreviewRenderPlanV1,
+  type RenderFailureCategory
+} from "./preview-policy";
 
-const REQUEST_ID_PATTERN = /^preview-[0-9a-f]{32}$/;
-const SESSION_NONCE_PATTERN = /^[0-9a-f]{32}$/;
-const FIXTURE_IDS = ["trusted-6b-fixture"] as const;
+const requestIdPattern = /^preview-[0-9a-f]{32}$/;
+const sessionNoncePattern = /^[0-9a-f]{32}$/;
+const shaPattern = /^[a-f0-9]{64}$/;
+const componentNamePattern = /^[A-Z][A-Za-z0-9]{0,63}$/;
 
-export type PreviewFixtureId = (typeof FIXTURE_IDS)[number];
+export { PREVIEW_PROTOCOL_VERSION, PREVIEW_TIMEOUT_MS } from "./preview-policy";
 
-export type PreviewHostInitV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.host.init";
-  requestId: string;
-  sessionNonce: string;
-  fixtureId: PreviewFixtureId;
-};
-
-export type PreviewRenderInitV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.render.init";
-  requestId: string;
-  sessionNonce: string;
-  fixtureId: PreviewFixtureId;
-};
-
-export type PreviewHostStartV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.host.start";
+export type PreviewHostInitV2 = {
+  contractVersion: 2;
+  type: "preview.host.init.v2";
   requestId: string;
   sessionNonce: string;
 };
 
-export type PreviewHostReadyV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.host.ready";
+export type PreviewRenderInitV2 = {
+  contractVersion: 2;
+  type: "preview.render.init.v2";
   requestId: string;
   sessionNonce: string;
 };
 
-export type PreviewRenderReadyV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.render.ready";
+export type PreviewHostReadyV2 = {
+  contractVersion: 2;
+  type: "preview.host.ready.v2";
   requestId: string;
   sessionNonce: string;
 };
 
-export type PreviewRenderRequestV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.render.request";
+export type PreviewRenderReadyV2 = {
+  contractVersion: 2;
+  type: "preview.render.ready.v2";
   requestId: string;
   sessionNonce: string;
-  fixtureId: PreviewFixtureId;
 };
 
-export type PreviewRenderSuccessV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.render.success";
+export type PreviewSourceRequestV2 = {
+  contractVersion: 2;
+  type: "preview.source.request.v2";
   requestId: string;
   sessionNonce: string;
-  width: number;
-  height: number;
-  warnings: string[];
+  expectedComponentName: string;
+  source: string;
+  sourceSha256: string;
 };
 
-export type PreviewRenderFailureV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.render.failure";
+export type PreviewPlanSuccessV2 = {
+  contractVersion: 2;
+  type: "preview.plan.success.v2";
   requestId: string;
   sessionNonce: string;
-  category: "blocked_unsafe" | "runtime_failed" | "timed_out" | "disposed";
-  message: string;
+  sourceSha256: string;
+  planSha256: string;
+  renderPlan: PreviewRenderPlanV1;
 };
 
-export type PreviewResizeV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.resize";
+export type PreviewPlanFailureV2 = {
+  contractVersion: 2;
+  type: "preview.plan.failure.v2";
   requestId: string;
   sessionNonce: string;
-  width: number;
-  height: number;
+  category: PlanFailureCategory;
+  diagnostics: string[];
 };
 
-export type PreviewHostSuccessV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.host.success";
+export type PreviewRenderPlanV2 = {
+  contractVersion: 2;
+  type: "preview.render.plan.v2";
   requestId: string;
   sessionNonce: string;
-  width: number;
-  height: number;
-  warnings: string[];
+  sourceSha256: string;
+  planSha256: string;
+  renderPlan: PreviewRenderPlanV1;
 };
 
-export type PreviewHostFailureV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.host.failure";
+export type PreviewRenderSuccessV2 = {
+  contractVersion: 2;
+  type: "preview.render.success.v2";
   requestId: string;
   sessionNonce: string;
-  category: PreviewRenderFailureV1["category"];
-  message: string;
 };
 
-export type PreviewDisposeV1 = {
-  contractVersion: typeof PREVIEW_PROTOCOL_VERSION;
-  type: "preview.dispose";
+export type PreviewRenderFailureV2 = {
+  contractVersion: 2;
+  type: "preview.render.failure.v2";
   requestId: string;
   sessionNonce: string;
-  reason: "back" | "close" | "version-switch" | "timeout" | "error";
+  category: RenderFailureCategory;
+  diagnostics: string[];
 };
 
-export type PreviewSidePanelToHostMessageV1 = PreviewHostInitV1 | PreviewHostStartV1 | PreviewRenderSuccessV1 | PreviewRenderFailureV1 | PreviewResizeV1 | PreviewDisposeV1;
-export type PreviewHostToSidePanelMessageV1 = PreviewHostReadyV1 | PreviewRenderRequestV1 | PreviewHostSuccessV1 | PreviewHostFailureV1;
-export type PreviewSidePanelToRenderMessageV1 = PreviewRenderInitV1 | PreviewRenderRequestV1 | PreviewDisposeV1;
-export type PreviewRenderToSidePanelMessageV1 = PreviewRenderReadyV1 | PreviewRenderSuccessV1 | PreviewRenderFailureV1 | PreviewResizeV1;
+export type PreviewDisposeV2 = {
+  contractVersion: 2;
+  type: "preview.dispose.v2";
+  requestId: string;
+  sessionNonce: string;
+  reason: DisposeReason;
+};
+
+export type PreviewSidePanelToHostMessageV2 = PreviewHostInitV2 | PreviewSourceRequestV2 | PreviewDisposeV2;
+export type PreviewHostToSidePanelMessageV2 = PreviewHostReadyV2 | PreviewPlanSuccessV2 | PreviewPlanFailureV2;
+export type PreviewSidePanelToRenderMessageV2 = PreviewRenderInitV2 | PreviewRenderPlanV2 | PreviewDisposeV2;
+export type PreviewRenderToSidePanelMessageV2 = PreviewRenderReadyV2 | PreviewRenderSuccessV2 | PreviewRenderFailureV2;
+
+export const HOST_TO_TRUSTED_TYPES = ["preview.host.ready.v2", "preview.plan.success.v2", "preview.plan.failure.v2"] as const;
+export const RENDER_TO_TRUSTED_TYPES = ["preview.render.ready.v2", "preview.render.success.v2", "preview.render.failure.v2"] as const;
 
 export function createPreviewRequestId() {
   return `preview-${createHexToken()}`;
@@ -121,189 +126,106 @@ export function createPreviewSessionNonce() {
   return createHexToken();
 }
 
-export function isPreviewSidePanelToHostMessageV1(value: unknown): value is PreviewSidePanelToHostMessageV1 {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-
-  if (value.type === "preview.host.init") {
-    return isPreviewHostInitV1(value);
-  }
-
-  if (value.type === "preview.host.start") {
-    return isPreviewHostStartV1(value);
-  }
-
-  if (value.type === "preview.render.success") {
-    return isPreviewRenderSuccessV1(value);
-  }
-
-  if (value.type === "preview.render.failure") {
-    return isPreviewRenderFailureV1(value);
-  }
-
-  if (value.type === "preview.resize") {
-    return isPreviewResizeV1(value);
-  }
-
-  return isPreviewDisposeV1(value);
-}
-
-export function isPreviewHostToSidePanelMessageV1(value: unknown): value is PreviewHostToSidePanelMessageV1 {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-
-  if (value.type === "preview.host.ready") {
-    return isPreviewHostReadyV1(value);
-  }
-
-  if (value.type === "preview.render.request") {
-    return isPreviewRenderRequestV1(value);
-  }
-
-  if (value.type === "preview.host.success") {
-    return isPreviewHostSuccessV1(value);
-  }
-
-  if (value.type === "preview.host.failure") {
-    return isPreviewHostFailureV1(value);
-  }
-
-  return false;
-}
-
-export function isPreviewSidePanelToRenderMessageV1(value: unknown): value is PreviewSidePanelToRenderMessageV1 {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-
-  if (value.type === "preview.render.init") {
-    return isPreviewRenderInitV1(value);
-  }
-
-  if (value.type === "preview.render.request") {
-    return isPreviewRenderRequestV1(value);
-  }
-
-  return isPreviewDisposeV1(value);
-}
-
-export function isPreviewRenderToSidePanelMessageV1(value: unknown): value is PreviewRenderToSidePanelMessageV1 {
-  if (!isPlainObject(value)) {
-    return false;
-  }
-
-  if (value.type === "preview.render.ready") {
-    return isPreviewRenderReadyV1(value);
-  }
-
-  if (value.type === "preview.render.success") {
-    return isPreviewRenderSuccessV1(value);
-  }
-
-  if (value.type === "preview.render.failure") {
-    return isPreviewRenderFailureV1(value);
-  }
-
-  if (value.type === "preview.resize") {
-    return isPreviewResizeV1(value);
-  }
-
-  return false;
-}
-
 export function isPreviewMessageWithinLimit(value: unknown) {
   try {
-    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= PREVIEW_MESSAGE_MAX_BYTES;
+    return new TextEncoder().encode(JSON.stringify(value)).byteLength <= PREVIEW_LIMITS.messageBytes;
   } catch {
     return false;
   }
 }
 
-export function isTrustedPreviewFixtureId(value: unknown): value is PreviewFixtureId {
-  return FIXTURE_IDS.includes(value as PreviewFixtureId);
-}
-
-function isPreviewHostInitV1(value: Record<string, unknown>): value is PreviewHostInitV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "fixtureId"]) && hasValidSession(value) && value.type === "preview.host.init" && isTrustedPreviewFixtureId(value.fixtureId);
-}
-
-function isPreviewRenderInitV1(value: Record<string, unknown>): value is PreviewRenderInitV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "fixtureId"]) && hasValidSession(value) && value.type === "preview.render.init" && isTrustedPreviewFixtureId(value.fixtureId);
-}
-
-function isPreviewHostStartV1(value: Record<string, unknown>): value is PreviewHostStartV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce"]) && hasValidSession(value) && value.type === "preview.host.start";
-}
-
-function isPreviewHostReadyV1(value: Record<string, unknown>): value is PreviewHostReadyV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce"]) && hasValidSession(value) && value.type === "preview.host.ready";
-}
-
-function isPreviewRenderReadyV1(value: Record<string, unknown>): value is PreviewRenderReadyV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce"]) && hasValidSession(value) && value.type === "preview.render.ready";
-}
-
-function isPreviewRenderRequestV1(value: Record<string, unknown>): value is PreviewRenderRequestV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "fixtureId"]) && hasValidSession(value) && value.type === "preview.render.request" && isTrustedPreviewFixtureId(value.fixtureId);
-}
-
-function isPreviewRenderSuccessV1(value: Record<string, unknown>): value is PreviewRenderSuccessV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "width", "height", "warnings"]) && hasValidSession(value) && value.type === "preview.render.success" && hasValidDimensionsAndWarnings(value);
-}
-
-function isPreviewRenderFailureV1(value: Record<string, unknown>): value is PreviewRenderFailureV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "category", "message"]) && hasValidSession(value) && value.type === "preview.render.failure" && isFailureCategory(value.category) && isBoundedMessage(value.message);
-}
-
-function isPreviewResizeV1(value: Record<string, unknown>): value is PreviewResizeV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "width", "height"]) && hasValidSession(value) && value.type === "preview.resize" && isBoundedDimension(value.width) && isBoundedDimension(value.height);
-}
-
-function isPreviewHostSuccessV1(value: Record<string, unknown>): value is PreviewHostSuccessV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "width", "height", "warnings"]) && hasValidSession(value) && value.type === "preview.host.success" && hasValidDimensionsAndWarnings(value);
-}
-
-function isPreviewHostFailureV1(value: Record<string, unknown>): value is PreviewHostFailureV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "category", "message"]) && hasValidSession(value) && value.type === "preview.host.failure" && isFailureCategory(value.category) && isBoundedMessage(value.message);
-}
-
-function isPreviewDisposeV1(value: Record<string, unknown>): value is PreviewDisposeV1 {
-  return hasExactKeys(value, ["contractVersion", "type", "requestId", "sessionNonce", "reason"]) && hasValidSession(value) && value.type === "preview.dispose" && (value.reason === "back" || value.reason === "close" || value.reason === "version-switch" || value.reason === "timeout" || value.reason === "error");
-}
-
-function hasValidSession(value: Record<string, unknown>) {
-  return value.contractVersion === PREVIEW_PROTOCOL_VERSION && typeof value.requestId === "string" && REQUEST_ID_PATTERN.test(value.requestId) && typeof value.sessionNonce === "string" && SESSION_NONCE_PATTERN.test(value.sessionNonce);
-}
-
-function hasValidDimensionsAndWarnings(value: Record<string, unknown>) {
-  return isBoundedDimension(value.width) && isBoundedDimension(value.height) && Array.isArray(value.warnings) && value.warnings.length <= 8 && value.warnings.every((warning) => typeof warning === "string" && warning.length <= 240);
-}
-
-function isFailureCategory(value: unknown): value is PreviewRenderFailureV1["category"] {
-  return value === "blocked_unsafe" || value === "runtime_failed" || value === "timed_out" || value === "disposed";
-}
-
-function isBoundedMessage(value: unknown) {
-  return typeof value === "string" && value.length > 0 && value.length <= 240;
-}
-
-function isBoundedDimension(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 4096;
-}
-
-function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]) {
-  const actual = Object.keys(value);
-  return actual.length === keys.length && keys.every((key) => actual.includes(key));
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
+export function assertPreviewSidePanelToHostMessageV2(value: unknown): asserts value is PreviewSidePanelToHostMessageV2 {
+  assertPlainData(value);
+  const type = getType(value);
+  if (type === "preview.host.init.v2") return assertEnvelope(value, ["contractVersion", "requestId", "sessionNonce", "type"]);
+  if (type === "preview.source.request.v2") {
+    assertEnvelope(value, ["contractVersion", "expectedComponentName", "requestId", "sessionNonce", "source", "sourceSha256", "type"]);
+    const message = value as PreviewSourceRequestV2;
+    if (!componentNamePattern.test(message.expectedComponentName) || typeof message.source !== "string" || !shaPattern.test(message.sourceSha256)) {
+      throw new Error("invalid source request");
+    }
+    return;
   }
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === null || Object.prototype.toString.call(value) === "[object Object]";
+  if (type === "preview.dispose.v2") return assertDispose(value);
+  throw new Error("invalid host-bound preview message");
+}
+
+export function assertPreviewSidePanelToRenderMessageV2(value: unknown): asserts value is PreviewSidePanelToRenderMessageV2 {
+  assertPlainData(value);
+  const type = getType(value);
+  if (type === "preview.render.init.v2") return assertEnvelope(value, ["contractVersion", "requestId", "sessionNonce", "type"]);
+  if (type === "preview.render.plan.v2") {
+    assertEnvelope(value, ["contractVersion", "planSha256", "renderPlan", "requestId", "sessionNonce", "sourceSha256", "type"]);
+    const message = value as PreviewRenderPlanV2;
+    if (!shaPattern.test(message.sourceSha256) || !shaPattern.test(message.planSha256)) {
+      throw new Error("invalid render plan identity");
+    }
+    return;
+  }
+  if (type === "preview.dispose.v2") return assertDispose(value);
+  throw new Error("invalid render-bound preview message");
+}
+
+export function assertPreviewHostToSidePanelMessageV2(value: unknown): asserts value is PreviewHostToSidePanelMessageV2 {
+  assertPlainData(value);
+  const type = getType(value);
+  if (type === "preview.host.ready.v2") return assertEnvelope(value, ["contractVersion", "requestId", "sessionNonce", "type"]);
+  if (type === "preview.plan.success.v2") {
+    assertEnvelope(value, ["contractVersion", "planSha256", "renderPlan", "requestId", "sessionNonce", "sourceSha256", "type"]);
+    const message = value as PreviewPlanSuccessV2;
+    if (!shaPattern.test(message.sourceSha256) || !shaPattern.test(message.planSha256)) {
+      throw new Error("invalid plan success identity");
+    }
+    return;
+  }
+  if (type === "preview.plan.failure.v2") return assertFailure(value, PLAN_FAILURE_CATEGORIES);
+  throw new Error("invalid host preview message");
+}
+
+export function assertPreviewRenderToSidePanelMessageV2(value: unknown): asserts value is PreviewRenderToSidePanelMessageV2 {
+  assertPlainData(value);
+  const type = getType(value);
+  if (type === "preview.render.ready.v2" || type === "preview.render.success.v2") return assertEnvelope(value, ["contractVersion", "requestId", "sessionNonce", "type"]);
+  if (type === "preview.render.failure.v2") return assertFailure(value, RENDER_FAILURE_CATEGORIES);
+  throw new Error("invalid render preview message");
+}
+
+export function assertMatchesPreviewSession(message: { requestId: string; sessionNonce: string }, requestId: string, sessionNonce: string) {
+  if (message.requestId !== requestId || message.sessionNonce !== sessionNonce) {
+    throw new Error("stale preview session");
+  }
+}
+
+function assertFailure(value: unknown, categories: readonly string[]) {
+  assertEnvelope(value, ["category", "contractVersion", "diagnostics", "requestId", "sessionNonce", "type"]);
+  const message = value as { category: unknown; diagnostics: unknown };
+  if (!categories.includes(String(message.category)) || !Array.isArray(message.diagnostics) || message.diagnostics.length > PREVIEW_LIMITS.diagnostics) {
+    throw new Error("invalid preview failure");
+  }
+  for (const diagnostic of message.diagnostics) {
+    if (typeof diagnostic !== "string" || diagnostic.length > PREVIEW_LIMITS.diagnosticCodePoints) {
+      throw new Error("invalid preview diagnostic");
+    }
+  }
+}
+
+function assertDispose(value: unknown) {
+  assertEnvelope(value, ["contractVersion", "reason", "requestId", "sessionNonce", "type"]);
+  if (!DISPOSE_REASONS.includes((value as { reason?: DisposeReason }).reason as DisposeReason)) {
+    throw new Error("invalid dispose reason");
+  }
+}
+
+function assertEnvelope(value: unknown, keys: readonly string[]) {
+  assertExactObjectKeys(value, keys);
+  const message = value as { contractVersion?: unknown; requestId?: unknown; sessionNonce?: unknown };
+  if (message.contractVersion !== PREVIEW_PROTOCOL_VERSION || typeof message.requestId !== "string" || !requestIdPattern.test(message.requestId) || typeof message.sessionNonce !== "string" || !sessionNoncePattern.test(message.sessionNonce)) {
+    throw new Error("invalid preview identity");
+  }
+}
+
+function getType(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as { type?: unknown }).type : undefined;
 }
 
 function createHexToken() {

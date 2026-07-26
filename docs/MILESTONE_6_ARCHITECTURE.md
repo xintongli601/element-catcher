@@ -2,7 +2,7 @@
 
 ## Implementation Status and Supersession Note
 
-Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Current but not implemented.
+Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Current with production safe generated-component preview implemented for the approved Previewable Subset V1, pending final acceptance before the roadmap can mark 6C Completed.
 
 This document began as the Milestone 6A architecture draft. Its original nested packaged architecture was a 6A proposal, not the accepted current implementation. Real Chromium feasibility testing showed that a topology where the Side Panel loads a packaged sandbox host, and that host then navigates a second packaged sandbox page, fails unless the second page is exposed through `web_accessible_resources`. That exposure was not approved for Milestone 6B. `srcdoc` was also not selected.
 
@@ -14,7 +14,68 @@ Side Panel trusted extension page
   -> packaged sandbox render realm
 ```
 
-The Side Panel performs a narrow trusted relay between the packaged sandbox host and packaged sandbox render realm. Any section below that describes the sandbox host as creating or owning a nested packaged render realm is superseded for current implementation planning by this accepted sibling architecture. Future Milestone 6C work must start from the accepted 6B sibling foundation, not from a host-owned nested packaged render realm, `srcdoc` render realm, or `web_accessible_resources`-based nested render realm.
+The Side Panel performs a narrow trusted relay between the packaged sandbox host and packaged sandbox render realm. Any section below that describes the sandbox host as creating or owning a nested packaged render realm is superseded for current implementation planning by this accepted sibling architecture. Milestone 6C builds on the accepted 6B sibling foundation, not on a host-owned nested packaged render realm, `srcdoc` render realm, or `web_accessible_resources`-based nested render realm.
+
+## Milestone 6C Accepted Implementation
+
+Actual preview pipeline:
+
+```text
+GeneratedComponentVersionEntryV1.code
+  -> Side Panel explicit Preview action
+  -> packaged sandbox host source request
+  -> @babel/parser JSX AST gate
+  -> Previewable Subset V1
+  -> PreviewRenderPlanV1 plain-data tree
+  -> Side Panel trusted validation and relay
+  -> packaged sandbox render realm React createRoot render
+```
+
+Security boundaries:
+
+- Generated source remains visible and copyable in the trusted Side Panel, but it is never sent to the packaged sandbox render realm.
+- The host is the only sandbox page that receives generated source. It parses with the packaged `@babel/parser` dependency and converts approved source into a data-only render plan.
+- The render realm receives only `PreviewRenderPlanV1`, independently validates that plan, recomputes the canonical plan hash, and renders only allowed tags, text, attributes, roles, and class tokens.
+- The Side Panel validates current host and render `WindowProxy` identities, message direction, exact keys, message byte limits, protocol version, requestId, sessionNonce, source hash, component name, plan schema, and canonical plan hash. It reconstructs clean relay objects rather than forwarding `event.data`.
+- Unsupported, unsafe, malformed, oversized, stale, wrong-session, or timed-out preview attempts fail closed. Persisted generated source remains source-only and CaptureRecord/generated-version storage is not mutated.
+
+Previewable Subset V1:
+
+- Allows exactly one matching function component declaration or arrow-function component.
+- Allows static JSX built from the approved tag list, text nodes, expression containers containing string/number literals, static `className`, `role`, `aria-label`, `aria-hidden`, `title`, and button `type`.
+- Normalizes button `type` to `button`.
+- Allows only configured class tokens and bounded text; unsupported Tailwind classes become preview diagnostics instead of generated CSS execution.
+- Rejects imports, exports unrelated to the single component, classes, calls, member expressions, spreads, hooks, effects, browser APIs, network, storage, navigation, workers, WebAssembly, timers, raw scripts, `dangerouslySetInnerHTML`, inline styles, dynamic classes, URLs, event handlers, and unsupported JSX constructs.
+
+Protocol V2:
+
+- Host and render boot through separate `preview.host.init.v2` and `preview.render.init.v2` messages.
+- The host requests source through `preview.source.request.v2` and replies with `preview.plan.success.v2` or `preview.plan.failure.v2`.
+- The Side Panel sends only `preview.render.plan.v2` to the render realm.
+- The render realm replies with `preview.render.success.v2` or `preview.render.failure.v2`.
+- All contexts accept `preview.dispose.v2`; dispose reasons are `close`, `timeout`, `terminal-failure`, and `session-replaced`.
+- The old Milestone 6B fixture protocol is not used for generated-source preview.
+
+Resource and lifecycle limits:
+
+- Source limit: 8,192 code points.
+- Parser/AST traversal limit: 800 AST nodes.
+- Render plan limit: 160 nodes, depth 16, 32 children per node, 8 props per node, 512 code points per text node, 4,096 total text code points, and 16,384 serialized bytes.
+- Message byte limit: 32,768 bytes.
+- Preview timeout: 10,000 ms per attempt, followed by terminal disposal.
+- One preview attempt owns one requestId, one sessionNonce, one host frame, and one render frame. Reopen creates fresh identities.
+
+Dependency decision:
+
+- `@babel/parser` is the only added production parser dependency for Milestone 6C.
+- It is used for AST inspection only; no Babel transform, Babel standalone runtime, eval, `Function`, WebAssembly, worker compiler, Tailwind compiler, CDN, remote module, or runtime download is introduced.
+
+Residual risks:
+
+- Parser policy bugs may reject valid generated code or allow a construct that should have stayed source-only; the render realm still receives only a validated data plan.
+- The bounded Tailwind subset is intentionally lower fidelity than full Tailwind output.
+- Iframe disposal cannot guarantee forced termination of an already-hung browser renderer.
+- Milestone 6C does not implement natural-language revision, regeneration, version comparison, export, storage migrations, backend contract changes, or provider calls.
 
 ## Milestone 6B Accepted Foundation
 
@@ -74,11 +135,11 @@ Residual risks:
 - A removed browsing context actively sending a new message to its former parent was not directly dynamically reproduced.
 - Protection for stale or removed contexts relies on current `WindowProxy` identity, lifecycle state, requestId, and sessionNonce validation.
 
-Milestone 6B does not approve executing `ComponentGenerationResponseV1.code`, parser installation, compiler installation, Tailwind installation, regex-only JavaScript or JSX security validation, eval, `Function`, WebAssembly or worker-based compilation, generated HTML or CSS injection, generated source transfer into the existing fixture protocol, or changes to storage or generation contracts. Those remain future Milestone 6C proposal topics and require independent review before implementation.
+Milestone 6B did not approve executing `ComponentGenerationResponseV1.code`, parser installation, compiler installation, Tailwind installation, regex-only JavaScript or JSX security validation, eval, `Function`, WebAssembly or worker-based compilation, generated HTML or CSS injection, generated source transfer into the existing fixture protocol, or changes to storage or generation contracts. Milestone 6C approves only the narrower AST-to-render-plan implementation described above. It still does not approve arbitrary generated-code execution, Tailwind compilation, eval, `Function`, WebAssembly, workers, generated HTML/CSS injection, storage or generation contract changes, backend provider calls, or expanding the render realm to receive generated source.
 
 ## 1. Purpose and Scope
 
-This draft defines a future architecture for safely previewing one persisted React + Tailwind generated component version. It is documentation only. It does not implement preview, execute generated code, add a sandbox page, add dependencies, modify the Manifest, modify CSP, change storage, add tests, or call any provider.
+This section preserves the original Milestone 6A documentation-only scope. It was accurate for the 6A architecture review, but later sections above record the accepted 6B and current 6C implementations.
 
 Generated code is hostile input. Passing the Milestone 5 response validator means `ComponentGenerationResponseV1` has the expected JSON shape and bounded strings; it does not mean `ComponentGenerationResponseV1.code` is safe to compile, render, or execute.
 
@@ -293,7 +354,7 @@ Protocol rules:
 
 ## 8. Previewable Source Policy
 
-Existing `ComponentGenerationResponseV1.code` remains inert stored text unless it passes a separate previewable-source gate.
+Existing `ComponentGenerationResponseV1.code` remains stored source text unless it passes the separate Milestone 6C previewable-source gate.
 
 ```ts
 type PreviewableGeneratedSourceV1 = {
@@ -308,7 +369,7 @@ type PreviewableGeneratedSourceV1 = {
 Source categories:
 
 - Stored inert text: any valid generated-version entry may remain persisted and visible as source.
-- Previewable source: source parses, passes AST validation, transforms within limits, uses allowed React/Tailwind constructs, and contains no forbidden API or side effect.
+- Previewable source: source parses, passes AST validation, converts to a bounded `PreviewRenderPlanV1`, uses allowed React/Tailwind constructs, and contains no forbidden API or side effect.
 - Source-only failure: source fails preview validation but remains persisted, visible, and eligible for future regeneration/revision flows.
 
 Construct policy:
@@ -327,24 +388,24 @@ Construct policy:
 | Suspense/async rendering | Reject initially. |
 | Timers | Reject initially. |
 | Inline `style` | Reject initially or allow only AST-validated plain safe properties with no URLs. |
-| Tailwind arbitrary values | Allow only bounded static values after CSS validation; otherwise warn unsupported. |
-| Dynamically constructed Tailwind classes | Reject or mark unsupported. |
+| Tailwind arbitrary values | Reject for Previewable Subset V1. |
+| Dynamically constructed Tailwind classes | Reject for Previewable Subset V1. |
 | External URL values in JSX, style, or class values | Reject. |
 
 ## 9. Parser and Compiler Policy
 
 Regex-only validation of JavaScript or JSX is not approved.
 
-Required future pipeline:
+Required pipeline for generated-source preview:
 
 1. Enforce source length before parsing.
 2. Parse with a real JS/JSX parser.
 3. Traverse AST to reject forbidden constructs.
-4. Normalize allowed component export into a controlled factory.
-5. Transform JSX into JavaScript.
-6. Inject React through trusted packaged runtime binding, not generated imports.
-7. Disable source maps by default; if later used, keep them local and bounded.
-8. Bound compile time, transformed output size, and diagnostics length.
+4. Normalize the allowed component export into a controlled plain-data render plan.
+5. Send only the render plan, never generated source, to the render realm.
+6. Render the plan through trusted packaged React runtime code.
+7. Avoid source maps, runtime transforms, and generated JavaScript execution.
+8. Bound parse/traversal work, render plan size, message size, diagnostics length, and lifecycle timeout.
 
 Candidate comparison:
 
@@ -355,7 +416,7 @@ Candidate comparison:
 | TypeScript compiler APIs / `transpileModule` | Can transpile TSX-like input | Not a security validator; still needs AST policy checks |
 | `esbuild-wasm` | Fast transform API | Requires WASM and likely worker policy; not first choice without separate isolation review |
 
-No dependency is selected or added in Milestone 6A. Any later dependency proposal must document package name, exact purpose, license, maintained status, browser compatibility, bundle-size impact, CSP requirements, eval/Function/WASM/worker behavior, transitive dependencies, security history, and proof that it is isolated from extension origin.
+No dependency was selected or added in Milestone 6A. Milestone 6C adds `@babel/parser` as the production parser dependency for AST inspection only. It does not add Babel transform packages, `@babel/standalone`, TypeScript compiler runtime, esbuild, WebAssembly, workers, Tailwind compiler/runtime, CDN resources, or remote modules.
 
 All compiler/parser/runtime resources must be packaged locally. CDN scripts, remote hosted code, remote modules, and runtime compiler downloads are prohibited.
 
@@ -368,7 +429,7 @@ All compiler/parser/runtime resources must be packaged locally. CDN scripts, rem
 | Packaged browser Tailwind runtime | Rejected for first implementation; Play CDN is development-oriented, and a packaged runtime still needs CSP, cost, and security review. |
 | Bounded utility subset | Safest first implementation; lower fidelity but deterministic, small, local, and easy to audit. |
 
-Recommended first implementation: bounded utility subset plus static class extraction warnings. Later implementation may add per-source CSS generation after parser/compiler isolation is accepted.
+Milestone 6C implementation: bounded utility subset plus static class-token diagnostics. It does not generate CSS from source and does not run Tailwind at preview time. Later implementation may add per-source CSS generation after a separate parser/compiler/CSS review.
 
 Requirements:
 
@@ -383,7 +444,7 @@ Requirements:
 
 ## 11. CSP and Sandbox Proposal
 
-Future proposal only; do not modify Manifest in Milestone 6A.
+Historical 6A proposal. The accepted 6B/6C implementation uses the sibling packaged sandbox pages already declared in the Manifest.
 
 ```json
 {
@@ -463,16 +524,16 @@ Current sequence:
 ```text
 6A - Completed - Architecture and threat model
 6B - Completed - Sandbox runtime foundation with trusted packaged fixtures
-6C - Current - Previewable-source validation, compilation and bounded Tailwind rendering
+6C - Current - Safe generated-component preview for Previewable Subset V1
 6D - Planned - Regeneration and natural-language revision
 6E - Planned - Version comparison and final Milestone 6 regression
 ```
 
 Each stage needs independent security review before expanding the amount of generated code that can run.
 
-## 15. Future Testing Strategy
+## 15. Testing Strategy
 
-No tests are added in Milestone 6A. Later implementation should cover:
+No tests were added in Milestone 6A. The accepted 6B/6C implementation is expected to cover:
 
 - Unit tests for exact-key message validators, nonce/request ID behavior, replay/stale rejection, malformed messages, oversized messages, and timeout/dispose behavior.
 - Unit tests for previewable-source validation: imports, dynamic imports, `require`, browser globals, network calls, storage calls, navigation, popups, timers, workers, WebAssembly, DOM mutation, `dangerouslySetInnerHTML`, raw scripts, portals, hooks/effects, oversized source, compiler errors, and runtime errors.

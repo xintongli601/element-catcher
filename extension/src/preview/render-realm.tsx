@@ -2,129 +2,136 @@ import React from "react";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import {
+  assertMatchesPreviewSession,
+  assertPreviewSidePanelToRenderMessageV2,
   isPreviewMessageWithinLimit,
-  isPreviewSidePanelToRenderMessageV1,
-  type PreviewDisposeV1,
-  type PreviewRenderFailureV1,
-  type PreviewRenderInitV1,
-  type PreviewRenderRequestV1,
-  type PreviewRenderSuccessV1
+  type PreviewDisposeV2,
+  type PreviewRenderFailureV2,
+  type PreviewRenderInitV2,
+  type PreviewRenderPlanV2,
+  type PreviewRenderSuccessV2
 } from "../shared/preview-protocol";
+import { canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PreviewRenderNodeV1, type RenderFailureCategory } from "../shared/preview-policy";
 import "./render-realm.css";
 
-type RenderSession = PreviewRenderInitV1 & {
-  rendered: boolean;
-  disposed: boolean;
+type RenderLifecycle = "boot" | "ready" | "rendering" | "succeeded" | "failed" | "disposed";
+type RenderSession = PreviewRenderInitV2 & {
+  lifecycle: RenderLifecycle;
+  renderPlansReceived: number;
 };
 
 let activeSession: RenderSession | null = null;
 let root: Root | null = null;
 
 window.addEventListener("message", (event) => {
-  if (event.source !== window.parent || !isPreviewMessageWithinLimit(event.data) || !isPreviewSidePanelToRenderMessageV1(event.data)) {
+  void handleMessage(event);
+});
+
+async function handleMessage(event: MessageEvent) {
+  if (event.source !== window.parent || !isPreviewMessageWithinLimit(event.data)) {
     return;
   }
 
-  if (!activeSession) {
-    if (event.data.type !== "preview.render.init") {
+  try {
+    assertPreviewSidePanelToRenderMessageV2(event.data);
+    if (!activeSession) {
+      if (event.data.type !== "preview.render.init.v2") return;
+      activeSession = { ...event.data, lifecycle: "ready", renderPlansReceived: 0 };
+      window.parent.postMessage(
+        {
+          contractVersion: 2,
+          type: "preview.render.ready.v2",
+          requestId: activeSession.requestId,
+          sessionNonce: activeSession.sessionNonce
+        },
+        "*"
+      );
       return;
     }
 
-    activeSession = { ...event.data, rendered: false, disposed: false };
-    window.parent.postMessage(
-      {
-        contractVersion: 1,
-        type: "preview.render.ready",
-        requestId: activeSession.requestId,
-        sessionNonce: activeSession.sessionNonce
-      },
-      "*"
-    );
-    return;
-  }
-
-  if (!matchesSession(event.data) || activeSession.disposed) {
-    return;
-  }
-
-  if (event.data.type === "preview.dispose") {
-    dispose(event.data);
-    return;
-  }
-
-  if (event.data.type !== "preview.render.request" || activeSession.rendered) {
-    return;
-  }
-
-  activeSession.rendered = true;
-  try {
-    renderTrustedFixture(event.data);
+    assertMatchesPreviewSession(event.data, activeSession.requestId, activeSession.sessionNonce);
+    if (event.data.type === "preview.dispose.v2") {
+      dispose(event.data);
+      return;
+    }
+    if (event.data.type !== "preview.render.plan.v2") return;
+    await renderPlan(event.data);
   } catch (error) {
-    postFailure(event.data, error);
+    postFailure("policy", error);
   }
-});
-
-function renderTrustedFixture(request: PreviewRenderRequestV1) {
-  if (request.fixtureId !== "trusted-6b-fixture") {
-    throw new Error("Unknown trusted preview fixture.");
-  }
-
-  const container = document.getElementById("fixture-root");
-  if (!container) {
-    throw new Error("Trusted preview root is missing.");
-  }
-
-  root = createRoot(container);
-  flushSync(() => {
-    root?.render(<TrustedPreviewFixture />);
-  });
-
-  const rect = container.getBoundingClientRect();
-  const success: PreviewRenderSuccessV1 = {
-    contractVersion: 1,
-    type: "preview.render.success",
-    requestId: request.requestId,
-    sessionNonce: request.sessionNonce,
-    width: Math.ceil(rect.width),
-    height: Math.ceil(rect.height),
-    warnings: []
-  };
-  window.parent.postMessage(success, "*");
 }
 
-function TrustedPreviewFixture() {
-  return (
-    <article className="fixture-card" data-fixture="trusted-6b-fixture" data-renderer="react-create-root">
-      <p className="fixture-eyebrow">Trusted packaged fixture</p>
-      <h1>Preview sandbox boundary</h1>
-      <p>This preview is rendered from packaged React fixture code only.</p>
-    </article>
-  );
-}
-
-function dispose(message: PreviewDisposeV1) {
-  if (!matchesSession(message) || !activeSession) {
+async function renderPlan(message: PreviewRenderPlanV2) {
+  if (!activeSession || activeSession.lifecycle !== "ready") {
+    postFailure("lifecycle", new Error("Render realm is not ready for another plan."));
     return;
   }
+  activeSession.renderPlansReceived += 1;
+  if (activeSession.renderPlansReceived > 1) {
+    postFailure("limit", new Error("Only one render plan is allowed per render session."));
+    return;
+  }
+  activeSession.lifecycle = "rendering";
+  try {
+    const plan = validatePreviewRenderPlan(message.renderPlan);
+    if (plan.sourceSha256 !== message.sourceSha256) throw new Error("Render source hash mismatch.");
+    const expectedHash = await sha256Hex(canonicalStringify(plan));
+    if (expectedHash !== message.planSha256) throw new Error("Render plan hash mismatch.");
+    const container = document.getElementById("fixture-root");
+    if (!container) throw new Error("Preview render root is missing.");
+    root = createRoot(container);
+    flushSync(() => {
+      root?.render(renderNode(plan.root));
+    });
+    activeSession.lifecycle = "succeeded";
+    const success: PreviewRenderSuccessV2 = {
+      contractVersion: 2,
+      type: "preview.render.success.v2",
+      requestId: activeSession.requestId,
+      sessionNonce: activeSession.sessionNonce
+    };
+    window.parent.postMessage(success, "*");
+  } catch (error) {
+    postFailure(errorCategory(error), error);
+  }
+}
 
-  activeSession.disposed = true;
+function renderNode(node: PreviewRenderNodeV1): React.ReactNode {
+  if (node.kind === "text") return node.value;
+  if (node.kind === "fragment") return <React.Fragment>{node.children.map((child, index) => <React.Fragment key={index}>{renderNode(child)}</React.Fragment>)}</React.Fragment>;
+  return React.createElement(node.tag, node.props, ...node.children.map(renderNode));
+}
+
+function postFailure(category: RenderFailureCategory, error: unknown) {
+  if (!activeSession || activeSession.lifecycle === "disposed" || activeSession.lifecycle === "failed" || activeSession.lifecycle === "succeeded") {
+    return;
+  }
+  activeSession.lifecycle = "failed";
+  const failure: PreviewRenderFailureV2 = {
+    contractVersion: 2,
+    type: "preview.render.failure.v2",
+    requestId: activeSession.requestId,
+    sessionNonce: activeSession.sessionNonce,
+    category,
+    diagnostics: normalizeDiagnostics(error)
+  };
+  window.parent.postMessage(failure, "*");
+}
+
+function dispose(message: PreviewDisposeV2) {
+  if (!activeSession || message.requestId !== activeSession.requestId || message.sessionNonce !== activeSession.sessionNonce) {
+    return;
+  }
+  activeSession.lifecycle = "disposed";
   root?.unmount();
   root = null;
   activeSession = null;
 }
 
-function postFailure(request: PreviewRenderRequestV1, error: unknown) {
-  const failure: PreviewRenderFailureV1 = {
-    contractVersion: 1,
-    type: "preview.render.failure",
-    requestId: request.requestId,
-    sessionNonce: request.sessionNonce,
-    category: "runtime_failed",
-    message: error instanceof Error ? error.message : "Trusted preview fixture failed."
-  };
-  window.parent.postMessage(failure, "*");
-}
-
-function matchesSession(message: { requestId: string; sessionNonce: string }) {
-  return activeSession?.requestId === message.requestId && activeSession.sessionNonce === message.sessionNonce;
+function errorCategory(error: unknown): RenderFailureCategory {
+  const category = (error as { category?: unknown })?.category;
+  if (category === "schema" || category === "policy" || category === "limit" || category === "lifecycle") {
+    return category;
+  }
+  return "internal";
 }

@@ -17,6 +17,7 @@
     "test:e2e:headed": "npm run build && PW_HEADED=1 playwright test --headed"
   },
   "dependencies": {
+    "@babel/parser": "7.29.7",
     "openai": "^6.48.0",
     "pngjs": "^7.0.0",
     "react": "^19.0.0",
