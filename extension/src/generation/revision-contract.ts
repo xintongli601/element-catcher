@@ -4,7 +4,6 @@ import {
   GENERATION_LIMITS,
   REQUESTED_OUTPUT,
   assertExactObjectKeys,
-  codePointLength,
   getUtf8ByteLength,
   validateComponentGenerationResponseV1,
   type ComponentGenerationResponseV1,
@@ -16,11 +15,14 @@ import {
   isValidLogicalAttemptId,
   isValidSha256Hex,
   validateGeneratedComponentVersionEntry,
+  validateGeneratedComponentVersionEntryV2,
   type GeneratedComponentVersionEntry,
   type GeneratedComponentVersionEntryV2
 } from "../shared/generated-version-contract";
+import { normalizeRevisionInstruction } from "../shared/revision-instruction";
 import { canonicalJsonStringify, type CanonicalJsonValue, sha256HexText } from "./canonical-json";
 import { validateRequestWithoutDataUrl } from "./request-validation";
+import { validatePngDataUrl } from "./screenshot";
 
 export const COMPONENT_REVISION_INPUT_CONTRACT_VERSION = 1;
 export const COMPONENT_REVISION_REQUEST_CONTRACT_VERSION = 1;
@@ -116,28 +118,7 @@ export type ReviewAttemptFingerprintInputV1 = {
   logicalAttemptId: string;
 };
 
-export function normalizeRevisionInstruction(value: unknown) {
-  if (typeof value !== "string") {
-    throw new Error("invalid revision instruction");
-  }
-
-  const nfc = value.normalize("NFC");
-  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(nfc)) {
-    throw new Error("invalid revision instruction");
-  }
-  if (/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(nfc)) {
-    throw new Error("invalid revision instruction");
-  }
-
-  const normalized = nfc.trim().replace(/\s+/gu, " ");
-
-  const codePoints = codePointLength(normalized);
-  if (codePoints < 4 || codePoints > 1_000 || getUtf8ByteLength(normalized) > 4_096) {
-    throw new Error("invalid revision instruction");
-  }
-
-  return normalized;
-}
+export { normalizeRevisionInstruction } from "../shared/revision-instruction";
 
 export function validateComponentRevisionInputV1(value: unknown): asserts value is ComponentRevisionInputV1 {
   assertRevisionInputBase(value);
@@ -184,16 +165,28 @@ export function validateComponentRevisionInputV1(value: unknown): asserts value 
   throw new Error("invalid revision input");
 }
 
-export function validateComponentRevisionRequestV1(value: unknown): asserts value is ComponentRevisionRequestV1 {
+export async function validateCompleteComponentRevisionInputV1(value: unknown): Promise<ComponentRevisionInputV1> {
+  validateComponentRevisionInputV1(value);
+  if (value.mode === "revision") {
+    const expected = await computeRevisionInstructionFingerprint(value.instruction);
+    if (expected !== value.instructionFingerprint) {
+      throw new Error("invalid revision input");
+    }
+  }
+  return value;
+}
+
+export function validateComponentRevisionRequestShapeV1(value: unknown): asserts value is ComponentRevisionRequestV1 {
   assertRequestBase(value);
   const request = value as Record<string, unknown>;
+  const hasScreenshot = Object.prototype.hasOwnProperty.call(request, "screenshot");
   const keys = [
     "contractVersion",
     "mode",
     ...(request.mode === "revision" ? ["revisionInstruction"] : []),
     "sourceComponent",
     "captureContext",
-    ...("screenshot" in request ? ["screenshot"] : []),
+    ...(hasScreenshot ? ["screenshot"] : []),
     "requestedOutput"
   ];
   assertExactObjectKeys(value, keys);
@@ -207,15 +200,29 @@ export function validateComponentRevisionRequestV1(value: unknown): asserts valu
   }
 
   validateSourceComponent(request.sourceComponent);
+  if (hasScreenshot) {
+    validateScreenshotShape(request.screenshot);
+  }
   validateRequestWithoutDataUrl({
     contractVersion: GENERATION_CONTRACT_VERSION,
-    screenshot: screenshotMetadata(request.screenshot),
+    screenshot: hasScreenshot ? screenshotMetadata(request.screenshot) : minimalScreenshotMetadata(),
     captureContext: request.captureContext,
     requestedOutput: request.requestedOutput
   });
-  if (request.screenshot !== undefined) {
-    validateScreenshot(request.screenshot);
+}
+
+export async function validateComponentRevisionRequestV1(value: unknown): Promise<ComponentRevisionRequestV1> {
+  validateComponentRevisionRequestShapeV1(value);
+  const request = value as ComponentRevisionRequestV1;
+  assertSerializedRevisionRequestSize(request);
+  if (Object.prototype.hasOwnProperty.call(request, "screenshot")) {
+    const screenshot = request.screenshot;
+    if (!screenshot) {
+      throw new Error("invalid revision request");
+    }
+    await validatePngDataUrl(screenshot.dataUrl, screenshot);
   }
+  return request;
 }
 
 export async function computeSourceGeneratedVersionFingerprint(entry: GeneratedComponentVersionEntry) {
@@ -307,15 +314,15 @@ export async function buildPendingRevisionGeneratedVersionEntryV2(input: {
   screenshotIncluded: boolean;
 }): Promise<GeneratedComponentVersionEntryV2> {
   assertBuilderBase(input);
+  const expectedInstructionFingerprint = await computeRevisionInstructionFingerprint(input.instruction);
   if (
     input.id !== await deriveRevisionGeneratedVersionId(input.logicalAttemptId) ||
-    normalizeRevisionInstruction(input.instruction) !== input.instruction ||
-    !isValidSha256Hex(input.instructionFingerprint)
+    expectedInstructionFingerprint !== input.instructionFingerprint
   ) {
     throw new Error("invalid revision generated version entry");
   }
 
-  return deepFreeze({
+  const entry: GeneratedComponentVersionEntryV2 = {
     contractVersion: 2,
     id: input.id,
     sourceCaptureId: input.sourceCaptureId,
@@ -333,7 +340,9 @@ export async function buildPendingRevisionGeneratedVersionEntryV2(input: {
       instructionFingerprint: input.instructionFingerprint,
       screenshotIncluded: input.screenshotIncluded
     }
-  });
+  };
+  validateGeneratedComponentVersionEntryV2(entry);
+  return deepFreeze(entry);
 }
 
 export async function buildPendingRegenerationGeneratedVersionEntryV2(input: {
@@ -355,7 +364,7 @@ export async function buildPendingRegenerationGeneratedVersionEntryV2(input: {
     throw new Error("invalid regeneration generated version entry");
   }
 
-  return deepFreeze({
+  const entry: GeneratedComponentVersionEntryV2 = {
     contractVersion: 2,
     id: input.id,
     sourceCaptureId: input.sourceCaptureId,
@@ -371,7 +380,9 @@ export async function buildPendingRegenerationGeneratedVersionEntryV2(input: {
       sourceGeneratedVersionFingerprint: input.sourceGeneratedVersionFingerprint,
       screenshotIncluded: input.screenshotIncluded
     }
-  });
+  };
+  validateGeneratedComponentVersionEntryV2(entry);
+  return deepFreeze(entry);
 }
 
 function assertRevisionInputBase(value: unknown) {
@@ -417,7 +428,7 @@ function validateSourceComponent(value: unknown): asserts value is ComponentRevi
   });
 }
 
-function validateScreenshot(value: unknown): asserts value is ComponentRevisionRequestScreenshotV1 {
+function validateScreenshotShape(value: unknown): asserts value is ComponentRevisionRequestScreenshotV1 {
   assertExactObjectKeys(value, ["mediaType", "width", "height", "byteLength", "dataUrl"]);
   const screenshot = value as Record<string, unknown>;
   validateRequestWithoutDataUrl({
@@ -437,14 +448,6 @@ function validateScreenshot(value: unknown): asserts value is ComponentRevisionR
 }
 
 function screenshotMetadata(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return {
-      mediaType: "image/png" as const,
-      width: 1,
-      height: 1,
-      byteLength: 1
-    };
-  }
   const screenshot = value as Record<string, unknown>;
   return {
     mediaType: screenshot.mediaType,
@@ -454,7 +457,33 @@ function screenshotMetadata(value: unknown) {
   };
 }
 
+function minimalScreenshotMetadata() {
+  return {
+    mediaType: "image/png" as const,
+    width: 1,
+    height: 1,
+    byteLength: 1
+  };
+}
+
 function validateReviewAttemptFingerprintInput(input: ReviewAttemptFingerprintInputV1) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    throw new Error("invalid review attempt fingerprint input");
+  }
+  const keys = [
+    "mode",
+    "localSourceCaptureId",
+    "localSourceGeneratedVersionId",
+    "sourceGeneratedVersionFingerprint",
+    "sourceComponent",
+    "captureContext",
+    ...(input.mode === "revision" ? ["revisionInstruction"] : []),
+    "requestedOutput",
+    "screenshot",
+    "currentCaptureProjectionFingerprint",
+    "logicalAttemptId"
+  ];
+  assertExactObjectKeys(input, keys);
   if (!isValidLogicalAttemptId(input.logicalAttemptId)) {
     throw new Error("invalid review attempt fingerprint input");
   }
@@ -547,6 +576,12 @@ function assertBuilderBase(input: {
     typeof input.screenshotIncluded !== "boolean"
   ) {
     throw new Error("invalid generated version entry");
+  }
+}
+
+function assertSerializedRevisionRequestSize(request: ComponentRevisionRequestV1) {
+  if (getUtf8ByteLength(JSON.stringify(request)) > GENERATION_LIMITS.serializedRequestBytes) {
+    throw new Error("invalid revision request");
   }
 }
 

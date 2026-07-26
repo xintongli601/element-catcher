@@ -3,6 +3,7 @@ import {
   assertExactObjectKeys,
   validateComponentGenerationResponseV1
 } from "./generation-contract";
+import { normalizeRevisionInstruction } from "./revision-instruction";
 
 export const GENERATED_COMPONENT_VERSION_STORE_NAME = "generatedComponentVersions";
 export const GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME = "sourceCaptureId";
@@ -160,6 +161,7 @@ function validateGeneratedComponentVersionEntryV2Operation(value: unknown) {
       !isValidGeneratedComponentVersionId(operation.sourceGeneratedVersionId) ||
       !isValidSha256Hex(operation.sourceGeneratedVersionFingerprint) ||
       typeof operation.instruction !== "string" ||
+      normalizeRevisionInstruction(operation.instruction) !== operation.instruction ||
       !isValidSha256Hex(operation.instructionFingerprint) ||
       typeof operation.screenshotIncluded !== "boolean"
     ) {

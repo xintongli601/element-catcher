@@ -11,8 +11,10 @@ import {
   createLogicalAttemptId,
   deriveRevisionGeneratedVersionId,
   normalizeRevisionInstruction,
+  validateCompleteComponentRevisionInputV1,
   validateComponentRevisionInputV1,
   validateComponentRevisionRequestV1,
+  validateComponentRevisionRequestShapeV1,
   type ComponentRevisionRequestV1,
   type ReviewAttemptFingerprintInputV1
 } from "../../extension/src/generation/revision-contract";
@@ -34,6 +36,12 @@ const shaB = "b".repeat(64);
 const shaC = "c".repeat(64);
 const shaD = "d".repeat(64);
 const attemptId = "revision-attempt-0123456789abcdef0123456789abcdef";
+const pngBase64 =
+  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
+test.beforeEach(() => {
+  installCreateImageBitmapPngMock();
+});
 
 test.describe("Milestone 6D revision instruction normalization", () => {
   test("normalizes NFC, trims, collapses Unicode whitespace, and removes tab LF CR formatting", () => {
@@ -77,40 +85,113 @@ test.describe("Milestone 6D revision input contract", () => {
     expect(() => validateComponentRevisionInputV1(missingRevisionInstruction)).toThrow();
     expect(() => validateComponentRevisionInputV1({ ...validRegenerationInput(), instruction: "Update copy", instructionFingerprint: shaD })).toThrow();
   });
+
+  test("verifies revision input instruction fingerprint semantic integrity asynchronously", async () => {
+    const instruction = "Update primary label";
+    const instructionFingerprint = await computeRevisionInstructionFingerprint(instruction);
+    await expect(validateCompleteComponentRevisionInputV1({ ...validRevisionInput(), instructionFingerprint })).resolves.toMatchObject({
+      instruction,
+      instructionFingerprint
+    });
+    await expect(validateCompleteComponentRevisionInputV1({ ...validRevisionInput(), instructionFingerprint: shaD })).rejects.toThrow();
+    await expect(validateCompleteComponentRevisionInputV1({
+      ...validRevisionInput(),
+      instructionFingerprint: await computeRevisionInstructionFingerprint("Use secondary label")
+    })).rejects.toThrow();
+    await expect(validateCompleteComponentRevisionInputV1(validRegenerationInput())).resolves.toMatchObject({ mode: "regeneration" });
+  });
 });
 
 test.describe("Milestone 6D revision request contract", () => {
-  test("accepts exact revision, exact regeneration, absent screenshot, and included screenshot keys", () => {
-    expect(() => validateComponentRevisionRequestV1(validRevisionRequest())).not.toThrow();
-    expect(() => validateComponentRevisionRequestV1(validRegenerationRequest())).not.toThrow();
+  test("accepts exact revision, exact regeneration, absent screenshot, and included screenshot keys", async () => {
+    await expect(validateComponentRevisionRequestV1(validRevisionRequest())).resolves.toMatchObject({ mode: "revision" });
+    await expect(validateComponentRevisionRequestV1(validRegenerationRequest())).resolves.toMatchObject({ mode: "regeneration" });
     const request = validRegenerationRequest();
     expect("screenshot" in request).toBe(false);
-    expect(() => validateComponentRevisionRequestV1({ ...validRevisionRequest(), screenshot: validScreenshot() })).not.toThrow();
+    await expect(validateComponentRevisionRequestV1({ ...validRevisionRequest(), screenshot: validScreenshot() })).resolves.toMatchObject({
+      screenshot: validScreenshot()
+    });
   });
 
-  test("rejects local hidden fields, unknown nested keys, wrong request output, framework, and styling", () => {
-    expect(() => validateComponentRevisionRequestV1({ ...validRevisionRequest(), sourceCaptureId: captureId })).toThrow();
-    expect(() => validateComponentRevisionRequestV1({
+  test("rejects local hidden fields, unknown nested keys, wrong request output, framework, and styling", async () => {
+    await expect(validateComponentRevisionRequestV1({ ...validRevisionRequest(), sourceCaptureId: captureId })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
       ...validRevisionRequest(),
       sourceComponent: { ...validSourceComponent(), sourceUrl: "https://example.test" }
-    })).toThrow();
-    expect(() => validateComponentRevisionRequestV1({
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
       ...validRevisionRequest(),
       captureContext: { ...validCaptureContext(), pageTitle: "Hidden" }
-    })).toThrow();
-    expect(() => validateComponentRevisionRequestV1({
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
       ...validRevisionRequest(),
       requestedOutput: { ...REQUESTED_OUTPUT, fields: ["componentName"] }
-    })).toThrow();
-    expect(() => validateComponentRevisionRequestV1({
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
       ...validRevisionRequest(),
       sourceComponent: { ...validSourceComponent(), framework: "vue" }
-    })).toThrow();
-    expect(() => validateComponentRevisionRequestV1({
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
       ...validRevisionRequest(),
       sourceComponent: { ...validSourceComponent(), styling: "css" }
-    })).toThrow();
-    expect(() => validateComponentRevisionRequestV1({ ...validRegenerationRequest(), revisionInstruction: "Update copy" })).toThrow();
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({ ...validRegenerationRequest(), revisionInstruction: "Update copy" })).rejects.toThrow();
+  });
+
+  test("distinguishes absent screenshot from explicit undefined or null", async () => {
+    await expect(validateComponentRevisionRequestV1(validRevisionRequest())).resolves.toBeTruthy();
+    await expect(validateComponentRevisionRequestV1(validRegenerationRequest())).resolves.toBeTruthy();
+    await expect(validateComponentRevisionRequestV1({ ...validRevisionRequest(), screenshot: undefined })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({ ...validRegenerationRequest(), screenshot: undefined })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({ ...validRevisionRequest(), screenshot: null })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), byteLength: undefined }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), extra: true }
+    })).rejects.toThrow();
+    expect(() => validateComponentRevisionRequestShapeV1(validRevisionRequest())).not.toThrow();
+  });
+
+  test("performs full included PNG and serialized request validation", async () => {
+    await expect(validateComponentRevisionRequestV1({ ...validRevisionRequest(), screenshot: validScreenshot() })).resolves.toBeTruthy();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), dataUrl: "data:image/png;base64,!!!!" }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), byteLength: 5, dataUrl: "data:image/png;base64,aGVsbG8=" }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), dataUrl: `data:image/png;base64,${Buffer.from("not a png").toString("base64")}` }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), byteLength: validScreenshot().byteLength + 1 }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), width: 2 }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), width: 4097 }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: {
+        ...validScreenshot(),
+        dataUrl: `data:image/png;base64,${"A".repeat(6_400_000)}`
+      }
+    })).rejects.toThrow();
+    await expect(validateComponentRevisionRequestV1({
+      ...validRevisionRequest(),
+      screenshot: { ...validScreenshot(), dataUrl: "data:image/png;base64,arbitrary text" }
+    })).rejects.toThrow();
   });
 });
 
@@ -137,6 +218,22 @@ test.describe("Milestone 6D generated-version V1/V2 contracts", () => {
       operation: { ...regeneration.operation, instruction: "Update copy", instructionFingerprint: shaD }
     })).toThrow();
     expect(() => validateGeneratedComponentVersionEntryV2({ ...revision, value: { ...validResponse(), metadata: { providerLabel: "x".repeat(81) } } })).toThrow();
+    expect(() => validateGeneratedComponentVersionEntryV2({
+      ...revision,
+      operation: { ...revision.operation, instruction: " Update primary label " }
+    })).toThrow();
+    expect(() => validateGeneratedComponentVersionEntryV2({
+      ...revision,
+      operation: { ...revision.operation, instruction: "abc" }
+    })).toThrow();
+    expect(() => validateGeneratedComponentVersionEntryV2({
+      ...revision,
+      operation: { ...revision.operation, instruction: "Update primary label\u0001" }
+    })).toThrow();
+    expect(() => validateGeneratedComponentVersionEntryV2({
+      ...revision,
+      operation: { ...revision.operation, instruction: "Update primary label\u202e" }
+    })).toThrow();
   });
 });
 
@@ -188,6 +285,27 @@ test.describe("Milestone 6D canonicalization and fingerprints", () => {
     }));
     await expect(computeReviewAttemptFingerprint({ ...falseInput, logicalAttemptId: "" })).rejects.toThrow();
   });
+
+  test("requires exact ReviewAttemptFingerprintInput keys by mode", async () => {
+    const revision = validReviewAttemptInput({ screenshot: { included: false } });
+    await expect(computeReviewAttemptFingerprint(revision)).resolves.toMatch(/^[0-9a-f]{64}$/);
+    await expect(computeReviewAttemptFingerprint({ ...revision, extra: true })).rejects.toThrow();
+    await expect(computeReviewAttemptFingerprint({ ...revision, sourceComponent: undefined })).rejects.toThrow();
+    const { revisionInstruction, ...missingRevisionInstruction } = revision;
+    await expect(computeReviewAttemptFingerprint(missingRevisionInstruction as ReviewAttemptFingerprintInputV1)).rejects.toThrow();
+    await expect(computeReviewAttemptFingerprint({ ...revision, revisionInstruction: undefined })).rejects.toThrow();
+    await expect(computeReviewAttemptFingerprint({
+      ...revision,
+      screenshot: { included: false, digest: shaD } as never
+    })).rejects.toThrow();
+    await expect(computeReviewAttemptFingerprint({
+      ...revision,
+      sourceComponent: { ...validSourceComponent(), extra: true }
+    })).rejects.toThrow();
+    const regeneration = validRegenerationReviewAttemptInput({ screenshot: { included: false } });
+    await expect(computeReviewAttemptFingerprint(regeneration)).resolves.toMatch(/^[0-9a-f]{64}$/);
+    await expect(computeReviewAttemptFingerprint({ ...regeneration, revisionInstruction: "Update primary label" })).rejects.toThrow();
+  });
 });
 
 test.describe("Milestone 6D identities and pending V2 builders", () => {
@@ -211,12 +329,45 @@ test.describe("Milestone 6D identities and pending V2 builders", () => {
     expect(Object.isFrozen(revision)).toBe(true);
     expect(Object.isFrozen(revision.value)).toBe(true);
     expect(revision.value).not.toBe(sourceResponse);
+    expect(() => validateGeneratedComponentVersionEntryV2(revision)).not.toThrow();
     sourceResponse.summary = "Mutated after build";
     expect(revision.value.summary).toBe("Accessible button");
     await expect(validV2RevisionEntry({ ...validResponse(), componentName: "DifferentFixture" })).rejects.toThrow();
     await expect(buildPendingRegenerationGeneratedVersionEntryV2({
       ...await validBuilderBaseWithId(),
       value: { ...validResponse(), code: "" }
+    })).rejects.toThrow();
+  });
+
+  test("requires matching revision instruction fingerprints in builders", async () => {
+    const instruction = "Update primary label";
+    const matching = await computeRevisionInstructionFingerprint(instruction);
+    const revision = await buildPendingRevisionGeneratedVersionEntryV2({
+      ...await validBuilderBaseWithId(),
+      instruction,
+      instructionFingerprint: matching
+    });
+    expect(revision.operation.kind).toBe("revision");
+    expect(revision.operation.instructionFingerprint).toBe(matching);
+    await expect(buildPendingRevisionGeneratedVersionEntryV2({
+      ...await validBuilderBaseWithId(),
+      instruction,
+      instructionFingerprint: shaD
+    })).rejects.toThrow();
+    await expect(buildPendingRevisionGeneratedVersionEntryV2({
+      ...await validBuilderBaseWithId(),
+      instruction,
+      instructionFingerprint: await computeRevisionInstructionFingerprint("Use secondary label")
+    })).rejects.toThrow();
+    await expect(buildPendingRevisionGeneratedVersionEntryV2({
+      ...await validBuilderBaseWithId(),
+      instruction,
+      instructionFingerprint: "A".repeat(64)
+    })).rejects.toThrow();
+    await expect(buildPendingRevisionGeneratedVersionEntryV2({
+      ...await validBuilderBaseWithId(),
+      instruction,
+      instructionFingerprint: "bad"
     })).rejects.toThrow();
   });
 });
@@ -299,12 +450,13 @@ function validSourceComponent() {
 }
 
 function validScreenshot() {
+  const byteLength = Buffer.from(pngBase64, "base64").byteLength;
   return {
     mediaType: "image/png" as const,
-    width: 10,
-    height: 11,
-    byteLength: 12,
-    dataUrl: "data:image/png;base64,AAAA"
+    width: 1,
+    height: 1,
+    byteLength,
+    dataUrl: `data:image/png;base64,${pngBase64}`
   };
 }
 
@@ -368,11 +520,12 @@ function validV1Entry() {
 }
 
 async function validV2RevisionEntry(value = validResponse()) {
+  const instruction = "Update primary label";
   return buildPendingRevisionGeneratedVersionEntryV2({
     ...await validBuilderBaseWithId(),
     value,
-    instruction: "Update primary label",
-    instructionFingerprint: shaD
+    instruction,
+    instructionFingerprint: await computeRevisionInstructionFingerprint(instruction)
   });
 }
 
@@ -421,4 +574,51 @@ function validReviewAttemptInput(input: Pick<ReviewAttemptFingerprintInputV1, "s
     currentCaptureProjectionFingerprint: shaB,
     logicalAttemptId: attemptId
   };
+}
+
+function validRegenerationReviewAttemptInput(input: Pick<ReviewAttemptFingerprintInputV1, "screenshot">): ReviewAttemptFingerprintInputV1 {
+  return {
+    mode: "regeneration",
+    localSourceCaptureId: captureId,
+    localSourceGeneratedVersionId: sourceVersionId,
+    sourceGeneratedVersionFingerprint: shaA,
+    sourceComponent: validSourceComponent(),
+    captureContext: validCaptureContext(),
+    requestedOutput: REQUESTED_OUTPUT,
+    screenshot: input.screenshot,
+    currentCaptureProjectionFingerprint: shaB,
+    logicalAttemptId: attemptId
+  };
+}
+
+function installCreateImageBitmapPngMock() {
+  const globalWithImageBitmap = globalThis as typeof globalThis & {
+    createImageBitmap?: (blob: Blob) => Promise<{ width: number; height: number; close: () => void }>;
+  };
+  globalWithImageBitmap.createImageBitmap = async (blob: Blob) => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.length < 24) {
+      throw new Error("invalid png");
+    }
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    for (let index = 0; index < signature.length; index += 1) {
+      if (bytes[index] !== signature[index]) {
+        throw new Error("invalid png");
+      }
+    }
+    return {
+      width: readUint32(bytes, 16),
+      height: readUint32(bytes, 20),
+      close() {}
+    };
+  };
+}
+
+function readUint32(bytes: Uint8Array, offset: number) {
+  return (
+    bytes[offset] * 0x1000000 +
+    bytes[offset + 1] * 0x10000 +
+    bytes[offset + 2] * 0x100 +
+    bytes[offset + 3]
+  );
 }
