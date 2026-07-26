@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Milestone 6A and Milestone 6B are completed; Milestone 6C is current with production safe generated-component preview implemented for a strict source subset; Milestone 6D and Milestone 6E remain planned. Generated code is still displayed as source text, and only source that passes the separate Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Milestone 6A, Milestone 6B, and Milestone 6C are completed; Milestone 6D is current for regeneration and natural-language revision planning; Milestone 6E remains planned. Generated code is still displayed as source text, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -37,6 +37,8 @@ AI generation uses the configured local backend/proxy path. The extension does n
 The local proxy is a development/demo topology. It is not a production multi-user backend, and it does not add authentication, quotas, budgets, abuse monitoring, or hosted operations.
 
 No real OpenAI request was made during automated acceptance. The provider adapter and loopback path were validated deterministically without committing or exposing a real API secret.
+
+Milestone 6C was accepted on remote baseline `8af49fd68fcdb6169eb9517a8aacadc5e36fe477` (`test: close safe preview security regressions`), retaining the implementation commits `1704b7c7d83fd288dd56bc0f2f4861ee359911c9` (`feat: implement safe generated component preview`) and `291d5b381210cd9a93906724c9e7785e377e7d66` (`fix: complete safe preview lifecycle and styling`). Its reported acceptance validation was two focused preview-suite runs with 38 passing tests each, backend tests with 6 passing tests, full Playwright regression with 146 passing tests and 1 documented loopback skip, `npm audit --omit=dev` with 0 vulnerabilities, no external preview request, and strict sandbox CSP retained. These results document the accepted Milestone 6C baseline; they are not a general security proof.
 
 ## Prerequisites
 
@@ -95,8 +97,8 @@ Current milestone:
 - Milestone 6: Isolated Preview and Version Management.
   - Milestone 6A: Completed. Architecture and threat model.
   - Milestone 6B: Completed. Sandbox runtime foundation with trusted packaged fixtures.
-  - Milestone 6C: Current. Production safe generated-component preview for the approved Previewable Subset V1.
-  - Milestone 6D: Planned. Regeneration and natural-language revision.
+  - Milestone 6C: Completed. Production safe generated-component preview for the approved Previewable Subset V1.
+  - Milestone 6D: Current. Regeneration and natural-language revision.
   - Milestone 6E: Planned. Version comparison and final Milestone 6 regression.
 
 See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
@@ -113,7 +115,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 ## Current Roadmap
 
 - Milestones 1-5: Completed.
-- Milestone 6: Current. Milestone 6A and 6B are Completed, Milestone 6C is Current with production safe generated-component preview implemented for a strict static subset, and Milestone 6D and 6E are Planned. Natural-language revision, regeneration management, version comparison, and export remain unimplemented.
+- Milestone 6: Current. Milestone 6A, 6B, and 6C are Completed. Milestone 6D is Current for regeneration and natural-language revision. Milestone 6E is Planned. Natural-language revision, regeneration management, version comparison, and export remain unimplemented until their later implementation milestones land.
 - Milestone 7: Planned. Export and future expansion remain unimplemented.
 
 ## Intentionally Unimplemented
@@ -121,8 +123,8 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Full arbitrary generated-code execution.
 - Full React, TypeScript, JavaScript, CSS, or Tailwind runtime compatibility.
 - Dynamic Tailwind class evaluation, generated CSS, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
-- Natural-language revision.
-- Regeneration management.
+- Natural-language revision implementation.
+- Regeneration management implementation.
 - Version comparison.
 - Export.
 - Figma export.

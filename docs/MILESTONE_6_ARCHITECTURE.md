@@ -2,7 +2,7 @@
 
 ## Implementation Status and Supersession Note
 
-Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Current with production safe generated-component preview implemented for the approved Previewable Subset V1, pending final acceptance before the roadmap can mark 6C Completed.
+Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Completed with the accepted production safe generated-component preview for Previewable Subset V1. Milestone 6D is Current for regeneration and natural-language revision. Milestone 6E remains Planned.
 
 This document began as the Milestone 6A architecture draft. Its original nested packaged architecture was a 6A proposal, not the accepted current implementation. Real Chromium feasibility testing showed that a topology where the Side Panel loads a packaged sandbox host, and that host then navigates a second packaged sandbox page, fails unless the second page is exposed through `web_accessible_resources`. That exposure was not approved for Milestone 6B. `srcdoc` was also not selected.
 
@@ -17,6 +17,19 @@ Side Panel trusted extension page
 The Side Panel performs a narrow trusted relay between the packaged sandbox host and packaged sandbox render realm. Any section below that describes the sandbox host as creating or owning a nested packaged render realm is superseded for current implementation planning by this accepted sibling architecture. Milestone 6C builds on the accepted 6B sibling foundation, not on a host-owned nested packaged render realm, `srcdoc` render realm, or `web_accessible_resources`-based nested render realm.
 
 ## Milestone 6C Accepted Implementation
+
+Accepted remote baseline:
+
+```text
+8af49fd68fcdb6169eb9517a8aacadc5e36fe477 - test: close safe preview security regressions
+```
+
+Retained implementation commits:
+
+```text
+1704b7c7d83fd288dd56bc0f2f4861ee359911c9 - feat: implement safe generated component preview
+291d5b381210cd9a93906724c9e7785e377e7d66 - fix: complete safe preview lifecycle and styling
+```
 
 Actual preview pipeline:
 
@@ -75,12 +88,70 @@ Dependency decision:
 - `@babel/parser` is the only added production parser dependency for Milestone 6C.
 - It is used for AST inspection only; no Babel transform, Babel standalone runtime, eval, `Function`, WebAssembly, worker compiler, Tailwind compiler, CDN, remote module, or runtime download is introduced.
 
+Accepted validation record:
+
+- Focused preview suite run 1: 38 passed.
+- Focused preview suite run 2: 38 passed.
+- Backend tests: 6 passed.
+- Full Playwright regression: 146 passed, 1 documented loopback skip.
+- `npm audit --omit=dev`: 0 vulnerabilities.
+- No external preview request.
+- No real OpenAI request.
+- Strict sandbox CSP retained.
+- These results document the accepted Milestone 6C baseline; they do not provide a general security proof.
+
 Residual risks:
 
 - Parser policy bugs may reject valid generated code or allow a construct that should have stayed source-only; the render realm still receives only a validated data plan.
 - The bounded Tailwind subset is intentionally lower fidelity than full Tailwind output. Every accepted class token must have exactly one source-controlled utility CSS selector, and no extra utility selector may exist outside the registry.
 - Iframe disposal cannot guarantee forced termination of an already-hung browser renderer.
 - Milestone 6C does not implement natural-language revision, regeneration, version comparison, export, storage migrations, backend contract changes, or provider calls.
+
+## Milestone 6D Current Scope
+
+Milestone 6D is regeneration and natural-language revision. It is current but not implemented in this documentation-only closeout.
+
+Intended scope:
+
+- User selects an existing generated component version.
+- User enters a bounded natural-language revision request.
+- Revision is reviewed before external transmission.
+- Revision creates a new immutable generated version.
+- Original `CaptureRecord` and earlier generated versions remain unchanged.
+- New version preserves `sourceCaptureId` and source-version lineage.
+- Regeneration may use the existing provider-neutral backend path.
+- Consent and privacy boundaries from Milestone 5 remain mandatory.
+- Preview remains a separate explicit action after persistence.
+- No generated source executes during revision or preview.
+- Retry must not create uncontrolled duplicate versions.
+- Cancellation and stale-response handling are required.
+
+Explicitly excluded from Milestone 6D:
+
+- Version comparison UI.
+- Final Milestone 6 regression closure.
+- Export.
+- GitHub or Figma integration.
+- Cloud sync.
+- Collaborative editing.
+- Arbitrary conversational coding-agent behavior.
+- Automatic execution of revised source.
+- Storage migration unless separately reviewed and approved.
+
+Milestone 6E remains responsible for version comparison and final Milestone 6 regression.
+
+Open design questions requiring independent review before implementation:
+
+- Revision request contract.
+- Relationship between the source generated version and the new version.
+- Idempotency and Retry behavior.
+- Revision prompt construction.
+- Consent review data.
+- Abort and stale-response handling.
+- Persistence ordering.
+- Failure recovery.
+- Whether regeneration without a revision instruction shares the same workflow.
+- Exact UI states and accessibility behavior.
 
 ## Milestone 6B Accepted Foundation
 
@@ -144,7 +215,7 @@ Milestone 6B did not approve executing `ComponentGenerationResponseV1.code`, par
 
 ## 1. Purpose and Scope
 
-This section preserves the original Milestone 6A documentation-only scope. It was accurate for the 6A architecture review, but later sections above record the accepted 6B and current 6C implementations.
+This section preserves the original Milestone 6A documentation-only scope. It was accurate for the 6A architecture review, but later sections above record the accepted 6B and accepted 6C implementations.
 
 Generated code is hostile input. Passing the Milestone 5 response validator means `ComponentGenerationResponseV1` has the expected JSON shape and bounded strings; it does not mean `ComponentGenerationResponseV1.code` is safe to compile, render, or execute.
 
@@ -254,7 +325,7 @@ Safer because it avoids generated-code execution. It is incomplete because it ca
 
 ## 6. Recommended Architecture
 
-Historical 6A recommendation, superseded for the accepted Milestone 6B implementation by the Side Panel-owned sibling sandbox architecture described at the top of this document. The parser/compiler/Tailwind and previewable-source ideas in later sections remain proposals for Milestone 6C, but current implementation planning must not treat the host-owned nested render realm as already accepted.
+Historical 6A recommendation, superseded for the accepted Milestone 6B implementation by the Side Panel-owned sibling sandbox architecture described at the top of this document. The accepted Milestone 6C implementation uses the bounded AST-to-render-plan pipeline described at the top of this document; this host-owned nested render realm design remains historical only.
 
 Primary 6A recommendation: local packaged two-layer isolation.
 
@@ -529,8 +600,8 @@ Current sequence:
 ```text
 6A - Completed - Architecture and threat model
 6B - Completed - Sandbox runtime foundation with trusted packaged fixtures
-6C - Current - Safe generated-component preview for Previewable Subset V1
-6D - Planned - Regeneration and natural-language revision
+6C - Completed - Safe generated-component preview for Previewable Subset V1
+6D - Current - Regeneration and natural-language revision
 6E - Planned - Version comparison and final Milestone 6 regression
 ```
 
