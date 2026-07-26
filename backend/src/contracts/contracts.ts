@@ -2,14 +2,60 @@ import {
   GENERATION_CONTRACT_VERSION,
   type ComponentGenerationRequestV1,
   type ComponentGenerationResponseV1,
+  type ExactCaptureContextProjectionV1,
   type GenerationBackendErrorCodeV1,
   type GenerationBackendErrorResponseV1
 } from "../../../extension/src/shared/generation-contract.js";
 
 export type { ComponentGenerationRequestV1, ComponentGenerationResponseV1 };
 
+export type ComponentRevisionRequestSourceComponentV1 = {
+  componentName: string;
+  framework: "react";
+  styling: "tailwind";
+  code: string;
+  summary: string;
+  approximationNotes: string;
+};
+
+export type ComponentRevisionRequestScreenshotV1 = {
+  mediaType: "image/png";
+  width: number;
+  height: number;
+  byteLength: number;
+  dataUrl: string;
+};
+
+export type ComponentRevisionRequestV1 =
+  | {
+      contractVersion: 1;
+      mode: "revision";
+      revisionInstruction: string;
+      sourceComponent: ComponentRevisionRequestSourceComponentV1;
+      captureContext: ExactCaptureContextProjectionV1;
+      screenshot?: ComponentRevisionRequestScreenshotV1;
+      requestedOutput: {
+        framework: "react";
+        styling: "tailwind";
+        fields: readonly ["componentName", "code", "summary", "approximationNotes"];
+      };
+    }
+  | {
+      contractVersion: 1;
+      mode: "regeneration";
+      sourceComponent: ComponentRevisionRequestSourceComponentV1;
+      captureContext: ExactCaptureContextProjectionV1;
+      screenshot?: ComponentRevisionRequestScreenshotV1;
+      requestedOutput: {
+        framework: "react";
+        styling: "tailwind";
+        fields: readonly ["componentName", "code", "summary", "approximationNotes"];
+      };
+    };
+
 export type ProviderAdapter = {
   generate(request: ComponentGenerationRequestV1, signal: AbortSignal): Promise<ComponentGenerationResponseV1>;
+  revise(request: ComponentRevisionRequestV1, signal: AbortSignal): Promise<ComponentGenerationResponseV1>;
 };
 
 const SAFE_MESSAGES: Record<GenerationBackendErrorCodeV1, string> = {

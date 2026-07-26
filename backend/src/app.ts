@@ -4,7 +4,12 @@ import { GENERATION_CONTRACT_VERSION, GENERATION_LIMITS } from "../../extension/
 import { isValidChromeExtensionOrigin, type BackendConfig } from "./config.js";
 import type { ProviderAdapter } from "./contracts/contracts.js";
 import { BackendSafeError, safeErrorResponse, statusForCode } from "./contracts/contracts.js";
-import { validateBackendRequest, validateBackendResponse } from "./validation/backend-validation.js";
+import {
+  validateBackendRequest,
+  validateBackendResponse,
+  validateBackendRevisionRequest,
+  validateBackendRevisionResponse
+} from "./validation/backend-validation.js";
 
 export type BackendLogEntry = {
   correlationId: string;
@@ -12,6 +17,8 @@ export type BackendLogEntry = {
   status: number;
   durationMs: number;
   requestBodyBytes: number;
+  route: "generation" | "revision";
+  mode?: "revision" | "regeneration";
   screenshotBytes?: number;
   screenshotWidth?: number;
   screenshotHeight?: number;
@@ -23,8 +30,11 @@ export type BackendLogger = {
   log(entry: BackendLogEntry): void;
 };
 
-const ROUTE = "/v1/generate-component";
-const ALLOWED_HEADERS = "Content-Type, X-Element-Catcher-Contract-Version";
+const GENERATION_ROUTE = "/v1/generate-component";
+const REVISION_ROUTE = "/v1/" + "revise-component";
+const GENERATION_ALLOWED_HEADERS = "Content-Type, X-Element-Catcher-Contract-Version";
+const REVISION_ALLOWED_HEADERS = "Content-Type, X-Element-Catcher-Contract-Version, X-Element-Catcher-Idempotency-Key";
+const IDEMPOTENCY_KEY_PATTERN = /^revision-attempt-[0-9a-f]{32}$/;
 
 export function createApp({
   config,
@@ -41,6 +51,8 @@ export function createApp({
     let bodyBytes = 0;
     let status = 500;
     let outcome = "unknown";
+    let route: "generation" | "revision" = "generation";
+    let mode: "revision" | "regeneration" | undefined;
     let screenshotBytes: number | undefined;
     let screenshotWidth: number | undefined;
     let screenshotHeight: number | undefined;
@@ -48,13 +60,14 @@ export function createApp({
 
     try {
       applyBaseHeaders(response);
-      validateRouteAndMethod(request);
+      const routeConfig = validateRouteAndMethod(request);
+      route = routeConfig.kind;
       validateRequestOrigin(request, config);
       corsAllowed = true;
-      validateRequestHeaders(request);
+      validateRequestHeaders(request, routeConfig);
       if (request.method === "OPTIONS") {
-        validatePreflightHeaders(request);
-        writeJson(response, 204, undefined, config, corsAllowed);
+        validatePreflightHeaders(request, routeConfig);
+        writeJson(response, 204, undefined, config, corsAllowed, routeConfig);
         status = 204;
         outcome = "ok";
         return;
@@ -62,18 +75,25 @@ export function createApp({
       const body = await readLimitedBody(request);
       bodyBytes = body.byteLength;
       const parsed = parseJson(body);
-      const generationRequest = validateBackendRequest(parsed);
-      screenshotBytes = generationRequest.screenshot.byteLength;
-      screenshotWidth = generationRequest.screenshot.width;
-      screenshotHeight = generationRequest.screenshot.height;
-
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60_000);
       request.on("aborted", () => controller.abort());
       try {
-        const providerResponse = await provider.generate(generationRequest, controller.signal);
-        const validated = validateBackendResponse(providerResponse);
-        writeJson(response, 200, validated, config, corsAllowed);
+        const validated = routeConfig.kind === "generation"
+          ? await handleGenerationRequest(provider, parsed, controller.signal, (metrics) => {
+              screenshotBytes = metrics.byteLength;
+              screenshotWidth = metrics.width;
+              screenshotHeight = metrics.height;
+            })
+          : await handleRevisionRequest(provider, parsed, controller.signal, (metrics) => {
+              mode = metrics.mode;
+              if (metrics.screenshot) {
+                screenshotBytes = metrics.screenshot.byteLength;
+                screenshotWidth = metrics.screenshot.width;
+                screenshotHeight = metrics.screenshot.height;
+              }
+            });
+        writeJson(response, 200, validated, config, corsAllowed, routeConfig);
         status = 200;
         outcome = "ok";
       } finally {
@@ -83,10 +103,12 @@ export function createApp({
       const safe = normalizeError(error);
       status = safe.status;
       outcome = safe.code;
-      writeJson(response, status, safeErrorResponse(safe.code), config, corsAllowed);
+      writeJson(response, status, safeErrorResponse(safe.code), config, corsAllowed, route === "revision" ? revisionRouteConfig() : generationRouteConfig());
     } finally {
       logger.log({
         correlationId,
+        route,
+        ...(mode ? { mode } : {}),
         outcome,
         status,
         durationMs: Date.now() - started,
@@ -101,14 +123,62 @@ export function createApp({
   };
 }
 
+async function handleGenerationRequest(
+  provider: ProviderAdapter,
+  parsed: unknown,
+  signal: AbortSignal,
+  setMetrics: (metrics: { byteLength: number; width: number; height: number }) => void
+) {
+  const generationRequest = validateBackendRequest(parsed);
+  setMetrics({
+    byteLength: generationRequest.screenshot.byteLength,
+    width: generationRequest.screenshot.width,
+    height: generationRequest.screenshot.height
+  });
+  const providerResponse = await provider.generate(generationRequest, signal);
+  return validateBackendResponse(providerResponse);
+}
+
+async function handleRevisionRequest(
+  provider: ProviderAdapter,
+  parsed: unknown,
+  signal: AbortSignal,
+  setMetrics: (metrics: {
+    mode: "revision" | "regeneration";
+    screenshot?: { byteLength: number; width: number; height: number };
+  }) => void
+) {
+  const revisionRequest = validateBackendRevisionRequest(parsed);
+  setMetrics({
+    mode: revisionRequest.mode,
+    ...(revisionRequest.screenshot
+      ? {
+          screenshot: {
+            byteLength: revisionRequest.screenshot.byteLength,
+            width: revisionRequest.screenshot.width,
+            height: revisionRequest.screenshot.height
+          }
+        }
+      : {})
+  });
+  const providerResponse = await provider.revise(revisionRequest, signal);
+  return validateBackendRevisionResponse(providerResponse, revisionRequest);
+}
+
 function validateRouteAndMethod(request: IncomingMessage) {
   const url = new URL(request.url ?? "/", "http://127.0.0.1");
-  if (url.pathname !== ROUTE) {
+  const routeConfig = url.pathname === GENERATION_ROUTE
+    ? generationRouteConfig()
+    : url.pathname === REVISION_ROUTE
+      ? revisionRouteConfig()
+      : undefined;
+  if (!routeConfig) {
     throw new BackendSafeError("request_validation_failed", 404);
   }
   if (request.method !== "POST" && request.method !== "OPTIONS") {
     throw new BackendSafeError("request_validation_failed", 405);
   }
+  return routeConfig;
 }
 
 function validateRequestOrigin(request: IncomingMessage, config: BackendConfig) {
@@ -117,7 +187,7 @@ function validateRequestOrigin(request: IncomingMessage, config: BackendConfig) 
   }
 }
 
-function validateRequestHeaders(request: IncomingMessage) {
+function validateRequestHeaders(request: IncomingMessage, routeConfig: RouteConfig) {
   if (request.method === "OPTIONS") {
     return;
   }
@@ -128,19 +198,37 @@ function validateRequestHeaders(request: IncomingMessage) {
   if (request.headers["x-element-catcher-contract-version"] !== String(GENERATION_CONTRACT_VERSION)) {
     throw new BackendSafeError("request_validation_failed", 400);
   }
+  if (routeConfig.kind === "revision") {
+    validateIdempotencyHeader(request.headers["x-element-catcher-idempotency-key"]);
+  }
   const declared = request.headers["content-length"];
   if (declared !== undefined) {
     validateContentLength(declared);
   }
 }
 
-function validatePreflightHeaders(request: IncomingMessage) {
+function validatePreflightHeaders(request: IncomingMessage, routeConfig: RouteConfig) {
   if (request.headers["access-control-request-method"] !== "POST") {
     throw new BackendSafeError("request_validation_failed", 400);
   }
   const requestedHeaders = parseRequestedHeaders(request.headers["access-control-request-headers"]);
-  const allowedHeaders = new Set(["content-type", "x-element-catcher-contract-version"]);
-  if (requestedHeaders.length === 0 || requestedHeaders.some((header) => !allowedHeaders.has(header))) {
+  const allowedHeaders = new Set(routeConfig.allowedHeaderNames);
+  if (
+    requestedHeaders.length === 0 ||
+    requestedHeaders.some((header) => !allowedHeaders.has(header)) ||
+    routeConfig.requiredPreflightHeaders.some((header) => !requestedHeaders.includes(header))
+  ) {
+    throw new BackendSafeError("request_validation_failed", 400);
+  }
+}
+
+function validateIdempotencyHeader(value: string | string[] | undefined) {
+  if (
+    typeof value !== "string" ||
+    value.trim() !== value ||
+    value.includes(",") ||
+    !IDEMPOTENCY_KEY_PATTERN.test(value)
+  ) {
     throw new BackendSafeError("request_validation_failed", 400);
   }
 }
@@ -210,18 +298,43 @@ function applyBaseHeaders(response: ServerResponse) {
   response.setHeader("Vary", "Origin");
 }
 
-function applyCors(response: ServerResponse, config: BackendConfig) {
+function applyCors(response: ServerResponse, config: BackendConfig, routeConfig: RouteConfig) {
   response.setHeader("Access-Control-Allow-Origin", config.extensionOrigin);
   response.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  response.setHeader("Access-Control-Allow-Headers", ALLOWED_HEADERS);
+  response.setHeader("Access-Control-Allow-Headers", routeConfig.allowedHeaders);
 }
 
-function writeJson(response: ServerResponse, status: number, body: unknown, config: BackendConfig, corsAllowed: boolean) {
+function writeJson(response: ServerResponse, status: number, body: unknown, config: BackendConfig, corsAllowed: boolean, routeConfig: RouteConfig) {
   if (corsAllowed) {
-    applyCors(response, config);
+    applyCors(response, config, routeConfig);
   }
   response.statusCode = status;
   response.end(body === undefined ? "" : JSON.stringify(body));
+}
+
+type RouteConfig = {
+  kind: "generation" | "revision";
+  allowedHeaders: string;
+  allowedHeaderNames: readonly string[];
+  requiredPreflightHeaders: readonly string[];
+};
+
+function generationRouteConfig(): RouteConfig {
+  return {
+    kind: "generation",
+    allowedHeaders: GENERATION_ALLOWED_HEADERS,
+    allowedHeaderNames: ["content-type", "x-element-catcher-contract-version"],
+    requiredPreflightHeaders: []
+  };
+}
+
+function revisionRouteConfig(): RouteConfig {
+  return {
+    kind: "revision",
+    allowedHeaders: REVISION_ALLOWED_HEADERS,
+    allowedHeaderNames: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"],
+    requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"]
+  };
 }
 
 const consoleLogger: BackendLogger = {

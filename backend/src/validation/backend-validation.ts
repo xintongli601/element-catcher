@@ -23,6 +23,7 @@ import {
   isPlainObject
 } from "../../../extension/src/shared/generation-contract.js";
 import type { ComponentGenerationRequestV1, ComponentGenerationResponseV1 } from "../contracts/contracts.js";
+import type { ComponentRevisionRequestV1 } from "../contracts/contracts.js";
 import { BackendSafeError } from "../contracts/contracts.js";
 
 const RESPONSE_MAX_BYTES = 80_000;
@@ -37,6 +38,50 @@ export function validateBackendRequest(value: unknown): ComponentGenerationReque
     validateScreenshot(request);
     validateRequestedOutput(request.requestedOutput);
     validateCaptureContext(request.captureContext);
+    if (getUtf8ByteLength(JSON.stringify(request)) > GENERATION_LIMITS.serializedRequestBytes) {
+      throw new BackendSafeError("request_too_large", 413);
+    }
+    return request;
+  } catch (error) {
+    if (error instanceof BackendSafeError) {
+      throw error;
+    }
+    throw new BackendSafeError("request_validation_failed", 400);
+  }
+}
+
+export function validateBackendRevisionRequest(value: unknown): ComponentRevisionRequestV1 {
+  try {
+    if (!isPlainObject(value)) {
+      throw new Error();
+    }
+    const mode = (value as Record<string, unknown>).mode;
+    assertExactObjectKeys(value, [
+      "contractVersion",
+      "mode",
+      ...(mode === "revision" ? ["revisionInstruction"] : []),
+      "sourceComponent",
+      "captureContext",
+      ...(Object.prototype.hasOwnProperty.call(value, "screenshot") ? ["screenshot"] : []),
+      "requestedOutput"
+    ]);
+    const request = value as ComponentRevisionRequestV1;
+    if (request.contractVersion !== GENERATION_CONTRACT_VERSION) {
+      throw new Error();
+    }
+    if (request.mode === "revision") {
+      if (normalizeRevisionInstruction(request.revisionInstruction) !== request.revisionInstruction) {
+        throw new Error();
+      }
+    } else if (request.mode !== "regeneration") {
+      throw new Error();
+    }
+    validateSourceComponent(request.sourceComponent);
+    validateRequestedOutput(request.requestedOutput);
+    validateCaptureContext(request.captureContext);
+    if (Object.prototype.hasOwnProperty.call(request, "screenshot")) {
+      validateRevisionScreenshot(request.screenshot);
+    }
     if (getUtf8ByteLength(JSON.stringify(request)) > GENERATION_LIMITS.serializedRequestBytes) {
       throw new BackendSafeError("request_too_large", 413);
     }
@@ -83,6 +128,14 @@ export function validateBackendResponse(value: unknown): ComponentGenerationResp
   } catch {
     throw new BackendSafeError("malformed_response", 502);
   }
+}
+
+export function validateBackendRevisionResponse(value: unknown, request: ComponentRevisionRequestV1): ComponentGenerationResponseV1 {
+  const response = validateBackendResponse(value);
+  if (response.componentName !== request.sourceComponent.componentName) {
+    throw new BackendSafeError("malformed_response", 502);
+  }
+  return response;
 }
 
 export function validateSafeErrorEnvelope(value: unknown) {
@@ -138,6 +191,52 @@ function validateScreenshot(request: ComponentGenerationRequestV1) {
   } catch {
     throw new BackendSafeError("invalid_screenshot", 400);
   }
+}
+
+function validateRevisionScreenshot(value: ComponentRevisionRequestV1["screenshot"]) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new BackendSafeError("invalid_screenshot", 400);
+  }
+  validateScreenshot({
+    contractVersion: GENERATION_CONTRACT_VERSION,
+    screenshot: value,
+    captureContext: minimalCaptureContext(),
+    requestedOutput: REQUESTED_OUTPUT
+  });
+}
+
+function validateSourceComponent(value: unknown) {
+  assertExactObjectKeys(value, ["componentName", "framework", "styling", "code", "summary", "approximationNotes"]);
+  const sourceComponent = value as Record<string, unknown>;
+  if (
+    sourceComponent.framework !== "react" ||
+    sourceComponent.styling !== "tailwind" ||
+    typeof sourceComponent.componentName !== "string" ||
+    !COMPONENT_NAME_PATTERN.test(sourceComponent.componentName) ||
+    codePointLength(sourceComponent.componentName) > GENERATION_LIMITS.componentNameCodePoints ||
+    typeof sourceComponent.code !== "string" ||
+    sourceComponent.code.trim() === "" ||
+    codePointLength(sourceComponent.code) > GENERATION_LIMITS.codeCodePoints ||
+    typeof sourceComponent.summary !== "string" ||
+    sourceComponent.summary.trim() === "" ||
+    codePointLength(sourceComponent.summary) > GENERATION_LIMITS.summaryCodePoints ||
+    typeof sourceComponent.approximationNotes !== "string" ||
+    codePointLength(sourceComponent.approximationNotes) > GENERATION_LIMITS.approximationNotesCodePoints
+  ) {
+    throw new Error();
+  }
+}
+
+function minimalCaptureContext(): ComponentGenerationRequestV1["captureContext"] {
+  return {
+    library: { tags: [] },
+    element: { tagName: "div", rect: { width: 1, height: 1 } },
+    dom: { sanitizedSnapshot: { tagName: "div", attributes: {}, children: [] }, childSummary: [] },
+    styles: { computed: {} },
+    summaries: { typography: {}, colors: {}, layout: {}, spacing: {} },
+    pageTitlePolicy: { included: false, reason: PAGE_TITLE_POLICY_REASON },
+    sourceUrlPolicy: { included: false, reason: SOURCE_URL_POLICY_REASON }
+  };
 }
 
 function validateRequestedOutput(value: unknown) {
@@ -386,6 +485,25 @@ function validateRequiredString(value: unknown, limit: number) {
   if (typeof value !== "string" || value.trim() === "" || codePointLength(value) > limit) {
     throw new Error();
   }
+}
+
+function normalizeRevisionInstruction(value: unknown) {
+  if (typeof value !== "string") {
+    throw new Error();
+  }
+  const nfc = value.normalize("NFC");
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/u.test(nfc)) {
+    throw new Error();
+  }
+  if (/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u.test(nfc)) {
+    throw new Error();
+  }
+  const normalized = nfc.trim().replace(/\s+/gu, " ");
+  const codePoints = codePointLength(normalized);
+  if (codePoints < 4 || codePoints > 1_000 || getUtf8ByteLength(normalized) > 4_096) {
+    throw new Error();
+  }
+  return normalized;
 }
 
 function hasPngSignature(bytes: Uint8Array) {
