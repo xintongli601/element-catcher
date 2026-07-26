@@ -80,15 +80,19 @@ There is one authoritative `logicalAttemptId` lifecycle:
 1. The user opens a persisted generated version and chooses `Revise` or `Regenerate`.
 2. The extension validates and normalizes the revision/regeneration input.
 3. The extension re-reads and validates the current source CaptureRecord and selected persisted generated version.
-4. The extension constructs the exact outbound Review projection, including the screenshot included/not-included choice.
-5. The extension freezes that Review projection.
-6. The extension creates `logicalAttemptId` before displaying the frozen Review.
-7. The `logicalAttemptId` is bound to that exact frozen Review attempt.
-8. Consent, transport Retry, and persistence Retry reuse the same `logicalAttemptId` only while the frozen Review remains byte-for-byte unchanged.
-9. Returning to edit and changing any outbound value invalidates the old attempt. This includes instruction, mode, selected source version, source component data, current CaptureRecord projection, requestedOutput, or screenshot inclusion choice.
-10. The next Review after an invalidating change creates a new `logicalAttemptId`.
-11. An explicit new alternative always creates a new `logicalAttemptId`.
-12. Repeated submit while in flight is ignored.
+4. The extension constructs and freezes the exact source component projection, current CaptureRecord `captureContext` projection, `requestedOutput`, normalized instruction when applicable, screenshot included/not-included choice, and screenshot digest plus approved metadata only when included.
+5. The extension synchronously canonicalizes and freezes the complete validated source generated-version entry and the exact current CaptureRecord projection plus `requestedOutput`.
+6. Outside the final IndexedDB transaction, the extension computes `sourceGeneratedVersionFingerprint`, `instructionFingerprint` when applicable, and `currentCaptureProjectionFingerprint`.
+7. The extension creates `logicalAttemptId` only after the exact Review projection is frozen.
+8. The extension computes `reviewAttemptFingerprint` after `logicalAttemptId` exists.
+9. The extension computes the deterministic target generated-version ID after `logicalAttemptId` exists.
+10. The extension binds `logicalAttemptId`, `reviewAttemptFingerprint`, and deterministic target ID to the frozen Review.
+11. The extension displays the frozen Review and obtains explicit consent.
+12. Consent, transport Retry, and persistence Retry reuse the same `logicalAttemptId` only while the frozen Review remains byte-for-byte unchanged.
+13. Returning to edit and changing any outbound value invalidates the old attempt. This includes instruction, mode, selected source version, source component data, current CaptureRecord projection, requestedOutput, or screenshot inclusion choice.
+14. The next Review after an invalidating change creates a new `logicalAttemptId`.
+15. An explicit new alternative always creates a new `logicalAttemptId`.
+16. Repeated submit while in flight is ignored.
 
 No separate `requestId` is part of the 6D contract. Stale binding uses `sourceCaptureId`, `sourceGeneratedVersionId`, `sourceGeneratedVersionFingerprint`, `logicalAttemptId`, `reviewAttemptFingerprint`, and the workflow generation token.
 
@@ -98,20 +102,25 @@ Trusted workflow:
 2. Expand one persisted generated version.
 3. Choose `Revise` or `Regenerate`.
 4. Enter a bounded instruction for Revise, or confirm Regenerate.
-5. Validate locally.
-6. Re-read source CaptureRecord and source generated version.
-7. Construct and freeze exact Review data.
-8. Create `logicalAttemptId`.
-9. Display frozen Review data.
-10. Obtain explicit consent.
-11. Revalidate the frozen Review before transport.
-12. Send request with the required idempotency header.
-13. Allow best-effort cancellation while transport or persistence is active.
-14. Validate normalized response.
-15. Construct immutable V2 generated-version entry.
-16. Persist through the atomic transaction defined in section 11.
-17. Show success only after transaction commit and validated read-back, and only if the workflow is still current.
-18. Keep Preview closed until a separate explicit Preview action.
+5. Validate and normalize mode and instruction.
+6. Re-read and validate the current CaptureRecord.
+7. Re-read and validate the selected persisted source generated version.
+8. Construct and freeze the exact Review projection.
+9. Compute the pre-attempt fingerprints that do not require `logicalAttemptId`.
+10. Create `logicalAttemptId`.
+11. Compute `reviewAttemptFingerprint`.
+12. Compute deterministic target generated-version ID.
+13. Bind the attempt identities to the frozen Review and display it.
+14. Obtain explicit consent.
+15. Revalidate the frozen Review and included screenshot before transport.
+16. Send request with the required idempotency header.
+17. Allow best-effort cancellation while transport or persistence is active.
+18. Validate normalized response.
+19. Enforce componentName equality.
+20. Construct immutable pending V2 generated-version entry.
+21. Persist through the atomic transaction defined in section 11.
+22. Show success only after transaction commit and validated read-back, and only if the workflow is still current.
+23. Keep Preview closed until a separate explicit Preview action.
 
 UI states:
 
@@ -203,16 +212,18 @@ Domain-separated fingerprints:
 
 | Fingerprint | Algorithm | Local or sent |
 | --- | --- | --- |
-| `sourceGeneratedVersionFingerprint` | `sha256HexText("ElementCatcher.SourceGeneratedVersionFingerprint.V1\\n" + canonicalJsonStringify(validatedSourceGeneratedVersionEntry))` | Local only; computed before the final transaction; not sent to backend/provider. |
-| `instructionFingerprint` | `sha256HexText("ElementCatcher.RevisionInstructionFingerprint.V1\\n" + normalizedInstruction)` | Local only; computed before the final transaction; not sent to backend/provider. |
-| `currentCaptureProjectionFingerprint` | `sha256HexText("ElementCatcher.CurrentCaptureProjectionFingerprint.V1\\n" + canonicalJsonStringify({ captureContext, requestedOutput }))` | Local only; computed before the final transaction; stored as V2 top-level `sourceReviewFingerprint`. |
-| `reviewAttemptFingerprint` | `sha256HexText("ElementCatcher.RevisionReviewAttemptFingerprint.V1\\n" + canonicalJsonStringify(reviewAttemptFingerprintInput))` | Local only; computed before the final transaction. |
+| `sourceGeneratedVersionFingerprint` | `sha256HexText("ElementCatcher.SourceGeneratedVersionFingerprint.V1\\n" + canonicalJsonStringify(validatedSourceGeneratedVersionEntry))` | Local only; computed before `logicalAttemptId` and before the final transaction; not sent to backend/provider. |
+| `instructionFingerprint` | `sha256HexText("ElementCatcher.RevisionInstructionFingerprint.V1\\n" + normalizedInstruction)` | Local only; computed before `logicalAttemptId` and before the final transaction; not sent to backend/provider. |
+| `currentCaptureProjectionFingerprint` | `sha256HexText("ElementCatcher.CurrentCaptureProjectionFingerprint.V1\\n" + canonicalJsonStringify({ captureContext, requestedOutput }))` | Local only; computed before `logicalAttemptId` and before the final transaction; stored as V2 top-level `sourceReviewFingerprint`. |
+| `reviewAttemptFingerprint` | `sha256HexText("ElementCatcher.RevisionReviewAttemptFingerprint.V1\\n" + canonicalJsonStringify(reviewAttemptFingerprintInput))` | Local only; computed after `logicalAttemptId` exists and before Review display. |
 
 `sourceGeneratedVersionFingerprint` canonicalizes the entire validated V1 or V2 source entry. No field is excluded. V1 entries are canonicalized as the exact validated legacy object with no top-level `contractVersion`. V2 entries are canonicalized as the exact validated V2 object. Object key order cannot change the result because canonical serialization sorts keys deterministically. Inside the final transaction, the implementation synchronously canonicalizes the transaction-read source entry and compares that canonical string to the frozen canonical source-entry string. Exact canonical equality is treated as proof that the already-computed `sourceGeneratedVersionFingerprint` still applies; the transaction must not recompute the SHA-256 digest.
 
 `instructionFingerprint` exists only for revision. Regeneration must not include it.
 
 `currentCaptureProjectionFingerprint` is a 6D fingerprint, not the unchanged Milestone 5 Review fingerprint. It fingerprints the exact canonical current CaptureRecord outbound projection and `requestedOutput`. It excludes screenshot digest, screenshot bytes, screenshot metadata, screenshot storage key, source URL, page title, notes, and local IDs. Existing V1 `sourceReviewFingerprint` semantics remain unchanged for legacy entries.
+
+`reviewAttemptFingerprint` cannot be computed before `logicalAttemptId`, because the fingerprint input includes `logicalAttemptId`. The deterministic target generated-version ID also cannot be computed before `logicalAttemptId`. The pending V2 generated-version entry cannot be constructed before a valid backend response exists, because its `value` is the validated `ComponentGenerationResponseV1`.
 
 `reviewAttemptFingerprintInput` is:
 
@@ -275,6 +286,7 @@ Screenshot semantics:
 
 - When `screenshotIncluded` is `false`, the Review attempt fingerprint contains exactly `screenshot: { included: false }`; screenshot digest and metadata are absent. Changes to local screenshot bytes alone do not invalidate the frozen outbound Review attempt. The final transaction does not require Blob digest computation. The CaptureRecord screenshot reference must remain structurally valid if that is a general saved-capture invariant, but it is not treated as transmitted Review data.
 - When `screenshotIncluded` is `true`, the extension verifies the screenshot and computes its digest before Review freeze. The Review attempt fingerprint binds `included: true`, media type, width, height, byte length, and digest. The extension revalidates the screenshot digest before transport, outside the final write transaction. Inside the final transaction, the implementation verifies that the same CaptureRecord screenshot reference still exists and that the stored asset key, schema, and approved metadata match the frozen values. It must not await `Blob.arrayBuffer()`, image decoding, or `crypto.subtle.digest` inside the transaction.
+- For both modes, the final transaction re-reads the CaptureRecord, extracts its screenshot storage key, reads the referenced screenshot asset from `screenshotAssets`, fails safely if the asset is missing, and synchronously validates the stored asset's basic schema and linkage. Neither mode reads Blob bytes, decodes images, or hashes screenshot bytes inside the transaction.
 
 Residual screenshot boundary:
 
@@ -473,16 +485,19 @@ Asynchronous preparation before the final transaction:
 - read current CaptureRecord and screenshot asset;
 - read selected source generated version;
 - validate both;
+- construct and freeze the exact sourceComponent projection;
+- construct and freeze the exact current CaptureRecord `captureContext` projection;
+- freeze `requestedOutput`, normalized instruction when applicable, screenshot included/not-included choice, and screenshot digest plus approved metadata only when included;
 - synchronously canonicalize the exact current CaptureRecord outbound projection plus `requestedOutput`;
 - compute `currentCaptureProjectionFingerprint` outside the final transaction;
 - synchronously canonicalize the entire validated source generated-version entry;
 - compute `sourceGeneratedVersionFingerprint` outside the final transaction;
 - compute `instructionFingerprint` when applicable;
 - verify the screenshot and compute its digest when `screenshotIncluded=true`;
-- construct and freeze the exact Review attempt;
-- compute `reviewAttemptFingerprint`;
-- construct the pending V2 entry;
-- compute and freeze the deterministic target generated-version ID.
+- create `logicalAttemptId` only after the exact Review projection is frozen;
+- compute `reviewAttemptFingerprint` after `logicalAttemptId` exists;
+- compute and freeze the deterministic target generated-version ID after `logicalAttemptId` exists;
+- bind `logicalAttemptId`, `reviewAttemptFingerprint`, and deterministic target ID to the frozen Review.
 
 Pre-transport Review revalidation:
 
@@ -497,10 +512,14 @@ Final persistence operation:
 - inside that same transaction, before adding the new V2 entry:
   - re-read the current CaptureRecord;
   - synchronously validate its wrapper, `sourceCaptureId`, and `savedAt`;
+  - extract the CaptureRecord screenshot storage key;
+  - read the referenced screenshot asset from `screenshotAssets`;
+  - fail safely if the referenced screenshot asset is missing;
+  - synchronously validate the stored screenshot asset's basic schema and CaptureRecord linkage;
   - synchronously reconstruct and canonicalize its relevant CaptureRecord outbound projection plus `requestedOutput`;
   - compare that canonical string exactly with the frozen canonical CaptureRecord projection;
-  - when `screenshotIncluded=false`, validate only the structural CaptureRecord screenshot reference required by saved-capture invariants;
-  - when `screenshotIncluded=true`, validate screenshot asset/reference and compare stored asset key, schema, media type, width, height, and byte length with the frozen approved values;
+  - when `screenshotIncluded=false`, do not compare screenshot digest, Blob bytes, or screenshot metadata as transmitted Review data;
+  - when `screenshotIncluded=true`, compare stored asset key, schema, media type, width, height, and byte length with the frozen approved values;
   - re-read the selected source generated version from `generatedComponentVersions`;
   - synchronously validate it as V1 or V2;
   - synchronously canonicalize the entire validated entry;
@@ -528,19 +547,26 @@ generated-version-${sha256HexText("ElementCatcher.RevisionGeneratedVersionId.V1\
 Success ordering:
 
 1. Validate and normalize input.
-2. Run asynchronous preparation and compute all fingerprints outside the final transaction.
-3. Construct frozen Review.
-4. Create `logicalAttemptId`.
-5. Display frozen Review.
-6. Obtain consent.
-7. Pre-transport Review revalidation, including screenshot digest revalidation outside the final transaction when included.
-8. Transmit with required idempotency header.
-9. Validate normalized response.
-10. Enforce componentName policy.
-11. Construct pending immutable V2 entry before the final transaction.
-12. Run the transaction-safe synchronous canonical comparison plus IDB request sequence.
-13. Expose success only after commit, validated read-back, and current-workflow stale guard.
-14. Keep Preview closed.
+2. Re-read and validate the current CaptureRecord.
+3. Re-read and validate the selected persisted source generated version.
+4. Construct and freeze sourceComponent, current CaptureRecord `captureContext`, `requestedOutput`, normalized instruction when applicable, screenshot choice, and screenshot digest/approved metadata only when included.
+5. Synchronously canonicalize and freeze the complete source generated-version entry and current CaptureRecord projection plus `requestedOutput`.
+6. Outside the final transaction, compute `sourceGeneratedVersionFingerprint`, `instructionFingerprint` when applicable, and `currentCaptureProjectionFingerprint`.
+7. Create `logicalAttemptId` only after the exact Review projection is frozen.
+8. Compute `reviewAttemptFingerprint` after `logicalAttemptId` exists.
+9. Compute deterministic target generated-version ID after `logicalAttemptId` exists.
+10. Bind `logicalAttemptId`, `reviewAttemptFingerprint`, and deterministic target ID to the frozen Review.
+11. Display frozen Review.
+12. Obtain consent.
+13. Revalidate the frozen Review and included screenshot before transport.
+14. Transmit with required idempotency header.
+15. Validate normalized response.
+16. Enforce componentName policy.
+17. Construct pending immutable V2 entry only after the valid response exists.
+18. Open the final readwrite transaction.
+19. Run the transaction-safe synchronous canonical comparison plus IDB request sequence.
+20. Expose success only after commit, validated read-back, and current-workflow stale guard.
+21. Keep Preview closed.
 
 Failure and recovery:
 
@@ -551,6 +577,8 @@ Failure and recovery:
 | Current CaptureRecord projection changed after Review | Canonical CaptureRecord projection mismatch invalidates attempt or fails transaction; new Review creates new `logicalAttemptId`. |
 | Screenshot choice changed after Review | Invalidate attempt. |
 | `screenshotIncluded=false` screenshot bytes changed only | Does not invalidate the outbound Review attempt; final transaction still validates structural saved-capture reference invariants. |
+| `screenshotIncluded=false` screenshot metadata changed only | Not treated as a transmitted Review change; final transaction still requires referenced asset existence and valid basic schema/linkage. |
+| Screenshot asset missing in either mode | Final transaction fails safely before adding a V2 entry. |
 | `screenshotIncluded=true` screenshot digest changed before transport | Invalidate attempt before transport. |
 | `screenshotIncluded=true` screenshot reference or approved metadata changed before persistence | Transaction precondition fails safely. |
 | Source generated version changed/tampered | Canonical source-entry mismatch; fail safely. |
@@ -663,7 +691,8 @@ Revision and regeneration preserve the source `componentName`.
 | Source version tampering | IndexedDB to workflow | Pre-transaction fingerprint plus in-transaction canonical source-entry equality | Canonical mismatch | No V2 entry added | Local storage attacker can still delete data. |
 | Current CaptureRecord TOCTOU | Local metadata/storage to persistence | Frozen canonical 6D projection plus in-transaction canonical equality | Canonical projection mismatch | Attempt invalidated or persistence fails | User must review again. |
 | Non-IDB async inside transaction | Transaction lifecycle | Prohibit Web Crypto, Blob reads, fetch, timers, and non-IDB awaits after transaction open | Transaction-feasibility tests | Implementation rejected | Developers must keep final transaction code disciplined. |
-| Optional screenshot replacement | Screenshot storage to persistence | Digest before Review/transport when included; transaction checks reference/schema/metadata | Missing/reference/metadata mismatch | Fail safely | Same-key, same-metadata Blob replacement requires at-rest digest/storage-contract change. |
+| Missing screenshot asset | Screenshot storage to persistence | Both screenshot modes transactionally read referenced screenshot asset | Missing asset read | Fail before adding V2 | None for ordinary missing-asset races. |
+| Optional screenshot replacement | Screenshot storage to persistence | Digest before Review/transport when included; both modes check asset existence/schema/linkage; included mode checks approved metadata | Missing/reference/metadata mismatch | Fail safely | Same-key, same-metadata Blob replacement requires at-rest digest/storage-contract change. |
 | Cross-capture lineage mix-up | UI state to persistence | Local IDs in attempt fingerprint; source linkage checks | Transaction validation | Reject | Future UI filters must preserve binding. |
 | Duplicate backend delivery | Backend to extension | Required idempotency header and deterministic target ID | Duplicate-key equality check | Idempotent success or conflict | Provider billing may duplicate without server dedupe. |
 | Replayed response | Network/backend to extension | Attempt binding and deterministic target ID | Review/source fingerprint checks | Ignore/reject | No server response signature in 6D. |
@@ -698,6 +727,10 @@ Revision and regeneration preserve the source `componentName`.
 | Area | Test | Unit | Backend integration | IndexedDB integration | Playwright extension runtime |
 | --- | --- | --- | --- | --- | --- |
 | Attempt | `logicalAttemptId` created at frozen Review time | Yes | No | No | Yes |
+| Attempt | `reviewAttemptFingerprint` computed only after `logicalAttemptId` creation | Yes | No | No | Yes |
+| Attempt | deterministic target ID computed only after `logicalAttemptId` creation | Yes | No | Yes | No |
+| Attempt | pending V2 entry constructed only after valid backend response | Yes | No | Yes | Yes |
+| Attempt | no section computes all fingerprints before Review freeze | No | No | No | No |
 | Attempt | Back-to-edit instruction change creates new attempt | Yes | No | No | Yes |
 | Attempt | screenshot-choice change creates new attempt | Yes | No | No | Yes |
 | Attempt | repeated submit ignored while in flight | Yes | No | No | Yes |
@@ -742,6 +775,7 @@ Revision and regeneration preserve the source `componentName`.
 | Persistence | atomic same-transaction source-version re-read | Yes | No | Yes | No |
 | Persistence | no `crypto.subtle.digest` inside active final persistence transaction | Yes | No | Yes | No |
 | Persistence | no `Blob.arrayBuffer()` or image decoding inside active final transaction | Yes | No | Yes | No |
+| Persistence | no Blob byte read or digest in either final transaction screenshot path | Yes | No | Yes | No |
 | Persistence | no non-IDB await between transaction-time source reads and target add/read-back | Yes | No | Yes | No |
 | Persistence | transaction remains active for target get/add/read-back | Yes | No | Yes | No |
 | Persistence | no `TransactionInactiveError` | No | No | Yes | Yes |
@@ -751,7 +785,13 @@ Revision and regeneration preserve the source `componentName`.
 | Persistence | conflicting duplicate target fails | Yes | No | Yes | Yes |
 | Persistence | read-back equality required before success | Yes | No | Yes | Yes |
 | Screenshot | screenshotIncluded=false screenshot-byte-only change does not invalidate outbound Review attempt | Yes | No | Yes | Yes |
+| Screenshot | screenshotIncluded=false metadata-only change is not treated as transmitted Review change | Yes | No | Yes | Yes |
+| Screenshot | screenshotIncluded=false transactionally reads referenced screenshot asset | Yes | No | Yes | No |
+| Screenshot | screenshotIncluded=false missing asset fails safely | Yes | No | Yes | Yes |
+| Screenshot | screenshotIncluded=false validates asset existence/schema without Blob hash | Yes | No | Yes | No |
 | Screenshot | screenshotIncluded=true digest revalidated before transport | Yes | No | Yes | Yes |
+| Screenshot | screenshotIncluded=true transactionally reads referenced screenshot asset | Yes | No | Yes | No |
+| Screenshot | screenshotIncluded=true compares approved metadata transactionally | Yes | No | Yes | No |
 | Screenshot | screenshot missing before persistence fails safely | Yes | No | Yes | Yes |
 | Screenshot | screenshot reference changed before persistence fails safely | Yes | No | Yes | Yes |
 | Screenshot | out-of-band same-key Blob replacement documented outside supported mutation API without at-rest digest | No | No | No | No |
@@ -792,10 +832,12 @@ Incomplete backend or transport helpers must remain unreachable from production 
 | `logicalAttemptId` lifecycle | Created after validation, source re-read, Review freeze, before Review display | Create on edit, on consent, or after transport | Single consistent Retry boundary | Frozen Review owns attempt | Yes |
 | `requestId` | Removed from 6D contract | Optional unused ID | Avoid unused identity | Stale binding uses attempt/review/token | Yes |
 | V2 contract | Discriminated union for revision/regeneration only | V2 initial-generation | Avoid underdefined initial behavior | Union validators | Yes |
-| Fingerprints | Domain-separated canonical SHA-256 computed before final transaction | Descriptive hashes; transaction-time digesting | Stable validation without transaction inactivity | Fingerprint helpers/tests | Yes |
+| Fingerprints | Source/instruction/current projection fingerprints before logicalAttemptId; reviewAttemptFingerprint after logicalAttemptId | Calculate reviewAttemptFingerprint before logicalAttemptId exists; transaction-time digesting | Matches attempt lifecycle and avoids transaction inactivity | Fingerprint helpers/tests | Yes |
+| Deterministic target ID | Computed only after `logicalAttemptId` exists | Compute before attempt exists | Target ID derives from attempt identity | Deterministic ID helper | Yes |
+| Pending V2 entry | Constructed only after valid backend response exists | Construct before response | V2 `value` requires `ComponentGenerationResponseV1` | Persistence preparation | Yes |
 | Current CaptureRecord edits | Current Review projection at Review time; no equality to ancestor fingerprint | Block title/tag/component-type edits | User metadata edits should not block revision | Store current fingerprint on V2 | Yes |
 | V2 sourceReviewFingerprint | 6D current CaptureRecord projection fingerprint excluding screenshot | Reuse Milestone 5 screenshot-inclusive fingerprint | Optional screenshot needs distinct semantics | Store `currentCaptureProjectionFingerprint` | Yes |
-| Screenshot | Optional explicit checkbox, off by default; false excludes digest/metadata, true binds digest/metadata | Always, never, or Milestone 5-style always fingerprint screenshot | Privacy/cost/fidelity balance and internal consistency | Choice invalidates attempt when changed | Yes |
+| Screenshot | Optional explicit checkbox, off by default; false excludes digest/metadata but still transactionally reads asset; true binds digest/metadata and compares approved metadata transactionally | Always, never, or Milestone 5-style always fingerprint screenshot | Privacy/cost/fidelity balance and missing-asset detection | Choice invalidates attempt when changed | Yes |
 | Backend route | Dedicated `/v1/revise-component` | Reuse `/v1/generate-component` | Avoid V1 exact-key ambiguity | New route and tests | Yes |
 | Idempotency header | Required `X-Element-Catcher-Idempotency-Key` | Optional header | Matches Retry contract | CORS/preflight update | Yes |
 | Response | Reuse `ComponentGenerationResponseV1` | Revision-specific response | Lineage is local | Existing validator reused | Yes |
@@ -824,10 +866,13 @@ Incomplete backend or transport helpers must remain unreachable from production 
 Before implementation starts, independent review must approve:
 
 - consistent `logicalAttemptId` lifecycle;
+- `reviewAttemptFingerprint` and deterministic target ID timing after `logicalAttemptId`;
+- pending V2 construction after valid response;
 - exact V2 discriminated union;
 - fingerprint algorithms and domain separators;
 - transaction-safe fingerprint/canonical equality split;
 - optional screenshot fingerprint semantics;
+- transactional screenshot asset existence reads in both screenshot modes;
 - current CaptureRecord edit semantics;
 - atomic source-version re-read and persistence transaction;
 - cancellation-after-commit behavior;
