@@ -1,30 +1,87 @@
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import type { BrowserContext, Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { PREVIEW_CLASS_TOKENS } from "../../extension/src/shared/preview-policy";
 import {
   assertSiblingFramesAndGeneratedPreview,
   getRecordedPreviewSession,
+  installRenderInboundRecorder,
   installPreviewMessageRecorder,
   openGeneratedPreview,
+  postMessageFromFrameToParent,
+  previewFrameBySuffix,
   renderMessagesContainGeneratedSource,
   seedGeneratedPreviewVersion,
   validPreviewCode
 } from "./preview-helpers";
 
 test.describe("Milestone 6C safe generated component preview", () => {
+  test("bounded utility CSS is exactly in parity with the approved token registry", async () => {
+    const css = readFileSync(resolve(process.cwd(), "extension/src/preview/preview-utilities.css"), "utf8");
+    const selectors = [...css.matchAll(/^\.([A-Za-z0-9_-]+)\s*\{/gm)].map((match) => match[1]).sort();
+    expect(selectors).toEqual([...PREVIEW_CLASS_TOKENS].sort());
+  });
+
   test("previews a valid generated version through host plan and render plan only", async ({ sidePanelPage }) => {
     const httpRequests: string[] = [];
     sidePanelPage.on("request", (request) => {
       if (/^https?:/.test(request.url())) httpRequests.push(request.url());
     });
     const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installRenderInboundRecorder(sidePanelPage);
     await installPreviewMessageRecorder(sidePanelPage);
     await openGeneratedPreview(sidePanelPage, target.title);
     await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
     await expect(sidePanelPage.locator("pre.generated-code code")).toContainText("export function PreviewCard");
     expect(await renderMessagesContainGeneratedSource(sidePanelPage)).toBe(false);
-    expect(await hasRenderPlanWithoutSourceCode(sidePanelPage)).toBe(true);
+    expect(await renderRealmReceivedPlanWithoutSource(sidePanelPage)).toBe(true);
     expect(await hasPlanSuccessWithHashes(sidePanelPage)).toBe(true);
     expect(httpRequests).toEqual([]);
+  });
+
+  test("applies representative bounded utility CSS in real Chromium", async ({ sidePanelPage }) => {
+    const code = "export function PreviewCard() {\n  return <section className=\"grid gap-2 w-full p-4 border rounded-md bg-blue-600\"><div className=\"flex gap-2\"><h2 className=\"text-lg font-semibold text-white\">Styled</h2><p className=\"text-sm text-slate-600 bg-white\">Body</p></div></section>;\n}";
+    const target = await seedGeneratedPreviewVersion(sidePanelPage, code);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await expect(sidePanelPage.locator(".preview-sandbox-frame")).toHaveCount(2);
+    await expect(sidePanelPage.getByText("Preview ready", { exact: true })).toBeVisible();
+    const styles = await previewFrameBySuffix(sidePanelPage, "src/preview/render-realm.html").evaluate(() => {
+      const section = document.querySelector("section") as HTMLElement;
+      const row = document.querySelector("div") as HTMLElement;
+      const heading = document.querySelector("h2") as HTMLElement;
+      const body = document.querySelector("p") as HTMLElement;
+      const read = (element: HTMLElement) => getComputedStyle(element);
+      return {
+        section: {
+          display: read(section).display,
+          gap: read(section).gap,
+          width: read(section).width,
+          paddingTop: read(section).paddingTop,
+          borderTopWidth: read(section).borderTopWidth,
+          borderTopStyle: read(section).borderTopStyle,
+          borderRadius: read(section).borderRadius,
+          backgroundColor: read(section).backgroundColor
+        },
+        row: { display: read(row).display, gap: read(row).gap },
+        heading: { fontSize: read(heading).fontSize, fontWeight: read(heading).fontWeight, color: read(heading).color },
+        body: { color: read(body).color, backgroundColor: read(body).backgroundColor }
+      };
+    });
+    expect(styles.section.display).toBe("grid");
+    expect(styles.section.gap).toBe("8px");
+    expect(styles.section.paddingTop).toBe("16px");
+    expect(styles.section.borderTopWidth).toBe("1px");
+    expect(styles.section.borderTopStyle).toBe("solid");
+    expect(styles.section.borderRadius).toBe("6px");
+    expect(styles.section.backgroundColor).toBe("rgb(37, 99, 235)");
+    expect(styles.row.display).toBe("flex");
+    expect(styles.row.gap).toBe("8px");
+    expect(styles.heading.fontSize).toBe("18px");
+    expect(styles.heading.fontWeight).toBe("600");
+    expect(styles.heading.color).toBe("rgb(255, 255, 255)");
+    expect(styles.body.color).toBe("rgb(71, 85, 105)");
+    expect(styles.body.backgroundColor).toBe("rgb(255, 255, 255)");
   });
 
   const rejectedCases = [
@@ -39,6 +96,11 @@ test.describe("Milestone 6C safe generated component preview", () => {
     ["URLs", "export function PreviewCard() { return <div href=\"https://example.test\">x</div>; }"],
     ["styles", "export function PreviewCard() { return <div style=\"color:red\">x</div>; }"],
     ["unknown classes", "export function PreviewCard() { return <div className=\"fixed top-[13px]\">x</div>; }"],
+    ["duplicate className", "export function PreviewCard() { return <div className=\"p-4\" className=\"p-2\">x</div>; }"],
+    ["duplicate role", "export function PreviewCard() { return <div role=\"region\" role=\"status\">x</div>; }"],
+    ["duplicate aria-label", "export function PreviewCard() { return <div aria-label=\"one\" aria-label=\"two\">x</div>; }"],
+    ["program directives", "\"use strict\";\nexport function PreviewCard() { return <div />; }"],
+    ["function directives", "export function PreviewCard() { \"use strict\"; return <div />; }"],
     ["excessive source", `export function PreviewCard() { return <div>${"x".repeat(9000)}</div>; }`]
   ] as const;
 
@@ -52,12 +114,29 @@ test.describe("Milestone 6C safe generated component preview", () => {
     });
   }
 
+  test("keeps JSX comments inert while rendering allowed JSX", async ({ sidePanelPage }) => {
+    const code = "export function PreviewCard() { return <div className=\"p-4\">{/* comment stays inert */}Visible</div>; }";
+    const target = await seedGeneratedPreviewVersion(sidePanelPage, code);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await expect(sidePanelPage.getByText("Preview ready", { exact: true })).toBeVisible();
+    await expect(sidePanelPage.frameLocator(".preview-sandbox-render-frame").getByText("Visible")).toBeVisible();
+  });
+
+  test("blocks a UTF-8 source request that exceeds the protocol message limit before timeout", async ({ sidePanelPage }) => {
+    const code = `export function PreviewCard() { return <div>${"😀".repeat(8130)}</div>; }`;
+    const target = await seedGeneratedPreviewVersion(sidePanelPage, code);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await expect(sidePanelPage.getByText("Preview unavailable")).toBeVisible();
+    await expect(sidePanelPage.getByText("message size limit")).toBeVisible();
+    await expect(sidePanelPage.locator(".preview-sandbox-frame")).toHaveCount(0);
+  });
+
   test("rejects stale and malformed production messages while keeping the active preview safe", async ({ sidePanelPage }) => {
     const target = await seedGeneratedPreviewVersion(sidePanelPage);
     await installPreviewMessageRecorder(sidePanelPage);
     await openGeneratedPreview(sidePanelPage, target.title);
     const session = await getRecordedPreviewSession(sidePanelPage);
-    await postFromPreviewFrame(sidePanelPage, "src/preview/host.html", {
+    await postMessageFromFrameToParent(sidePanelPage, "src/preview/host.html", {
       contractVersion: 2,
       type: "preview.plan.failure.v2",
       requestId: "preview-00000000000000000000000000000000",
@@ -65,7 +144,7 @@ test.describe("Milestone 6C safe generated component preview", () => {
       category: "policy",
       diagnostics: ["stale replay"]
     });
-    await postFromPreviewFrame(sidePanelPage, "src/preview/render-realm.html", {
+    await postMessageFromFrameToParent(sidePanelPage, "src/preview/render-realm.html", {
       contractVersion: 2,
       type: "preview.render.failure.v2",
       requestId: session.requestId,
@@ -76,6 +155,67 @@ test.describe("Milestone 6C safe generated component preview", () => {
     await expect(sidePanelPage.getByText("Preview ready", { exact: true })).toBeVisible();
     await expect(sidePanelPage.getByText("stale replay")).toHaveCount(0);
     await expect(sidePanelPage.getByText("wrong nonce")).toHaveCount(0);
+  });
+
+  test("duplicate host source request during planning emits one failure and no later success", async ({ sidePanelPage }) => {
+    await installNeverResolvingHostDigest(sidePanelPage);
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    const session = await getRecordedPreviewSession(sidePanelPage);
+    const sourceSha256 = await sidePanelPage.evaluate(async (source) => {
+      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(source));
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+    }, validPreviewCode());
+    await sidePanelPage.evaluate(
+      ({ session, sourceSha256, source }) => {
+        const host = document.querySelector(".preview-sandbox-host-frame") as HTMLIFrameElement;
+        host.contentWindow?.postMessage(
+          {
+            contractVersion: 2,
+            type: "preview.source.request.v2",
+            requestId: session.requestId,
+            sessionNonce: session.sessionNonce,
+            expectedComponentName: "PreviewCard",
+            source,
+            sourceSha256
+          },
+          "*"
+        );
+      },
+      { session, sourceSha256, source: validPreviewCode() }
+    );
+    await expect(sidePanelPage.getByText("Preview unavailable")).toBeVisible();
+    expect(await countPreviewMessages(sidePanelPage, "host", "preview.plan.failure.v2")).toBe(1);
+    expect(await countPreviewMessages(sidePanelPage, "host", "preview.plan.success.v2")).toBe(0);
+  });
+
+  test("duplicate render plan during rendering emits one failure and no React success", async ({ sidePanelPage }) => {
+    await installNeverResolvingRenderDigest(sidePanelPage);
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installRenderInboundRecorder(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await expect(sidePanelPage.locator(".preview-sandbox-frame")).toHaveCount(2);
+    await expect
+      .poll(async () =>
+        sidePanelPage.frames().find((candidate) => candidate.url().endsWith("src/preview/render-realm.html"))?.evaluate(() => {
+          const messages = (window as unknown as { __ecRenderInboundMessages?: { messages: unknown[] } }).__ecRenderInboundMessages?.messages ?? [];
+          return messages.find((message) => (message as { type?: string }).type === "preview.render.plan.v2") ?? null;
+        }) ?? null
+      )
+      .not.toBeNull();
+    const duplicatePlan = await previewFrameBySuffix(sidePanelPage, "src/preview/render-realm.html").evaluate(() => {
+      const messages = (window as unknown as { __ecRenderInboundMessages?: { messages: unknown[] } }).__ecRenderInboundMessages?.messages ?? [];
+      return messages.find((message) => (message as { type?: string }).type === "preview.render.plan.v2") as Record<string, unknown>;
+    });
+    await sidePanelPage.evaluate((message) => {
+      const render = document.querySelector(".preview-sandbox-render-frame") as HTMLIFrameElement;
+      render.contentWindow?.postMessage(message, "*");
+    }, duplicatePlan);
+    await expect(sidePanelPage.getByText("Preview failed", { exact: true })).toBeVisible();
+    expect(await countPreviewMessages(sidePanelPage, "render", "preview.render.failure.v2")).toBe(1);
+    expect(await countPreviewMessages(sidePanelPage, "render", "preview.render.success.v2")).toBe(0);
   });
 
   test("times out automatically, disposes frames and reopens with fresh identities", async ({ context, extensionId }) => {
@@ -111,12 +251,13 @@ test.describe("Milestone 6C safe generated component preview", () => {
   });
 });
 
-async function hasRenderPlanWithoutSourceCode(page: Page) {
-  return page.evaluate(() => {
-    const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ source: string; data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+async function renderRealmReceivedPlanWithoutSource(page: Page) {
+  return previewFrameBySuffix(page, "src/preview/render-realm.html").evaluate(() => {
+    const messages = (window as unknown as { __ecRenderInboundMessages?: { messages: unknown[] } }).__ecRenderInboundMessages?.messages ?? [];
     return messages.some((message) => {
-      const data = message.data as { type?: string; renderPlan?: unknown };
-      return message.source === "render" && data.type === "preview.render.success.v2";
+      const data = message as { type?: string; renderPlan?: unknown; sourceSha256?: string; planSha256?: string; source?: unknown };
+      const text = JSON.stringify(data);
+      return data.type === "preview.render.plan.v2" && !!data.renderPlan && /^[a-f0-9]{64}$/.test(data.sourceSha256 ?? "") && /^[a-f0-9]{64}$/.test(data.planSha256 ?? "") && data.source === undefined && !text.includes("export function") && !text.includes("React.createElement");
     });
   });
 }
@@ -131,23 +272,57 @@ async function hasPlanSuccessWithHashes(page: Page) {
   });
 }
 
-async function postFromPreviewFrame(page: Page, pathSuffix: string, message: Record<string, unknown>) {
-  const selector = pathSuffix.includes("host.html") ? ".preview-sandbox-host-frame" : ".preview-sandbox-render-frame";
-  await page.evaluate(
-    ({ selector, message }) => {
-      const frame = document.querySelector(selector) as HTMLIFrameElement | null;
-      if (!frame?.contentWindow) throw new Error(`Expected frame ${selector}.`);
-      frame.contentWindow.postMessage(message, "*");
-    },
-    { selector, message }
-  );
-}
-
 async function blockRenderRealm(context: BrowserContext, extensionId: string) {
   const renderRealmBundlePattern = new RegExp(`^chrome-extension://${extensionId}/assets/previewRenderRealm\\.js$`);
   await context.route(renderRealmBundlePattern, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/javascript", body: "" });
     await context.unroute(renderRealmBundlePattern);
+  });
+}
+
+async function countPreviewMessages(page: Page, source: string, type: string) {
+  return page.evaluate(
+    ({ source, type }) => {
+      const messages = (window as unknown as { __ecPreviewMessages?: { messages: Array<{ source: string; data: unknown }> } }).__ecPreviewMessages?.messages ?? [];
+      return messages.filter((message) => message.source === source && (message.data as { type?: string }).type === type).length;
+    },
+    { source, type }
+  );
+}
+
+async function installNeverResolvingHostDigest(page: Page) {
+  await page.context().addInitScript(() => {
+    if (!location.href.endsWith("/src/preview/host.html")) return;
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    let blocked = false;
+    Object.defineProperty(crypto.subtle, "digest", {
+      configurable: true,
+      value(algorithm: AlgorithmIdentifier, data: BufferSource) {
+        if (!blocked) {
+          blocked = true;
+          return new Promise<ArrayBuffer>(() => undefined);
+        }
+        return originalDigest(algorithm, data);
+      }
+    });
+  });
+}
+
+async function installNeverResolvingRenderDigest(page: Page) {
+  await page.context().addInitScript(() => {
+    if (!location.href.endsWith("/src/preview/render-realm.html")) return;
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    let blocked = false;
+    Object.defineProperty(crypto.subtle, "digest", {
+      configurable: true,
+      value(algorithm: AlgorithmIdentifier, data: BufferSource) {
+        if (!blocked) {
+          blocked = true;
+          return new Promise<ArrayBuffer>(() => undefined);
+        }
+        return originalDigest(algorithm, data);
+      }
+    });
   });
 }
 

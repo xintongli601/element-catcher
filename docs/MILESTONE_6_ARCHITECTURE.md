@@ -37,6 +37,9 @@ Security boundaries:
 - The host is the only sandbox page that receives generated source. It parses with the packaged `@babel/parser` dependency and converts approved source into a data-only render plan.
 - The render realm receives only `PreviewRenderPlanV1`, independently validates that plan, recomputes the canonical plan hash, and renders only allowed tags, text, attributes, roles, and class tokens.
 - The Side Panel validates current host and render `WindowProxy` identities, message direction, exact keys, message byte limits, protocol version, requestId, sessionNonce, source hash, component name, plan schema, and canonical plan hash. It reconstructs clean relay objects rather than forwarding `event.data`.
+- The Side Panel rejects unrelated `WindowProxy` sources before byte-size calculation, JSON serialization, schema traversal, or payload field access.
+- Source hash and complete session identity are created before the preview frames are mounted, preventing a lost iframe `onLoad` from permanently dropping init.
+- Host planning, render planning, and trusted plan validation use captured-session and operation-token guards after async parser/hash boundaries so terminal state cannot be reversed by stale work.
 - Unsupported, unsafe, malformed, oversized, stale, wrong-session, or timed-out preview attempts fail closed. Persisted generated source remains source-only and CaptureRecord/generated-version storage is not mutated.
 
 Previewable Subset V1:
@@ -45,6 +48,7 @@ Previewable Subset V1:
 - Allows static JSX built from the approved tag list, text nodes, expression containers containing string/number literals, static `className`, `role`, `aria-label`, `aria-hidden`, `title`, and button `type`.
 - Normalizes button `type` to `button`.
 - Allows only configured class tokens and bounded text; unsupported Tailwind classes become preview diagnostics instead of generated CSS execution.
+- Rejects program directives, function-body directives, and duplicate JSX attributes before constructing the render plan. JSX comments are treated as inert empty JSX expressions and do not create executable output.
 - Rejects imports, exports unrelated to the single component, classes, calls, member expressions, spreads, hooks, effects, browser APIs, network, storage, navigation, workers, WebAssembly, timers, raw scripts, `dangerouslySetInnerHTML`, inline styles, dynamic classes, URLs, event handlers, and unsupported JSX constructs.
 
 Protocol V2:
@@ -64,6 +68,7 @@ Resource and lifecycle limits:
 - Message byte limit: 32,768 bytes.
 - Preview timeout: 10,000 ms per attempt, followed by terminal disposal.
 - One preview attempt owns one requestId, one sessionNonce, one host frame, and one render frame. Reopen creates fresh identities.
+- The complete `preview.source.request.v2` message is byte-size checked before posting; a source inside the code-point limit but outside the UTF-8 message limit fails immediately without waiting for timeout.
 
 Dependency decision:
 
@@ -73,7 +78,7 @@ Dependency decision:
 Residual risks:
 
 - Parser policy bugs may reject valid generated code or allow a construct that should have stayed source-only; the render realm still receives only a validated data plan.
-- The bounded Tailwind subset is intentionally lower fidelity than full Tailwind output.
+- The bounded Tailwind subset is intentionally lower fidelity than full Tailwind output. Every accepted class token must have exactly one source-controlled utility CSS selector, and no extra utility selector may exist outside the registry.
 - Iframe disposal cannot guarantee forced termination of an already-hung browser renderer.
 - Milestone 6C does not implement natural-language revision, regeneration, version comparison, export, storage migrations, backend contract changes, or provider calls.
 

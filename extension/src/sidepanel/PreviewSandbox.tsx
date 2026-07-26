@@ -12,10 +12,12 @@ import {
   type PreviewDisposeV2,
   type PreviewPlanFailureV2,
   type PreviewPlanSuccessV2,
+  type PreviewSourceRequestV2,
   type PreviewRenderFailureV2,
+  type PreviewRenderPlanV2,
   type PreviewRenderSuccessV2
 } from "../shared/preview-protocol";
-import { canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PreviewRenderPlanV1 } from "../shared/preview-policy";
+import { assertSourceWithinLimit, canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PreviewRenderPlanV1 } from "../shared/preview-policy";
 
 type PreviewSandboxState =
   | { status: "loading"; message: string }
@@ -32,13 +34,17 @@ type Session = {
   sourceSha256: string;
   componentName: string;
   versionId: string;
+  operationToken: number;
+  hostWindow: WindowProxy | null;
+  renderWindow: WindowProxy | null;
 };
 
 export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVersionEntryV1; onClose: () => void }) {
   const [state, setState] = useState<PreviewSandboxState>({ status: "loading", message: "Loading preview" });
-  const [framesMounted, setFramesMounted] = useState(true);
+  const [framesMounted, setFramesMounted] = useState(false);
   const hostFrameRef = useRef<HTMLIFrameElement | null>(null);
   const renderFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const framesMountedRef = useRef(false);
   const lifecycleRef = useRef<LifecycleState>("boot");
   const hostReadyRef = useRef(false);
   const renderReadyRef = useRef(false);
@@ -47,6 +53,7 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
   const planSha256Ref = useRef<string | null>(null);
   const sourceSentToHostRef = useRef(false);
   const renderPlanSentRef = useRef(false);
+  const operationCounterRef = useRef(1);
   const hostUrl = chrome.runtime.getURL("src/preview/host.html");
   const renderUrl = chrome.runtime.getURL("src/preview/render-realm.html");
 
@@ -60,10 +67,14 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
     planSha256Ref.current = null;
     sourceSentToHostRef.current = false;
     renderPlanSentRef.current = false;
-    setFramesMounted(true);
+    setFramesMountedState(false);
     setState({ status: "loading", message: "Loading preview" });
 
-    void sha256Hex(sessionSeed.code)
+    void Promise.resolve()
+      .then(() => {
+        assertSourceWithinLimit(sessionSeed.code);
+        return sha256Hex(sessionSeed.code);
+      })
       .then((sourceSha256) => {
         if (cancelled) return;
         activeSessionRef.current = {
@@ -71,9 +82,14 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
           sessionNonce: createPreviewSessionNonce(),
           sourceSha256,
           componentName: sessionSeed.componentName,
-          versionId: sessionSeed.versionId
+          versionId: sessionSeed.versionId,
+          operationToken: operationCounterRef.current,
+          hostWindow: null,
+          renderWindow: null
         };
+        operationCounterRef.current += 1;
         lifecycleRef.current = "awaiting_ready";
+        setFramesMountedState(true);
         startTimeout();
       })
       .catch((error) => {
@@ -84,14 +100,17 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
       });
 
     const handleMessage = (event: MessageEvent) => {
-      if (lifecycleRef.current === "disposed" || !isPreviewMessageWithinLimit(event.data)) return;
-      const hostWindow = hostFrameRef.current?.contentWindow;
-      const renderWindow = renderFrameRef.current?.contentWindow;
+      const session = activeSessionRef.current;
+      if (!session || lifecycleRef.current === "disposed") return;
+      const hostWindow = session.hostWindow ?? hostFrameRef.current?.contentWindow;
+      const renderWindow = session.renderWindow ?? renderFrameRef.current?.contentWindow;
       if (event.source === hostWindow) {
+        if (!isPreviewMessageWithinLimit(event.data)) return;
         void handleHostMessage(event.data);
         return;
       }
       if (event.source === renderWindow) {
+        if (!isPreviewMessageWithinLimit(event.data)) return;
         void handleRenderMessage(event.data);
       }
     };
@@ -107,7 +126,10 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
   const postInitToHost = () => {
     const session = activeSessionRef.current;
     if (!session || lifecycleRef.current === "disposed") return;
-    hostFrameRef.current?.contentWindow?.postMessage(
+    const hostWindow = hostFrameRef.current?.contentWindow;
+    if (!hostWindow) return;
+    session.hostWindow = hostWindow;
+    hostWindow.postMessage(
       {
         contractVersion: PREVIEW_PROTOCOL_VERSION,
         type: "preview.host.init.v2",
@@ -121,7 +143,10 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
   const postInitToRender = () => {
     const session = activeSessionRef.current;
     if (!session || lifecycleRef.current === "disposed") return;
-    renderFrameRef.current?.contentWindow?.postMessage(
+    const renderWindow = renderFrameRef.current?.contentWindow;
+    if (!renderWindow) return;
+    session.renderWindow = renderWindow;
+    renderWindow.postMessage(
       {
         contractVersion: PREVIEW_PROTOCOL_VERSION,
         type: "preview.render.init.v2",
@@ -135,21 +160,23 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
   const maybeRequestPlan = () => {
     const session = activeSessionRef.current;
     if (!session || lifecycleRef.current !== "awaiting_ready" || !hostReadyRef.current || !renderReadyRef.current || sourceSentToHostRef.current) return;
+    const sourceRequest: PreviewSourceRequestV2 = {
+      contractVersion: PREVIEW_PROTOCOL_VERSION,
+      type: "preview.source.request.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      expectedComponentName: session.componentName,
+      source: sessionSeed.code,
+      sourceSha256: session.sourceSha256
+    };
+    if (!isPreviewMessageWithinLimit(sourceRequest)) {
+      finishWithFailure("Preview unavailable", new Error("Preview source request exceeds the message size limit."));
+      return;
+    }
     sourceSentToHostRef.current = true;
     lifecycleRef.current = "planning";
     setState({ status: "loading", message: "Loading preview" });
-    hostFrameRef.current?.contentWindow?.postMessage(
-      {
-        contractVersion: PREVIEW_PROTOCOL_VERSION,
-        type: "preview.source.request.v2",
-        requestId: session.requestId,
-        sessionNonce: session.sessionNonce,
-        expectedComponentName: session.componentName,
-        source: sessionSeed.code,
-        sourceSha256: session.sourceSha256
-      },
-      "*"
-    );
+    session.hostWindow?.postMessage(sourceRequest, "*");
   };
 
   const handleHostMessage = async (rawMessage: unknown) => {
@@ -157,7 +184,11 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
     if (!session || lifecycleRef.current === "disposed") return;
     try {
       assertPreviewHostToSidePanelMessageV2(rawMessage);
-      assertMatchesPreviewSession(rawMessage, session.requestId, session.sessionNonce);
+    } catch {
+      return;
+    }
+    try {
+      if (!matchesSession(rawMessage, session)) return;
       if (rawMessage.type === "preview.host.ready.v2") {
         if (lifecycleRef.current !== "awaiting_ready") return;
         hostReadyRef.current = true;
@@ -185,7 +216,11 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
     if (!session || lifecycleRef.current === "disposed") return;
     try {
       assertPreviewRenderToSidePanelMessageV2(rawMessage);
-      assertMatchesPreviewSession(rawMessage, session.requestId, session.sessionNonce);
+    } catch {
+      return;
+    }
+    try {
+      if (!matchesSession(rawMessage, session)) return;
       if (rawMessage.type === "preview.render.ready.v2") {
         if (lifecycleRef.current !== "awaiting_ready") return;
         renderReadyRef.current = true;
@@ -211,27 +246,27 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
     const cleanPlan = validatePreviewRenderPlan(message.renderPlan, session.componentName);
     if (cleanPlan.sourceSha256 !== session.sourceSha256) throw new Error("Preview plan source hash mismatch.");
     const planSha256 = await sha256Hex(canonicalStringify(cleanPlan));
+    assertCurrentTrustedOperation(session, "validating");
     if (planSha256 !== message.planSha256) throw new Error("Preview plan hash mismatch.");
     planSha256Ref.current = planSha256;
     return cleanPlan;
   };
 
   const postRenderPlan = async (cleanPlan: PreviewRenderPlanV1, planSha256: string, session: Session) => {
-    if (renderPlanSentRef.current) return;
+    assertCurrentTrustedOperation(session, "validating");
+    if (renderPlanSentRef.current || !session.renderWindow) return;
     renderPlanSentRef.current = true;
     lifecycleRef.current = "rendering";
-    renderFrameRef.current?.contentWindow?.postMessage(
-      {
-        contractVersion: PREVIEW_PROTOCOL_VERSION,
-        type: "preview.render.plan.v2",
-        requestId: session.requestId,
-        sessionNonce: session.sessionNonce,
-        sourceSha256: session.sourceSha256,
-        planSha256,
-        renderPlan: validatePreviewRenderPlan(cleanPlan, session.componentName)
-      },
-      "*"
-    );
+    const renderPlanMessage: PreviewRenderPlanV2 = {
+      contractVersion: PREVIEW_PROTOCOL_VERSION,
+      type: "preview.render.plan.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      sourceSha256: session.sourceSha256,
+      planSha256,
+      renderPlan: validatePreviewRenderPlan(cleanPlan, session.componentName)
+    };
+    session.renderWindow.postMessage(renderPlanMessage, "*");
   };
 
   const finishWithRenderSuccess = (_message: PreviewRenderSuccessV2) => {
@@ -289,7 +324,35 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
     activeSessionRef.current = null;
     hostReadyRef.current = false;
     renderReadyRef.current = false;
-    if (unmountFrames) setFramesMounted(false);
+    if (unmountFrames) setFramesMountedState(false);
+  };
+
+  const setFramesMountedState = (value: boolean) => {
+    framesMountedRef.current = value;
+    setFramesMounted(value);
+  };
+
+  const assertCurrentTrustedOperation = (session: Session, lifecycle: LifecycleState) => {
+    const current = activeSessionRef.current;
+    if (
+      current !== session ||
+      current.operationToken !== session.operationToken ||
+      lifecycleRef.current !== lifecycle ||
+      !framesMountedRef.current ||
+      hostFrameRef.current?.contentWindow !== session.hostWindow ||
+      renderFrameRef.current?.contentWindow !== session.renderWindow
+    ) {
+      throw new Error("Preview session is no longer current.");
+    }
+  };
+
+  const matchesSession = (message: { requestId: string; sessionNonce: string }, session: Session) => {
+    try {
+      assertMatchesPreviewSession(message, session.requestId, session.sessionNonce);
+      return true;
+    } catch {
+      return false;
+    }
   };
 
   const clearPreviewTimeout = () => {

@@ -26,15 +26,23 @@ export async function buildPreviewRenderPlanFromSource({
   if ((await sha256Hex(source)) !== sourceSha256) {
     throw new PreviewPolicyError("policy", "Source hash mismatch.");
   }
-  const ast = parse(source, {
-    sourceType: "module",
-    plugins: ["jsx"],
-    errorRecovery: false,
-    attachComment: false,
-    tokens: false,
-    ranges: false
-  });
+  let ast: ReturnType<typeof parse>;
+  try {
+    ast = parse(source, {
+      sourceType: "module",
+      plugins: ["jsx"],
+      errorRecovery: false,
+      attachComment: false,
+      tokens: false,
+      ranges: false
+    });
+  } catch (error) {
+    throw new PreviewPolicyError("syntax", error instanceof Error ? error.message : "Generated source could not be parsed.");
+  }
   traverseBoundedAst(ast);
+  if ((((ast.program as unknown) as NodeRecord).directives as unknown[])?.length > 0) {
+    throw new PreviewPolicyError("policy", "Program directives are not previewable.");
+  }
   const declaration = extractSingleComponentDeclaration(ast.program.body, expectedComponentName);
   const jsx = extractReturnedJsx(declaration);
   const candidate = {
@@ -99,6 +107,7 @@ function validateFunctionDeclaration(node: NodeRecord, expectedComponentName: st
   const id = node.id as NodeRecord | null;
   if (!id || id.name !== expectedComponentName) throw new PreviewPolicyError("component-name", "Component name does not match the generated version.");
   if ((node.params as unknown[])?.length !== 0 || node.async || node.generator) throw new PreviewPolicyError("policy", "Component parameters, async and generators are not previewable.");
+  rejectBodyDirectives(node);
   return node;
 }
 
@@ -111,6 +120,7 @@ function validateVariableDeclaration(node: NodeRecord, expectedComponentName: st
   const init = declaration.init as NodeRecord;
   if (id?.type !== "Identifier" || id.name !== expectedComponentName || init?.type !== "ArrowFunctionExpression") throw new PreviewPolicyError("component-name", "Component name does not match the generated version.");
   if ((init.params as unknown[])?.length !== 0 || init.async) throw new PreviewPolicyError("policy", "Component parameters and async are not previewable.");
+  rejectBodyDirectives(init);
   return init;
 }
 
@@ -141,11 +151,15 @@ function jsxToPlanNode(node: NodeRecord): PreviewRenderNodeV1 {
   if (name?.type !== "JSXIdentifier" || /^[A-Z]/.test(String(name.name))) throw new PreviewPolicyError("policy", "Component/member JSX tags are not previewable.");
   const tag = String(name.name);
   const props: Record<string, string | boolean> = {};
+  const seenProps = new Set<string>();
   for (const attr of (opening.attributes as NodeRecord[]) ?? []) {
     if (attr.type !== "JSXAttribute") throw new PreviewPolicyError("policy", "Spread props are not previewable.");
     const attrName = attr.name as NodeRecord;
     if (attrName?.type !== "JSXIdentifier") throw new PreviewPolicyError("policy", "Only simple JSX attributes are previewable.");
-    props[String(attrName.name)] = jsxAttributeValue(attr.value);
+    const propName = String(attrName.name);
+    if (seenProps.has(propName)) throw new PreviewPolicyError("policy", `Duplicate JSX attribute ${propName} is not previewable.`);
+    seenProps.add(propName);
+    props[propName] = jsxAttributeValue(attr.value);
   }
   return { kind: "element", tag: tag as never, props, children: jsxChildrenToPlan(node.children as NodeRecord[]) };
 }
@@ -189,4 +203,11 @@ function jsxAttributeValue(value: unknown) {
 function isJsx(value: unknown) {
   const type = (value as NodeRecord | null)?.type;
   return type === "JSXElement" || type === "JSXFragment";
+}
+
+function rejectBodyDirectives(node: NodeRecord) {
+  const body = node.body as NodeRecord | undefined;
+  if (body?.type === "BlockStatement" && ((body.directives as unknown[])?.length ?? 0) > 0) {
+    throw new PreviewPolicyError("policy", "Function body directives are not previewable.");
+  }
 }

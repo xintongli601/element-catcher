@@ -17,9 +17,11 @@ type HostSession = PreviewHostInitV2 & {
   parentWindow: WindowProxy;
   lifecycle: HostLifecycle;
   sourceRequestsReceived: number;
+  operationToken: number;
 };
 
 let activeSession: HostSession | null = null;
+let nextOperationToken = 1;
 
 window.addEventListener("message", (event) => {
   void handleMessage(event);
@@ -54,7 +56,7 @@ async function handleMessage(event: MessageEvent) {
 }
 
 function startSession(init: PreviewHostInitV2, parentWindow: WindowProxy) {
-  activeSession = { ...init, parentWindow, lifecycle: "ready", sourceRequestsReceived: 0 };
+  activeSession = { ...init, parentWindow, lifecycle: "ready", sourceRequestsReceived: 0, operationToken: 0 };
   parentWindow.postMessage(
     {
       contractVersion: 2,
@@ -72,34 +74,42 @@ async function handleSourceRequest(message: PreviewSourceRequestV2) {
     return;
   }
 
-  activeSession.sourceRequestsReceived += 1;
-  if (activeSession.sourceRequestsReceived > 1) {
+  const session = activeSession;
+  session.sourceRequestsReceived += 1;
+  if (session.sourceRequestsReceived > 1) {
     postPlanFailure("limit", new Error("Only one preview source request is allowed per host session."));
     return;
   }
 
-  activeSession.lifecycle = "planning";
+  session.lifecycle = "planning";
+  session.operationToken = nextOperationToken;
+  nextOperationToken += 1;
+  const operationToken = session.operationToken;
   try {
     const candidatePlan = await buildPreviewRenderPlanFromSource({
       source: message.source,
       expectedComponentName: message.expectedComponentName,
       sourceSha256: message.sourceSha256
     });
+    if (!isCurrentPlanningOperation(session, operationToken)) return;
     const renderPlan = validatePreviewRenderPlan(candidatePlan, message.expectedComponentName);
     const planSha256 = await sha256Hex(canonicalStringify(renderPlan));
-    activeSession.lifecycle = "succeeded";
+    if (!isCurrentPlanningOperation(session, operationToken)) return;
+    session.lifecycle = "succeeded";
     const success: PreviewPlanSuccessV2 = {
       contractVersion: 2,
       type: "preview.plan.success.v2",
-      requestId: activeSession.requestId,
-      sessionNonce: activeSession.sessionNonce,
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
       sourceSha256: message.sourceSha256,
       planSha256,
       renderPlan
     };
-    activeSession.parentWindow.postMessage(success, "*");
+    session.parentWindow.postMessage(success, "*");
   } catch (error) {
-    postPlanFailure(errorCategory(error), error);
+    if (isCurrentPlanningOperation(session, operationToken)) {
+      postPlanFailure(errorCategory(error), error);
+    }
   }
 }
 
@@ -124,7 +134,12 @@ function dispose(message: PreviewDisposeV2) {
     return;
   }
   activeSession.lifecycle = "disposed";
+  activeSession.operationToken += 1;
   activeSession = null;
+}
+
+function isCurrentPlanningOperation(session: HostSession, operationToken: number) {
+  return activeSession === session && session.lifecycle === "planning" && session.operationToken === operationToken;
 }
 
 function errorCategory(error: unknown): PlanFailureCategory {

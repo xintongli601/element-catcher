@@ -47,6 +47,21 @@ export async function installPreviewMessageRecorder(page: Page) {
   });
 }
 
+export async function installRenderInboundRecorder(page: Page) {
+  await page.context().addInitScript(() => {
+    if (!location.href.endsWith("/src/preview/render-realm.html")) return;
+    const store = { messages: [] as unknown[] };
+    Object.assign(window, { __ecRenderInboundMessages: store });
+    window.addEventListener(
+      "message",
+      (event) => {
+        store.messages.push(event.data);
+      },
+      true
+    );
+  });
+}
+
 export async function getRecordedPreviewSession(page: Page) {
   await expect
     .poll(async () =>
@@ -93,6 +108,18 @@ export async function getPreviewWindowTokens(page: Page) {
       renderWindowToken: tokenFor(document.querySelector(".preview-sandbox-render-frame"))
     };
   });
+}
+
+export function previewFrameBySuffix(page: Page, pathSuffix: string) {
+  const frame = page.frames().find((candidate) => candidate.url().endsWith(pathSuffix));
+  if (!frame) throw new Error(`Expected preview frame ending with ${pathSuffix}.`);
+  return frame;
+}
+
+export async function postMessageFromFrameToParent(page: Page, pathSuffix: string, message: Record<string, unknown>) {
+  await previewFrameBySuffix(page, pathSuffix).evaluate((payload) => {
+    parent.postMessage(payload, "*");
+  }, message);
 }
 
 export function validPreviewCode() {

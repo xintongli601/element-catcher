@@ -13,15 +13,18 @@ import {
 } from "../shared/preview-protocol";
 import { canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PreviewRenderNodeV1, type RenderFailureCategory } from "../shared/preview-policy";
 import "./render-realm.css";
+import "./preview-utilities.css";
 
 type RenderLifecycle = "boot" | "ready" | "rendering" | "succeeded" | "failed" | "disposed";
 type RenderSession = PreviewRenderInitV2 & {
   lifecycle: RenderLifecycle;
   renderPlansReceived: number;
+  operationToken: number;
 };
 
 let activeSession: RenderSession | null = null;
 let root: Root | null = null;
+let nextOperationToken = 1;
 
 window.addEventListener("message", (event) => {
   void handleMessage(event);
@@ -36,7 +39,7 @@ async function handleMessage(event: MessageEvent) {
     assertPreviewSidePanelToRenderMessageV2(event.data);
     if (!activeSession) {
       if (event.data.type !== "preview.render.init.v2") return;
-      activeSession = { ...event.data, lifecycle: "ready", renderPlansReceived: 0 };
+      activeSession = { ...event.data, lifecycle: "ready", renderPlansReceived: 0, operationToken: 0 };
       window.parent.postMessage(
         {
           contractVersion: 2,
@@ -66,16 +69,21 @@ async function renderPlan(message: PreviewRenderPlanV2) {
     postFailure("lifecycle", new Error("Render realm is not ready for another plan."));
     return;
   }
-  activeSession.renderPlansReceived += 1;
-  if (activeSession.renderPlansReceived > 1) {
+  const session = activeSession;
+  session.renderPlansReceived += 1;
+  if (session.renderPlansReceived > 1) {
     postFailure("limit", new Error("Only one render plan is allowed per render session."));
     return;
   }
-  activeSession.lifecycle = "rendering";
+  session.lifecycle = "rendering";
+  session.operationToken = nextOperationToken;
+  nextOperationToken += 1;
+  const operationToken = session.operationToken;
   try {
     const plan = validatePreviewRenderPlan(message.renderPlan);
     if (plan.sourceSha256 !== message.sourceSha256) throw new Error("Render source hash mismatch.");
     const expectedHash = await sha256Hex(canonicalStringify(plan));
+    if (!isCurrentRenderingOperation(session, operationToken)) return;
     if (expectedHash !== message.planSha256) throw new Error("Render plan hash mismatch.");
     const container = document.getElementById("fixture-root");
     if (!container) throw new Error("Preview render root is missing.");
@@ -83,16 +91,23 @@ async function renderPlan(message: PreviewRenderPlanV2) {
     flushSync(() => {
       root?.render(renderNode(plan.root));
     });
-    activeSession.lifecycle = "succeeded";
+    if (!isCurrentRenderingOperation(session, operationToken)) {
+      root?.unmount();
+      root = null;
+      return;
+    }
+    session.lifecycle = "succeeded";
     const success: PreviewRenderSuccessV2 = {
       contractVersion: 2,
       type: "preview.render.success.v2",
-      requestId: activeSession.requestId,
-      sessionNonce: activeSession.sessionNonce
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce
     };
     window.parent.postMessage(success, "*");
   } catch (error) {
-    postFailure(errorCategory(error), error);
+    if (isCurrentRenderingOperation(session, operationToken)) {
+      postFailure(errorCategory(error), error);
+    }
   }
 }
 
@@ -123,9 +138,14 @@ function dispose(message: PreviewDisposeV2) {
     return;
   }
   activeSession.lifecycle = "disposed";
+  activeSession.operationToken += 1;
   root?.unmount();
   root = null;
   activeSession = null;
+}
+
+function isCurrentRenderingOperation(session: RenderSession, operationToken: number) {
+  return activeSession === session && session.lifecycle === "rendering" && session.operationToken === operationToken;
 }
 
 function errorCategory(error: unknown): RenderFailureCategory {

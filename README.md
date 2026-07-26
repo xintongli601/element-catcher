@@ -26,6 +26,7 @@ Milestones 1 through 5 are completed. Milestone 6 is the current milestone and i
 - Display generated code as plain text and keep it copyable even when preview fails.
 - Preview a strict subset of generated React + Tailwind source through an explicit Preview action, an AST-based previewable-source gate, a data-only render plan, and two isolated sibling packaged sandbox frames.
 - Keep generated source out of the sandbox render realm; the render realm receives only a validated `PreviewRenderPlanV1`.
+- Render approved class tokens through a source-controlled bounded utility stylesheet whose selectors are kept in exact parity with the preview class-token registry.
 
 ## Local-First and AI Boundary
 
@@ -119,7 +120,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
 - Full arbitrary generated-code execution.
 - Full React, TypeScript, JavaScript, CSS, or Tailwind runtime compatibility.
-- Dynamic Tailwind class evaluation, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
+- Dynamic Tailwind class evaluation, generated CSS, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
 - Natural-language revision.
 - Regeneration management.
 - Version comparison.
