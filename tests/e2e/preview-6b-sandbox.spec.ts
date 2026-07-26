@@ -1,12 +1,15 @@
 import { test, expect } from "./extension-fixture";
 import {
   assertSiblingFramesAndGeneratedPreview,
+  createUnrelatedPreviewMessageFrame,
   postMessageFromFrameToParent,
+  postMessageFromNamedFrameToParent,
   previewFrameBySuffix,
   getPreviewWindowTokens,
   getRecordedPreviewSession,
   installPreviewMessageRecorder,
   openGeneratedPreview,
+  removeNamedFrame,
   renderMessagesContainGeneratedSource,
   seedGeneratedPreviewVersion
 } from "./preview-helpers";
@@ -88,7 +91,8 @@ test.describe("Milestone 6B preview sandbox foundation regression", () => {
       diagnostics: ["wrong direction from render"],
       extra: true
     });
-    await postUnrelatedWindowMessage(sidePanelPage, {
+    const unrelatedFrameName = await createUnrelatedPreviewMessageFrame(sidePanelPage);
+    await postMessageFromNamedFrameToParent(sidePanelPage, unrelatedFrameName, {
       contractVersion: 2,
       type: "preview.plan.failure.v2",
       requestId: session.requestId,
@@ -100,9 +104,10 @@ test.describe("Milestone 6B preview sandbox foundation regression", () => {
     for (const text of ["wrong host requestId", "wrong host nonce", "unknown host field", "wrong direction from render", "unrelated source"]) {
       await expect(sidePanelPage.getByText(text)).toHaveCount(0);
     }
+    await removeNamedFrame(sidePanelPage, unrelatedFrameName);
   });
 
-  test("timeout and close dispose frames idempotently and reopen fresh identities", async ({ sidePanelPage }) => {
+  test("close disposes frames idempotently and reopen fresh identities", async ({ sidePanelPage }) => {
     const target = await seedGeneratedPreviewVersion(sidePanelPage);
     await installPreviewMessageRecorder(sidePanelPage);
     await openGeneratedPreview(sidePanelPage, target.title);
@@ -153,12 +158,3 @@ test.describe("Milestone 6B preview sandbox foundation regression", () => {
     }
   });
 });
-
-async function postUnrelatedWindowMessage(page: import("@playwright/test").Page, message: Record<string, unknown>) {
-  await page.evaluate((payload) => {
-    const frame = document.createElement("iframe");
-    document.body.append(frame);
-    frame.contentWindow?.postMessage(payload, "*");
-    frame.remove();
-  }, message);
-}

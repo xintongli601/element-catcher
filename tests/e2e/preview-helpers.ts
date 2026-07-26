@@ -122,6 +122,47 @@ export async function postMessageFromFrameToParent(page: Page, pathSuffix: strin
   }, message);
 }
 
+export async function createUnrelatedPreviewMessageFrame(page: Page) {
+  const frameName = await page.evaluate(() => {
+    const name = `ec-unrelated-${crypto.randomUUID()}`;
+    const frame = document.createElement("iframe");
+    frame.name = name;
+    frame.src = "about:blank";
+    frame.hidden = true;
+    document.body.append(frame);
+    return name;
+  });
+  await expect.poll(() => page.frame({ name: frameName })?.url() ?? "").toBe("about:blank");
+  return frameName;
+}
+
+export async function postMessageFromNamedFrameToParent(page: Page, frameName: string, message: Record<string, unknown>) {
+  const frame = page.frame({ name: frameName });
+  if (!frame) throw new Error(`Expected unrelated frame named ${frameName}.`);
+  await frame.evaluate((payload) => {
+    parent.postMessage(payload, "*");
+  }, message);
+}
+
+export async function postCyclicMessageFromNamedFrameToParent(page: Page, frameName: string, message: Record<string, unknown>) {
+  const frame = page.frame({ name: frameName });
+  if (!frame) throw new Error(`Expected unrelated frame named ${frameName}.`);
+  await frame.evaluate((baseMessage) => {
+    const payload: Record<string, unknown> = {
+      ...baseMessage,
+      nested: Array.from({ length: 256 }, (_, index) => ({ index, value: "x".repeat(256) }))
+    };
+    payload.self = payload;
+    parent.postMessage(payload, "*");
+  }, message);
+}
+
+export async function removeNamedFrame(page: Page, frameName: string) {
+  await page.evaluate((name) => {
+    document.querySelector(`iframe[name="${CSS.escape(name)}"]`)?.remove();
+  }, frameName);
+}
+
 export function validPreviewCode() {
   return "export function PreviewCard() {\n  return <article className=\"p-4 border rounded-md bg-white\"><h2 className=\"text-lg font-semibold\">AI source must stay inert</h2><p className=\"text-sm text-slate-600\">Rendered from a safe plan.</p></article>;\n}";
 }

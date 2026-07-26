@@ -182,6 +182,7 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
   const handleHostMessage = async (rawMessage: unknown) => {
     const session = activeSessionRef.current;
     if (!session || lifecycleRef.current === "disposed") return;
+    const operationToken = session.operationToken;
     try {
       assertPreviewHostToSidePanelMessageV2(rawMessage);
     } catch {
@@ -207,13 +208,16 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
         await postRenderPlan(cleanPlan, rawMessage.planSha256, session);
       }
     } catch (error) {
-      finishWithFailure("Preview failed", error);
+      if (isCurrentTrustedOperation(session, operationToken, ["planning", "validating"])) {
+        finishWithFailure("Preview failed", error);
+      }
     }
   };
 
   const handleRenderMessage = async (rawMessage: unknown) => {
     const session = activeSessionRef.current;
     if (!session || lifecycleRef.current === "disposed") return;
+    const operationToken = session.operationToken;
     try {
       assertPreviewRenderToSidePanelMessageV2(rawMessage);
     } catch {
@@ -237,7 +241,9 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
         finishWithRenderFailure(rawMessage);
       }
     } catch (error) {
-      finishWithFailure("Preview failed", error);
+      if (isCurrentTrustedOperation(session, operationToken, ["rendering"])) {
+        finishWithFailure("Preview failed", error);
+      }
     }
   };
 
@@ -333,17 +339,24 @@ export function PreviewSandbox({ entry, onClose }: { entry: GeneratedComponentVe
   };
 
   const assertCurrentTrustedOperation = (session: Session, lifecycle: LifecycleState) => {
+    if (!isCurrentTrustedOperation(session, session.operationToken, [lifecycle])) {
+      throw new Error("Preview session is no longer current.");
+    }
+  };
+
+  const isCurrentTrustedOperation = (session: Session, operationToken: number, lifecycles: readonly LifecycleState[]) => {
     const current = activeSessionRef.current;
-    if (
+    return (
       current !== session ||
       current.operationToken !== session.operationToken ||
-      lifecycleRef.current !== lifecycle ||
+      current.operationToken !== operationToken ||
+      !lifecycles.includes(lifecycleRef.current) ||
       !framesMountedRef.current ||
       hostFrameRef.current?.contentWindow !== session.hostWindow ||
       renderFrameRef.current?.contentWindow !== session.renderWindow
-    ) {
-      throw new Error("Preview session is no longer current.");
-    }
+    )
+      ? false
+      : true;
   };
 
   const matchesSession = (message: { requestId: string; sessionNonce: string }, session: Session) => {

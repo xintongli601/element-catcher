@@ -5,12 +5,15 @@ import { resolve } from "node:path";
 import { PREVIEW_CLASS_TOKENS } from "../../extension/src/shared/preview-policy";
 import {
   assertSiblingFramesAndGeneratedPreview,
+  createUnrelatedPreviewMessageFrame,
   getRecordedPreviewSession,
   installRenderInboundRecorder,
   installPreviewMessageRecorder,
   openGeneratedPreview,
+  postCyclicMessageFromNamedFrameToParent,
   postMessageFromFrameToParent,
   previewFrameBySuffix,
+  removeNamedFrame,
   renderMessagesContainGeneratedSource,
   seedGeneratedPreviewVersion,
   validPreviewCode
@@ -51,18 +54,22 @@ test.describe("Milestone 6C safe generated component preview", () => {
       const row = document.querySelector("div") as HTMLElement;
       const heading = document.querySelector("h2") as HTMLElement;
       const body = document.querySelector("p") as HTMLElement;
+      const parent = section.parentElement as HTMLElement;
       const read = (element: HTMLElement) => getComputedStyle(element);
+      const parentStyle = read(parent);
       return {
         section: {
           display: read(section).display,
           gap: read(section).gap,
           width: read(section).width,
+          rectWidth: section.getBoundingClientRect().width,
           paddingTop: read(section).paddingTop,
           borderTopWidth: read(section).borderTopWidth,
           borderTopStyle: read(section).borderTopStyle,
           borderRadius: read(section).borderRadius,
           backgroundColor: read(section).backgroundColor
         },
+        parentContentWidth: parent.clientWidth - Number.parseFloat(parentStyle.paddingLeft) - Number.parseFloat(parentStyle.paddingRight),
         row: { display: read(row).display, gap: read(row).gap },
         heading: { fontSize: read(heading).fontSize, fontWeight: read(heading).fontWeight, color: read(heading).color },
         body: { color: read(body).color, backgroundColor: read(body).backgroundColor }
@@ -70,6 +77,7 @@ test.describe("Milestone 6C safe generated component preview", () => {
     });
     expect(styles.section.display).toBe("grid");
     expect(styles.section.gap).toBe("8px");
+    expect(Math.abs(styles.section.rectWidth - styles.parentContentWidth)).toBeLessThanOrEqual(1);
     expect(styles.section.paddingTop).toBe("16px");
     expect(styles.section.borderTopWidth).toBe("1px");
     expect(styles.section.borderTopStyle).toBe("solid");
@@ -155,6 +163,109 @@ test.describe("Milestone 6C safe generated component preview", () => {
     await expect(sidePanelPage.getByText("Preview ready", { exact: true })).toBeVisible();
     await expect(sidePanelPage.getByText("stale replay")).toHaveCount(0);
     await expect(sidePanelPage.getByText("wrong nonce")).toHaveCount(0);
+  });
+
+  test("ignores a current host preview.render.success.v2 direction-confusion message", async ({ sidePanelPage }) => {
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
+    const session = await getRecordedPreviewSession(sidePanelPage);
+    await postMessageFromFrameToParent(sidePanelPage, "src/preview/host.html", {
+      contractVersion: 2,
+      type: "preview.render.success.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce
+    });
+    await expectPreviewStillReadyAndSilent(sidePanelPage, []);
+  });
+
+  test("ignores a current host preview.render.failure.v2 direction-confusion message", async ({ sidePanelPage }) => {
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
+    const session = await getRecordedPreviewSession(sidePanelPage);
+    await postMessageFromFrameToParent(sidePanelPage, "src/preview/host.html", {
+      contractVersion: 2,
+      type: "preview.render.failure.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "policy",
+      diagnostics: ["host sent render failure"]
+    });
+    await expectPreviewStillReadyAndSilent(sidePanelPage, ["host sent render failure"]);
+  });
+
+  test("ignores a current render preview.host.ready.v2 direction-confusion message", async ({ sidePanelPage }) => {
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
+    const session = await getRecordedPreviewSession(sidePanelPage);
+    await postMessageFromFrameToParent(sidePanelPage, "src/preview/render-realm.html", {
+      contractVersion: 2,
+      type: "preview.host.ready.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce
+    });
+    await expectPreviewStillReadyAndSilent(sidePanelPage, []);
+  });
+
+  test("ignores a current render preview.plan.failure.v2 direction-confusion message", async ({ sidePanelPage }) => {
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
+    const session = await getRecordedPreviewSession(sidePanelPage);
+    await postMessageFromFrameToParent(sidePanelPage, "src/preview/render-realm.html", {
+      contractVersion: 2,
+      type: "preview.plan.failure.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "policy",
+      diagnostics: ["render sent plan failure"]
+    });
+    await expectPreviewStillReadyAndSilent(sidePanelPage, ["render sent plan failure"]);
+  });
+
+  test("ignores a cyclic oversized wrong-window message before protocol traversal", async ({ sidePanelPage }) => {
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
+    const session = await getRecordedPreviewSession(sidePanelPage);
+    const unrelatedFrameName = await createUnrelatedPreviewMessageFrame(sidePanelPage);
+    await postCyclicMessageFromNamedFrameToParent(sidePanelPage, unrelatedFrameName, {
+      contractVersion: 2,
+      type: "preview.plan.failure.v2",
+      requestId: session.requestId,
+      sessionNonce: session.sessionNonce,
+      category: "policy",
+      diagnostics: ["wrong-window cyclic payload"]
+    });
+    await expectPreviewStillReadyAndSilent(sidePanelPage, ["wrong-window cyclic payload"]);
+    await removeNamedFrame(sidePanelPage, unrelatedFrameName);
+  });
+
+  test("ignores stale trusted validation errors after a preview is closed and reopened", async ({ sidePanelPage }) => {
+    const target = await seedGeneratedPreviewVersion(sidePanelPage);
+    await installRejectableSecondSidePanelDigest(sidePanelPage);
+    await installPreviewMessageRecorder(sidePanelPage);
+    await openGeneratedPreview(sidePanelPage, target.title);
+    await expect.poll(() => sidePanelPage.evaluate(() => Boolean((window as unknown as { __ecPausedPreviewDigest?: boolean }).__ecPausedPreviewDigest))).toBe(true);
+    const staleSession = await getRecordedPreviewSession(sidePanelPage);
+    await sidePanelPage.getByRole("button", { name: "Close preview" }).first().click();
+    await expect(sidePanelPage.locator(".preview-sandbox-frame")).toHaveCount(0);
+    await sidePanelPage.evaluate(() => {
+      (window as unknown as { __ecRejectPausedPreviewDigest?: () => void }).__ecRejectPausedPreviewDigest?.();
+    });
+    await sidePanelPage.getByRole("button", { name: "Preview", exact: true }).click();
+    await assertSiblingFramesAndGeneratedPreview(sidePanelPage);
+    const freshSession = await getRecordedPreviewSession(sidePanelPage);
+    expect(freshSession.requestId).not.toBe(staleSession.requestId);
+    expect(freshSession.sessionNonce).not.toBe(staleSession.sessionNonce);
+    await expectPreviewStillReadyAndSilent(sidePanelPage, ["forced stale plan hash failure"]);
   });
 
   test("duplicate host source request during planning emits one failure and no later success", async ({ sidePanelPage }) => {
@@ -288,6 +399,40 @@ async function countPreviewMessages(page: Page, source: string, type: string) {
     },
     { source, type }
   );
+}
+
+async function expectPreviewStillReadyAndSilent(page: Page, diagnostics: string[]) {
+  await expect(page.getByText("Preview ready", { exact: true })).toBeVisible();
+  await expect(page.getByText("Preview unavailable")).toHaveCount(0);
+  await expect(page.getByText("Preview failed", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Preview timed out", { exact: true })).toHaveCount(0);
+  await expect(page.locator(".preview-sandbox-frame")).toHaveCount(2);
+  for (const diagnostic of diagnostics) {
+    await expect(page.getByText(diagnostic)).toHaveCount(0);
+  }
+}
+
+async function installRejectableSecondSidePanelDigest(page: Page) {
+  await page.evaluate(() => {
+    const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+    let digestCalls = 0;
+    Object.assign(window, { __ecPausedPreviewDigest: false, __ecRejectPausedPreviewDigest: undefined });
+    Object.defineProperty(crypto.subtle, "digest", {
+      configurable: true,
+      value(algorithm: AlgorithmIdentifier, data: BufferSource) {
+        digestCalls += 1;
+        if (digestCalls === 2) {
+          return new Promise<ArrayBuffer>((_resolve, reject) => {
+            Object.assign(window, {
+              __ecPausedPreviewDigest: true,
+              __ecRejectPausedPreviewDigest: () => reject(new Error("forced stale plan hash failure"))
+            });
+          });
+        }
+        return originalDigest(algorithm, data);
+      }
+    });
+  });
 }
 
 async function installNeverResolvingHostDigest(page: Page) {
