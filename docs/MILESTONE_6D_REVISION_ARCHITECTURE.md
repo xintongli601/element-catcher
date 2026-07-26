@@ -2,181 +2,145 @@
 
 ## 1. Status and Scope
 
-Milestone 6D is Current. This document closes the architecture for natural-language revision and regeneration planning only. It does not implement 6D runtime behavior, does not mark Milestone 6D Completed, and does not mark Milestone 6 Completed.
+Milestone 6D is Current. Milestone 6 remains Current. Milestone 6E remains Planned. This document closes the architecture for natural-language revision and regeneration planning only; it does not approve or implement production behavior, does not mark Milestone 6D Completed, and does not mark Milestone 6 Completed.
 
-Milestones 1 through 5, 6A, 6B, and 6C are Completed. Milestone 6E remains Planned for version comparison and final Milestone 6 regression closeout.
+Milestone 6D preserves the accepted Milestone 6C execution boundary:
 
-6D must preserve the accepted 6C execution boundary:
-
-- revised output remains inert response data until persisted and explicitly previewed;
-- generated source reaches only the packaged sandbox host during Preview;
+- revised output remains inert response data until it is persisted and the user separately chooses Preview;
+- existing generated versions and the original `CaptureRecord` remain immutable;
+- revised source never executes automatically;
+- Preview remains an explicit operation after verified persistence;
+- generated source reaches only the packaged sandbox host;
 - the render realm receives only `PreviewRenderPlanV1`;
-- Previewable Subset V1 and Protocol V2 remain unchanged;
+- the sibling packaged sandbox topology, Protocol V2, Previewable Subset V1, preview CSP, and execution prohibitions remain unchanged;
 - no Tailwind runtime, CDN, generated CSS, eval, `Function`, WebAssembly, worker execution, `srcdoc`, Blob execution, or data URL execution is introduced;
-- unsupported generated source remains visible and copyable;
-- failure, cancellation, Retry, and stale continuations cannot mutate the source generated version or original `CaptureRecord`.
+- no real OpenAI request is made by this documentation task.
 
-Out of scope for this documentation task:
+Allowed change scope for this follow-up is documentation only. Runtime extension code, backend implementation, tests, package files, lockfiles, Manifest, CSP, IndexedDB implementation, existing production contracts, preview protocol, preview policy, and build configuration are out of scope.
 
-- extension runtime code changes;
-- backend implementation changes;
-- storage migration implementation;
-- provider calls or real OpenAI requests;
-- test changes;
-- package, lockfile, Manifest, CSP, preview protocol, preview policy, or build changes;
-- production approval or implementation.
-
-Production approval gate: implementation may begin only after independent architecture approval confirms that this document is internally consistent, implementation-ready, and preserves Milestone 5 consent plus Milestone 6C preview isolation.
+Production approval gate: implementation may start only after independent review approves this corrected architecture and the relevant implementation slice. No production implementation exists from this document alone.
 
 ## 2. Current Contract Inventory
 
-The current repository is authoritative. Earlier reports are superseded where they conflict with the inspected code.
+The current repository is authoritative.
 
 | Contract or subsystem | Current version | Authoritative file | Immutable guarantees | Milestone 6D impact |
 | --- | --- | --- | --- | --- |
-| CaptureRecord | `schemaVersion: 1` | `extension/src/shared/capture-schema.ts`, `extension/src/capture/capture-record-v1.ts` | JSON-compatible source record; screenshot is an asset reference; source URL and page title are stored locally; `generatedVersions` compatibility field is not mutated by Milestone 5 generation. | 6D must not mutate CaptureRecord. Revision lineage points to the separate generated-version store. |
-| Generation request | `contractVersion: 1` | `extension/src/shared/generation-contract.ts`, `extension/src/generation/request-validation.ts` | Exact keys: `contractVersion`, `screenshot`, `captureContext`, `requestedOutput`; screenshot data URL exists only in the full post-consent request. | Revisions require a new versioned request shape because V1 has no source generated version, instruction, operation kind, or attempt identity. |
-| Review projection | V1 | `extension/src/generation/projection.ts`, `extension/src/sidepanel/GenerationWorkflow.tsx` | Visible Review data equals the approved outbound projection; source URL, page title, local IDs, screenshot storage key, cookies, storage, raw wrappers, and hidden DOM are excluded. | 6D must build an equally exact visible Review projection for revision/regeneration. |
-| Backend route | V1 route | `backend/src/app.ts` | `POST /v1/generate-component`; CORS-limited; provider-neutral extension; backend-only provider secret. | 6D uses a new route to avoid overloading V1 exact-key generation and to keep implementation review isolated. |
-| Backend normalized response | `ComponentGenerationResponseV1` | `extension/src/shared/generation-contract.ts`, `backend/src/validation/backend-validation.ts` | React + Tailwind only; bounded `componentName`, `code`, `summary`, `approximationNotes`; optional bounded opaque metadata; no raw provider response. | 6D reuses this response shape for successful revision output, then stores lineage in generated-version entry metadata, not in provider output. |
-| OpenAI adapter normalization | V1 | `backend/src/provider/openai-provider.ts` | `store:false`, no tools, strict JSON schema, safe error mapping, no raw provider response returned. | 6D backend prompt responsibilities mirror this boundary with revision-specific input, while extension remains provider-neutral. |
-| Generated-version entry | Implicit V1 with no top-level `contractVersion` | `extension/src/shared/generated-version-contract.ts` | Exact keys: `id`, `sourceCaptureId`, `sourceCaptureSavedAt`, `sourceReviewFingerprint`, `createdAt`, `value`; `value` is `ComponentGenerationResponseV1`. | V1 cannot carry lineage. 6D needs an additive V2 entry contract. |
-| Generated-version IDs | V1 | `extension/src/shared/generated-version-contract.ts` | `generated-version-` plus UUID or 32 hex fallback. | 6D keeps the prefix/pattern and makes new result ID deterministic from `logicalAttemptId` for idempotency. |
-| IndexedDB | version 2 | `extension/src/storage/indexed-db.ts` | Stores: `captureRecords`, `screenshotAssets`, `generatedComponentVersions`; generated-version keyPath `id`; index `sourceCaptureId`, non-unique. | Existing store and index can hold V2 entries without a schema bump if validators/readers are revised. |
-| Generated-version write transaction | V1 | `extension/src/storage/indexed-db.ts` | Re-reads source record, validates screenshot asset, adds version, reads back by ID, validates equality before success; duplicate equal add is idempotent. | 6D preserves this ordering and extends duplicate handling around deterministic IDs and attempt identity. |
-| Source-deletion cascade | V1 | `extension/src/storage/indexed-db.ts` | Capture deletion also deletes generated versions for the sourceCaptureId. Orphan versions are removed when source is missing during reads. | 6D must define ancestor-generated-version deletion separately because V1 has no ancestor relationship. |
-| UI generation state | V1 | `extension/src/sidepanel/GenerationWorkflow.tsx` | Closed, preparing, review, generating, succeeded, save-failed, failed, cancelled; one in-flight operation; AbortController; sequence guard; Retry saving. | 6D introduces explicit revision states but should reuse one-at-a-time, AbortController, and stale sequence concepts. |
-| Explicit consent | V1 | `extension/src/sidepanel/GenerationWorkflow.tsx` | Submission disabled until user checks consent; consent text says data leaves the device and paid API capacity may be used. | 6D requires a separate consent action after Review of revision projection. |
-| Provider-neutral transport | V1 | `extension/src/generation/transport.ts`, `extension/src/generation/types.ts` | Extension transport sends Element Catcher JSON only, omits credentials, no provider-specific fields. | 6D adds provider-neutral revision transport, not OpenAI-specific extension state. |
-| Abort ownership | V1 | `extension/src/sidepanel/GenerationWorkflow.tsx`, `backend/src/app.ts` | Side Panel owns extension AbortController; backend owns provider timeout AbortController and aborts on request abort. | 6D binds abort and continuations to source IDs, logical attempt, and workflow generation token. |
-| Preview separation | Protocol V2 / Plan V1 | `extension/src/shared/preview-protocol.ts`, `extension/src/shared/preview-policy.ts`, `extension/src/sidepanel/PreviewSandbox.tsx` | Preview is a separate explicit button; source goes to host only; render realm gets validated plan only. | 6D must not auto-preview revised output. |
+| CaptureRecord | `schemaVersion: 1` | `extension/src/shared/capture-schema.ts`, `extension/src/capture/capture-record-v1.ts` | JSON-compatible source record; screenshot is an asset reference; source URL and page title are local fields; generated history is not written into the `generatedVersions` compatibility field by Milestone 5. | 6D must not mutate CaptureRecord. It may build a new current Review projection from the current validated CaptureRecord. |
+| Generation request | `contractVersion: 1` | `extension/src/shared/generation-contract.ts`, `extension/src/generation/request-validation.ts` | Exact V1 initial-generation keys: `contractVersion`, `screenshot`, `captureContext`, `requestedOutput`; screenshot data URL is created only after consent. | Revision/regeneration use a new request body for a new route; V1 initial generation remains unchanged. |
+| Review projection | V1 | `extension/src/generation/projection.ts`, `extension/src/sidepanel/GenerationWorkflow.tsx` | The user sees the approved outbound projection; source URL, page title, local IDs, screenshot storage key, cookies, storage, raw wrappers, hidden DOM, and notes are excluded. | 6D must display the exact frozen outbound projection and cannot add hidden user-derived prompt data. |
+| Backend route | V1 route | `backend/src/app.ts` | `POST /v1/generate-component`; provider-neutral extension; backend-only provider secret; safe bounded errors. | 6D adds a dedicated design route, not a mutation of V1 route semantics. |
+| Backend normalized response | `ComponentGenerationResponseV1` | `extension/src/shared/generation-contract.ts`, `backend/src/validation/backend-validation.ts` | Bounded React + Tailwind `componentName`, `code`, `summary`, `approximationNotes`; optional bounded opaque metadata; no raw provider response. | 6D successful revision/regeneration responses reuse this shape. |
+| OpenAI adapter normalization | V1 | `backend/src/provider/openai-provider.ts` | `store:false`, no tools, strict JSON schema, safe error normalization. | 6D prompt construction must keep provider specifics behind the backend. |
+| Generated-version entry | Implicit V1 with no top-level `contractVersion` | `extension/src/shared/generated-version-contract.ts` | Exact keys: `id`, `sourceCaptureId`, `sourceCaptureSavedAt`, `sourceReviewFingerprint`, `createdAt`, `value`; value is `ComponentGenerationResponseV1`. | V1 cannot carry revision lineage. 6D defines V2 only for revision/regeneration entries. |
+| Generated-version IDs | V1 pattern | `extension/src/shared/generated-version-contract.ts` | `generated-version-` plus UUID or 32 hex fallback. | 6D keeps the prefix and uses a deterministic 32-hex suffix from `logicalAttemptId`. |
+| IndexedDB | version 2 | `extension/src/storage/indexed-db.ts` | Stores: `captureRecords`, `screenshotAssets`, `generatedComponentVersions`; generated-version keyPath `id`; non-unique `sourceCaptureId` index. | No DB version bump is required for V2 because the existing store/index are sufficient when readers/validators accept V1 or V2. |
+| Generated-version write transaction | V1 | `extension/src/storage/indexed-db.ts` | Source record is re-read, screenshot asset is validated, entry is added, read back, and equality-validated before success. | 6D strengthens this into a same-transaction source CaptureRecord plus source generated-version re-read before adding V2. |
+| Source capture deletion | V1 | `extension/src/storage/indexed-db.ts` | Capture deletion removes the CaptureRecord, screenshot asset, and generated versions for `sourceCaptureId`; orphan versions for a missing capture may be cleaned up. | 6D keeps capture-level cleanup only; individual generated-version deletion UI remains out of scope. |
+| UI generation workflow | V1 | `extension/src/sidepanel/GenerationWorkflow.tsx` | One in-flight generation, AbortController ownership, sequence guards, visible Review, consent, Retry saving. | 6D reuses these patterns but the first reachable UI slice must include complete stale and cancellation guards. |
+| Preview separation | Protocol V2 / Plan V1 | `extension/src/shared/preview-protocol.ts`, `extension/src/shared/preview-policy.ts`, `extension/src/sidepanel/PreviewSandbox.tsx` | Preview is separate; source goes to host only; render realm gets only validated plan. | 6D does not change preview contracts. |
 
 ## 3. Product Semantics
 
 Natural-language revision means:
 
-1. The user opens one persisted generated version.
-2. That selected version is the immutable source generated version.
+1. The user selects one persisted generated version.
+2. The selected generated version is the immutable source version.
 3. The user provides one bounded natural-language instruction.
-4. Element Catcher prepares a visible Review projection.
-5. After explicit consent, the backend produces one new candidate component.
-6. The source version is not overwritten.
-7. A new immutable generated version is persisted.
-8. Lineage records the selected source generated version and the logical attempt.
+4. The extension builds a frozen Review attempt from the selected source version and current validated CaptureRecord projection.
+5. After explicit consent, the backend produces one candidate.
+6. The source generated version is not overwritten.
+7. A new immutable V2 generated-version entry is persisted.
+8. Lineage records the selected source generated version and its fingerprint.
 
-Regeneration decision: 6D implements regeneration as the same workflow with an explicit mode and no free-text instruction. The product label is "Regenerate" and the plain-language meaning is "create another version from this saved generated version using the same approved source context." This avoids a separate route and avoids pretending regeneration is initial generation. It also preserves lineage, Retry semantics, and Review privacy consistency.
+Regeneration means the same workflow with explicit `mode: "regeneration"` and no free-text instruction. It creates another version from the selected persisted generated version using the same approved current CaptureRecord context. Regeneration is not deferred and is not a separate backend model.
 
-Input inclusion decisions:
+Input decisions:
 
 | Potential input | Decision | Reason |
 | --- | --- | --- |
-| Revision instruction | Sent for `mode: "revision"` only | It is the user-requested change and must be visible, bounded, normalized, and consented. |
-| Selected generated source code | Sent | It is the visual/code baseline being revised; without it, fidelity and lineage are weak. |
-| `componentName` | Sent | Needed for deterministic naming policy and provider instruction. |
-| Summary | Sent | Low-cost context that improves continuity. |
-| Approximation notes | Sent | Helps the provider avoid repeating known compromises. |
-| Source CaptureRecord Review projection | Sent by default | Reuses Milestone 5 bounded projection for fidelity and current contract compatibility. |
-| Screenshot | Not sent by default; optional explicit checkbox | The selected generated source plus source projection is usually enough; screenshot is high-privacy and high-cost. Optional resend is available when visual fidelity matters. |
-| User notes | Excluded | Local library notes may be private and are not needed by default. |
-| Tags | Sent only through the existing CaptureRecord Review projection | Tags are already part of the approved bounded Milestone 5 projection. |
-| DOM summary | Sent through CaptureRecord Review projection | Needed for fidelity and already bounded. |
-| Style summary | Sent through CaptureRecord Review projection | Needed for fidelity and already bounded. |
+| Revision instruction | Sent for revision only | It is the requested change and must be visible, bounded, normalized, fingerprinted, and consented. |
+| Selected generated source code | Sent | It is the source component being revised/regenerated. |
+| Selected `componentName` | Sent | Required for deterministic component-name policy. |
+| Selected summary | Sent | Useful low-cost continuity context. |
+| Selected approximationNotes | Sent | Helps preserve known tradeoffs. |
+| Current CaptureRecord Review projection | Sent by default | Reuses the bounded Milestone 5 projection and reflects current user-managed metadata at Review time. |
+| Screenshot | Optional explicit checkbox, off by default | Improves visual fidelity when chosen; otherwise avoids extra privacy and cost. |
+| User notes | Not sent | Notes remain local and may contain private planning context. |
+| Tags | Sent only through current Review projection | Tags are already bounded and visible in Milestone 5 projection. |
+| DOM summary | Sent through current Review projection | Needed for fidelity and bounded. |
+| Style summary | Sent through current Review projection | Needed for fidelity and bounded. |
 
-This is not a chat transcript. One logical revision attempt accepts exactly one bounded instruction for revision mode, or one explicit no-instruction regeneration confirmation for regeneration mode.
+This is not a chat transcript. One frozen Review attempt accepts one revision instruction or one regeneration confirmation.
 
-## 4. User Workflow
+## 4. Authoritative Attempt Lifecycle and User Workflow
+
+There is one authoritative `logicalAttemptId` lifecycle:
+
+1. The user opens a persisted generated version and chooses `Revise` or `Regenerate`.
+2. The extension validates and normalizes the revision/regeneration input.
+3. The extension re-reads and validates the current source CaptureRecord and selected persisted generated version.
+4. The extension constructs the exact outbound Review projection, including the screenshot included/not-included choice.
+5. The extension freezes that Review projection.
+6. The extension creates `logicalAttemptId` before displaying the frozen Review.
+7. The `logicalAttemptId` is bound to that exact frozen Review attempt.
+8. Consent, transport Retry, and persistence Retry reuse the same `logicalAttemptId` only while the frozen Review remains byte-for-byte unchanged.
+9. Returning to edit and changing any outbound value invalidates the old attempt. This includes instruction, mode, selected source version, source component data, current CaptureRecord projection, requestedOutput, or screenshot inclusion choice.
+10. The next Review after an invalidating change creates a new `logicalAttemptId`.
+11. An explicit new alternative always creates a new `logicalAttemptId`.
+12. Repeated submit while in flight is ignored.
+
+No separate `requestId` is part of the 6D contract. Stale binding uses `sourceCaptureId`, `sourceGeneratedVersionId`, `sourceGeneratedVersionFingerprint`, `logicalAttemptId`, `reviewAttemptFingerprint`, and the workflow generation token.
 
 Trusted workflow:
 
 1. Open a saved capture detail.
 2. Expand one persisted generated version.
 3. Choose `Revise` or `Regenerate`.
-4. For Revise, enter one instruction. For Regenerate, confirm that no instruction will be sent.
+4. Enter a bounded instruction for Revise, or confirm Regenerate.
 5. Validate locally.
-6. Re-read the source CaptureRecord and selected generated version.
-7. Prepare exact Review data.
-8. Display every user-derived field approved for transmission.
-9. Obtain explicit consent with `Send revision to AI` or `Send regeneration to AI`.
-10. Start request.
-11. Allow `Cancel` while transport or save is active.
-12. Validate normalized backend response.
-13. Construct a new immutable generated version.
-14. Persist it.
-15. Read it back by stable identity.
-16. Validate read-back.
-17. Show success only after verified persistence.
-18. Keep Preview closed until the user separately chooses `Preview`.
+6. Re-read source CaptureRecord and source generated version.
+7. Construct and freeze exact Review data.
+8. Create `logicalAttemptId`.
+9. Display frozen Review data.
+10. Obtain explicit consent.
+11. Revalidate the frozen Review before transport.
+12. Send request with the required idempotency header.
+13. Allow best-effort cancellation while transport or persistence is active.
+14. Validate normalized response.
+15. Construct immutable V2 generated-version entry.
+16. Persist through the atomic transaction defined in section 11.
+17. Show success only after transaction commit and validated read-back, and only if the workflow is still current.
+18. Keep Preview closed until a separate explicit Preview action.
 
-States:
+UI states:
 
-| State | Meaning | Primary controls |
+| State | Meaning | Controls |
 | --- | --- | --- |
-| `idle` | No 6D workflow open for the selected version. | `Revise`, `Regenerate` enabled. |
-| `editing` | Instruction entry or regeneration confirmation is open. | `Review revision`, `Cancel`; submit disabled until valid. |
-| `invalid` | Local validation failed. | Field remains focused; `Review revision` disabled. |
-| `review` | Exact projection is displayed before consent. | Consent checkbox, `Send revision to AI` or `Send regeneration to AI`, `Back to edit`, `Cancel`. |
-| `awaiting-consent` | Review is valid but consent unchecked. | Send disabled; consent focused after Review opens. |
-| `submitting` | Transport is active. | `Cancel` enabled; edit/source selection disabled. |
-| `cancelling` | Abort requested while work may still be settling. | All submit controls disabled. |
-| `cancelled` | User cancellation won current workflow. | `Review again`, `Close`. |
-| `response-received` | Response received and validated; persistence not yet complete. | No Preview; `Cancel` still best-effort before write starts. |
-| `saving` | New entry is being persisted and read back. | `Cancel` best-effort; no Preview. |
-| `success` | New version was written and validated by read-back. | `Close`, `Revise this version`, version list shows result; `Preview` remains separate. |
-| `transport-failure` | Network/timeout/CORS/local transport failed. | `Retry after review`, `Close`. |
-| `backend/provider-failure` | Safe backend/provider error. | `Retry after review`, `Close`. |
-| `invalid-response` | Backend response failed normalized validation. | Retry unavailable unless Review is reopened. |
-| `persistence-failure` | Local save failed before verified read-back. | `Retry saving` if pending entry is available. |
-| `stale-response-ignored` | A late continuation was ignored. | No visible success; optional polite status for diagnostics only. |
-| `Retry-available` | Current failure has a stable logical attempt or safe Review retry. | Retry button enabled. |
-| `Retry-unavailable` | Source missing, source changed, malformed source, or unsupported contract. | Retry hidden; `Close` only. |
+| `idle` | No 6D workflow is open. | `Revise`, `Regenerate` enabled. |
+| `editing` | The user is entering instruction or confirming regeneration. | `Review revision` or `Review regeneration`, `Cancel`; submit disabled until valid. |
+| `invalid` | Local validation failed. | Invalid field focused; Review button disabled. |
+| `review` | Frozen Review exists and owns a `logicalAttemptId`. | Consent, `Send revision to AI` or `Send regeneration to AI`, `Back to edit`, `Cancel`. |
+| `awaiting-consent` | Frozen Review is displayed but consent is unchecked. | Send disabled. |
+| `submitting` | Transport is active for the frozen attempt. | `Cancel`; edit/source controls disabled. |
+| `cancelling` | Abort requested; completion may still settle. | Submit controls disabled. |
+| `cancelled` | Cancellation won the active UI workflow. | `Review again`, `Close`. |
+| `response-received` | Response passed shape validation; persistence not complete. | No Preview; Cancel remains best-effort until commit. |
+| `saving` | Atomic persistence transaction is active. | Cancel best-effort; no Preview. |
+| `success` | The current workflow committed and read back a valid V2 result. | `Close`; version list shows result; Preview remains separate. |
+| `transport-failure` | Network, timeout, CORS, or backend transport failed. | `Retry after review`, `Close`. |
+| `backend/provider-failure` | Backend/provider returned safe bounded failure. | `Retry after review`, `Close`. |
+| `invalid-response` | Response failed schema or component-name validation. | Retry only by reopening Review. |
+| `persistence-failure` | Local persistence failed before verified success. | `Retry saving` only when the pending V2 entry is retained. |
+| `stale-response-ignored` | A late continuation was ignored. | No active UI success. |
+| `Retry-available` | Frozen Review and attempt remain unchanged. | Retry enabled. |
+| `Retry-unavailable` | Source missing/changed, malformed source, unsupported contract, or Review invalidated. | Retry hidden; `Close` only. |
 
-Button labels:
-
-- `Revise`
-- `Regenerate`
-- `Review revision`
-- `Review regeneration`
-- `Send revision to AI`
-- `Send regeneration to AI`
-- `Back to edit`
-- `Cancel`
-- `Retry after review`
-- `Retry saving`
-- `Close revision`
-- `Preview`
-
-Disabled states:
-
-- Revise/Regenerate are disabled while any 6D workflow is active for the same generated version.
-- Source version expansion controls are disabled during `submitting`, `cancelling`, `response-received`, and `saving`.
-- Send is disabled until local validation passes and consent is checked.
-- Retry saving is disabled while persistence retry is active.
-- Preview is disabled for pending results and visible only for persisted versions.
-
-Focus and live regions:
-
-- Opening Revise focuses the instruction field.
-- Opening Regenerate focuses the confirmation text and primary Review button.
-- Invalid instruction focuses the field and announces the validation error with `role="alert"`.
-- Opening Review focuses the Review heading; the consent checkbox is next in tab order.
-- Submitting announces progress in a polite `role="status"` region.
-- Failure focuses the first Retry button if available, otherwise `Close revision`.
-- Cancellation focuses `Review again`.
-- Success focuses the new version heading.
-
-Navigation and selection:
-
-- Navigating away during `editing` or `review` preserves a draft in component state only for the same source generated version in the same panel lifetime.
-- Navigating away during active transport aborts best-effort and must not show later success.
-- Selecting another generated version closes Review and clears the draft by default. If the draft has non-empty unsent text, the UI asks for confirmation before switching.
-- Deleting the source CaptureRecord during the workflow cancels the workflow and leaves no new version.
-- If the selected source generated version is deleted before Review, Review cannot open. If deletion occurs after request start, persistence fails because the source version re-read cannot validate.
+Back-to-edit preserves the draft text for the same selected source version, but it invalidates the old `logicalAttemptId`. A new attempt is created only when the user returns to Review after validation and re-freeze.
 
 ## 5. Revision Input Contract
 
-Contract name: `ComponentRevisionInputV1`.
-
-Shape before Review:
+`ComponentRevisionInputV1` is extension-local and represents the frozen Review attempt. It is not the backend request body and is not provider-visible.
 
 ```ts
 type ComponentRevisionInputV1 = {
@@ -185,41 +149,129 @@ type ComponentRevisionInputV1 = {
   sourceCaptureId: string;
   sourceGeneratedVersionId: string;
   sourceGeneratedVersionFingerprint: string;
+  currentReviewFingerprint: string;
+  screenshotIncluded: boolean;
   instruction?: string;
+  instructionFingerprint?: string;
   logicalAttemptId: string;
-  requestId?: string;
+  reviewAttemptFingerprint: string;
 };
 ```
 
-Constraints:
+Exact keys are required. Unknown keys are rejected.
 
-- `contractVersion` must be exactly `1`.
-- `mode` must be exactly `revision` or `regeneration`.
-- `sourceCaptureId` must match the existing capture ID pattern.
-- `sourceGeneratedVersionId` must match the existing generated-version ID pattern.
-- `sourceGeneratedVersionFingerprint` must be lowercase SHA-256 hex over canonical source entry fields.
-- `logicalAttemptId` pattern: `revision-attempt-` plus 32 lowercase hex characters.
-- `requestId` pattern when present: `revision-request-` plus 32 lowercase hex characters.
-- `requestId` is created after consent and before transport when the implementation needs one request-level UI/logging identity; Retry may create a new `requestId` while preserving the same `logicalAttemptId`.
-- Exact-key validation rejects unknown keys and missing required keys.
-- `instruction` is required for `mode: "revision"` and forbidden for `mode: "regeneration"`.
-- Instruction normalization is Unicode NFC.
-- Leading and trailing whitespace are trimmed.
-- Internal runs of Unicode whitespace are collapsed to one ASCII space, except line breaks are allowed only before normalization and do not survive the normalized value.
-- Minimum revision instruction: 4 Unicode code points after normalization.
-- Maximum revision instruction: 1,000 Unicode code points after normalization.
-- Maximum revision instruction UTF-8 bytes: 4,096.
-- Empty or whitespace-only instructions are rejected.
-- Disallowed control characters are rejected: C0/C1 controls except TAB, LF, and CR before whitespace normalization. Bidi control characters are rejected.
-- Repeated identical instruction for the same source version is allowed only through Retry with the same `logicalAttemptId`; an intentional new alternative must create a new `logicalAttemptId`.
+Common constraints:
 
-Unsupported contractVersion, unsupported mode, malformed IDs, unknown keys, excessive code points, excessive bytes, empty instruction, and disallowed controls fail locally before Review.
+- `contractVersion` is exactly `1`.
+- `mode` is exactly `revision` or `regeneration`.
+- `sourceCaptureId` matches the existing capture ID pattern.
+- `sourceGeneratedVersionId` matches the existing generated-version ID pattern.
+- `sourceGeneratedVersionFingerprint`, `currentReviewFingerprint`, `instructionFingerprint`, and `reviewAttemptFingerprint` are lowercase 64-character SHA-256 hex where present.
+- `logicalAttemptId` pattern is `revision-attempt-` followed by 32 lowercase hex characters.
+- `screenshotIncluded` is boolean and must match the frozen Review projection.
 
-## 6. Exact Outbound Privacy Projection
+Revision constraints:
 
-The Review UI must display exactly the user-derived outbound projection. No hidden user-derived prompt data may leave the extension. Fixed source-controlled backend system instructions may be hidden only by category: safety instructions, strict JSON output instructions, provider-neutral React + Tailwind generation instructions, prompt-injection warnings, and screenshot handling rules. These fixed instructions must contain no private user data.
+- `instruction` is required.
+- `instructionFingerprint` is required.
+- `instruction` is final normalized text.
+- Minimum instruction: 4 Unicode code points.
+- Maximum instruction: 1,000 Unicode code points.
+- Maximum instruction UTF-8 bytes: 4,096.
 
-Outbound request name: `ComponentRevisionRequestV1`.
+Regeneration constraints:
+
+- `instruction` is forbidden.
+- `instructionFingerprint` is forbidden.
+
+Instruction normalization:
+
+- Normalize to Unicode NFC.
+- Trim leading and trailing whitespace.
+- Collapse internal runs of Unicode whitespace to one ASCII space.
+- Reject empty or whitespace-only instructions.
+- Reject C0/C1 controls except TAB, LF, and CR before whitespace collapse.
+- Reject bidi control characters.
+
+## 6. Fingerprints and Canonicalization
+
+All 6D fingerprints use the source-controlled `canonicalJsonStringify` behavior from `extension/src/generation/canonical-json.ts` or an exactly equivalent source-controlled helper: JSON-compatible values only, deterministic object key ordering, no functions, no prototypes, no `undefined`, and no insertion-order dependence. The digest helper is the existing SHA-256 text digest behavior or an equivalent source-controlled helper. All digest outputs are lowercase 64-character SHA-256 hex strings.
+
+Domain-separated fingerprints:
+
+| Fingerprint | Algorithm | Local or sent |
+| --- | --- | --- |
+| `sourceGeneratedVersionFingerprint` | `sha256HexText("ElementCatcher.SourceGeneratedVersionFingerprint.V1\\n" + canonicalJsonStringify(validatedSourceGeneratedVersionEntry))` | Local only; not sent to backend/provider. |
+| `instructionFingerprint` | `sha256HexText("ElementCatcher.RevisionInstructionFingerprint.V1\\n" + normalizedInstruction)` | Local only; not sent to backend/provider. |
+| `currentReviewFingerprint` | Existing Milestone 5 Review fingerprint over the current Review request-without-data-url plus screenshot digest/metadata. For 6D, it represents the current CaptureRecord projection used by the frozen Review. | Local only. |
+| `reviewAttemptFingerprint` | `sha256HexText("ElementCatcher.RevisionReviewAttemptFingerprint.V1\\n" + canonicalJsonStringify(reviewAttemptFingerprintInput))` | Local only. |
+
+`sourceGeneratedVersionFingerprint` canonicalizes the entire validated V1 or V2 source entry. No field is excluded. V1 entries are canonicalized as the exact validated legacy object with no top-level `contractVersion`. V2 entries are canonicalized as the exact validated V2 object. Object key order cannot change the result because canonical serialization sorts keys deterministically.
+
+`instructionFingerprint` exists only for revision. Regeneration must not include it.
+
+`reviewAttemptFingerprintInput` is:
+
+```ts
+type ReviewAttemptFingerprintInputV1 = {
+  mode: "revision" | "regeneration";
+  localSourceCaptureId: string;
+  localSourceGeneratedVersionId: string;
+  sourceGeneratedVersionFingerprint: string;
+  sourceComponent: {
+    componentName: string;
+    framework: "react";
+    styling: "tailwind";
+    code: string;
+    summary: string;
+    approximationNotes: string;
+  };
+  captureContext: ExactCaptureContextProjectionV1;
+  revisionInstruction?: string;
+  requestedOutput: {
+    framework: "react";
+    styling: "tailwind";
+    fields: ["componentName", "code", "summary", "approximationNotes"];
+  };
+  screenshot: {
+    included: boolean;
+    mediaType?: "image/png";
+    width?: number;
+    height?: number;
+    byteLength?: number;
+    digest?: string;
+  };
+  currentReviewFingerprint: string;
+  logicalAttemptId: string;
+};
+```
+
+The fingerprint binds local IDs and local fingerprints even though those IDs are not sent. If screenshot is not included, `screenshot` is exactly `{ included: false }`. If screenshot is included, digest and approved metadata are included; the Base64 data URL is not included in the fingerprint input.
+
+Fields sent to backend/provider are only the visible outbound request body in section 8 plus the required idempotency header for the backend. Local IDs, local fingerprints, `logicalAttemptId`, and raw idempotency values are not provider-visible prompt content.
+
+## 7. Current CaptureRecord Semantics
+
+6D uses the current validated CaptureRecord at Review time.
+
+Rules:
+
+- Build the new Review from the current validated CaptureRecord and current screenshot asset metadata at Review time.
+- Do not require the current Review fingerprint to equal the selected ancestor version's historical `sourceReviewFingerprint`.
+- Preserve the ancestor through `sourceGeneratedVersionId` and `sourceGeneratedVersionFingerprint`.
+- Store the current Review fingerprint as the top-level `sourceReviewFingerprint` on the new V2 result.
+- Revalidate that same frozen current Review before transport.
+- Revalidate the same frozen current Review preconditions again inside the final persistence transaction.
+- Notes remain excluded.
+- Any change to transmitted current CaptureRecord fields after Review invalidates the Review and the `logicalAttemptId`.
+
+This means user edits to title, tags, or component type after the ancestor was created do not block revision. If those fields are transmitted in the current Review projection, they are part of the new frozen Review and must remain stable for the attempt. Local notes are not transmitted and do not affect the attempt.
+
+## 8. Exact Outbound Privacy Projection
+
+The Review UI must show every user-derived field approved for transmission. No hidden user-derived prompt data may leave the extension. Fixed source-controlled backend system instructions may be hidden only by category: safety instructions, strict JSON output instructions, provider-neutral React + Tailwind generation instructions, prompt-injection warnings, and screenshot handling rules. These fixed instructions must contain no private user data.
+
+Backend request body:
 
 ```ts
 type ComponentRevisionRequestV1 = {
@@ -254,93 +306,83 @@ Field classification:
 
 | Field | Classification |
 | --- | --- |
-| revision mode | Sent |
-| revision instruction | Sent for revision only |
+| revision/regeneration mode | Sent |
+| normalized revision instruction | Sent for revision only |
 | selected generated component code | Sent |
-| selected componentName | Sent |
+| selected `componentName` | Sent |
 | selected summary | Sent |
 | selected approximationNotes | Sent |
+| current CaptureRecord Review projection | Sent |
+| screenshot bytes/data URL | Optional explicit checkbox only |
+| screenshot metadata | Sent only when screenshot is included |
 | sourceCaptureId | Not sent |
-| generated version ID | Not sent |
-| timestamps | Not sent |
+| sourceGeneratedVersionId | Not sent |
+| local timestamps | Not sent |
 | source URL | Not sent |
 | page title | Not sent |
 | local database IDs | Not sent |
 | screenshot asset key | Not sent |
-| screenshot bytes | Optional only after explicit screenshot checkbox |
-| CaptureRecord Review projection | Sent |
-| DOM summary | Sent inside Review projection |
-| style summary | Sent inside Review projection |
-| title | Sent only as bounded library title in Review projection |
-| component type | Sent inside Review projection |
-| tags | Sent inside Review projection |
 | notes | Not sent |
 | browser storage | Not sent |
 | cookies | Not sent |
 | prior provider metadata | Not sent |
-| request IDs | Not sent to provider-visible prompt; backend may log a server correlation ID only |
-| idempotency keys | Not sent in model-visible prompt; see backend contract |
+| local fingerprints | Not sent |
+| `logicalAttemptId` | Backend idempotency header only; never provider-visible prompt content |
 
-Screenshot rule: screenshot is optional through a separate explicit checkbox, unchecked by default. This balances fidelity with privacy and cost. Existing Milestone 5 initial generation sends the screenshot after consent because the screenshot is the primary source. Revision has a selected generated source plus the source projection, so resending pixels is not required by default. Retry must reuse the same screenshot choice and same visible Review projection for consistency.
+Screenshot rule: screenshot is optional through a separate explicit checkbox, unchecked by default. Retry reuses the same screenshot choice only while the frozen Review remains unchanged. Changing the screenshot choice invalidates the old attempt and creates a new `logicalAttemptId` on the next Review.
 
-## 7. Backend Contract
+## 9. Backend Contract and Idempotency Header
 
-Route decision: add a dedicated provider-neutral endpoint:
+Route decision:
 
 ```text
 POST /v1/revise-component
 ```
 
-Reasons:
+Required request headers:
 
-- V1 initial generation uses exact-key validation and screenshot-required semantics.
-- Revision/regeneration have different required fields and privacy choices.
-- A dedicated route prevents accidental V1 behavior changes and keeps Milestone 5 regression simpler.
+- `Content-Type: application/json`
+- `X-Element-Catcher-Contract-Version: 1`
+- `X-Element-Catcher-Idempotency-Key: <logicalAttemptId>`
 
-Extension-to-backend request:
+`X-Element-Catcher-Idempotency-Key` is required. Its value must equal the validated `logicalAttemptId` for the frozen Review attempt. It is included in CORS allowed headers and preflight validation for `/v1/revise-component`.
 
-- Header: `Content-Type: application/json`
-- Header: `X-Element-Catcher-Contract-Version: 1`
-- Header: optional `X-Element-Catcher-Idempotency-Key`, value equals `logicalAttemptId`; this header is backend-visible but not provider-prompt-visible.
-- Body: `ComponentRevisionRequestV1`.
+Idempotency key privacy:
 
-Successful response decision: reuse `ComponentGenerationResponseV1`.
+- backend-visible;
+- never included in provider-visible prompt content;
+- not returned to the extension;
+- not written into ordinary logs as a raw value;
+- may be hashed or classified in controlled diagnostics if a later logging design approves it.
 
-The response contract already carries normalized React + Tailwind output and bounded metadata. Lineage belongs to local persistence, so a new provider response model is unnecessary.
+Server-side provider-call deduplication remains optional for 6D. Extension deterministic persistence remains mandatory and is the correctness boundary for local duplicates. Residual risk: without server-side provider-call deduplication, duplicate provider billing can still occur after transport ambiguity.
+
+Successful response decision: reuse `ComponentGenerationResponseV1`. Lineage is stored locally in V2 entries, not in the provider response.
 
 Backend responsibilities:
 
-- validate route, method, origin, content type, contract header, and request size;
-- exact-key validate `ComponentRevisionRequestV1`;
-- validate optional screenshot exactly as Milestone 5 does when present;
-- enforce code, instruction, summary, and approximation note bounds;
-- construct provider prompt from fixed source-controlled instructions plus visible request body only;
-- tell the provider that all source code, CaptureRecord text, and user instruction are untrusted reference data;
-- require strict JSON matching the existing generation response schema;
+- exact-key validate request body;
+- validate required idempotency header;
+- validate optional screenshot using Milestone 5 screenshot rules when present;
+- enforce instruction/source/summary/response bounds;
+- construct provider prompt from fixed instructions plus the visible request body only;
+- treat source component code, CaptureRecord text, and revision instruction as untrusted reference data;
 - normalize provider response into `ComponentGenerationResponseV1`;
 - return safe bounded errors only;
-- never return provider secrets, stack traces, raw provider response IDs, tool calls, or raw errors to the extension.
+- never return provider secrets, stack traces, raw provider response IDs, raw provider errors, or raw idempotency values.
 
-Forbidden hidden fields:
+## 10. V2 Lineage and Persistence Contract
 
-- source URL, page title, local IDs, screenshot storage key, cookies, browser storage, library notes, prior provider metadata, raw provider response, backend stack, and secret material.
+Decision: V2 is a precise discriminated union used only for 6D revision and regeneration entries. Existing V1 entries remain legacy initial-generation entries. 6D does not define V2 initial-generation entries.
 
-## 8. Lineage and Persistence Design
-
-Decision: additive generated-version contract revision is needed, but no IndexedDB version bump is required.
-
-Rationale:
-
-- V1 exact-key validation cannot accept lineage fields.
-- The existing object store keyPath remains `id`.
-- Existing non-unique `sourceCaptureId` index still supports capture-level listing.
-- V2 entries can be stored in the same object store if validators and readers accept V1 or V2.
-- No new IndexedDB store or index is required for 6D MVP. Lineage lookup by source generated version can filter versions loaded by `sourceCaptureId`.
-
-New entry shape:
+No IndexedDB version bump is required. V2 entries are stored in the existing `generatedComponentVersions` object store using the existing `id` keyPath and `sourceCaptureId` index.
 
 ```ts
-type GeneratedComponentVersionEntryV2 = {
+type GeneratedComponentVersionEntryV2 =
+  | GeneratedComponentRevisionVersionEntryV2
+  | GeneratedComponentRegenerationVersionEntryV2;
+
+type GeneratedComponentVersionEntryV2Base = {
   contractVersion: 2;
   id: string;
   sourceCaptureId: string;
@@ -348,170 +390,215 @@ type GeneratedComponentVersionEntryV2 = {
   sourceReviewFingerprint: string;
   createdAt: string;
   value: ComponentGenerationResponseV1;
-  operation: {
-    kind: "initial-generation" | "revision" | "regeneration";
-    logicalAttemptId: string;
-    instruction?: string;
-    instructionFingerprint?: string;
-    sourceGeneratedVersionId?: string;
-    sourceGeneratedVersionFingerprint?: string;
-    sourceReviewFingerprint: string;
-    screenshotIncluded: boolean;
-  };
 };
+
+type GeneratedComponentRevisionVersionEntryV2 =
+  GeneratedComponentVersionEntryV2Base & {
+    operation: {
+      kind: "revision";
+      logicalAttemptId: string;
+      reviewAttemptFingerprint: string;
+      sourceGeneratedVersionId: string;
+      sourceGeneratedVersionFingerprint: string;
+      instruction: string;
+      instructionFingerprint: string;
+      screenshotIncluded: boolean;
+    };
+  };
+
+type GeneratedComponentRegenerationVersionEntryV2 =
+  GeneratedComponentVersionEntryV2Base & {
+    operation: {
+      kind: "regeneration";
+      logicalAttemptId: string;
+      reviewAttemptFingerprint: string;
+      sourceGeneratedVersionId: string;
+      sourceGeneratedVersionFingerprint: string;
+      screenshotIncluded: boolean;
+    };
+  };
 ```
 
-Required fields:
+Top-level `sourceReviewFingerprint` is the one authoritative current Review fingerprint. It is not duplicated inside `operation`.
 
-- V2 requires all top-level fields shown above.
-- `operation.kind` is required.
-- For revision/regeneration, `sourceGeneratedVersionId` and `sourceGeneratedVersionFingerprint` are required.
-- For revision, `instruction` and `instructionFingerprint` are required.
-- For regeneration, `instruction` and `instructionFingerprint` are absent.
+Exact key rules:
 
-Legacy behavior:
+- V2 top-level keys must be exactly `contractVersion`, `id`, `sourceCaptureId`, `sourceCaptureSavedAt`, `sourceReviewFingerprint`, `createdAt`, `value`, `operation`.
+- Revision operation keys must be exactly `kind`, `logicalAttemptId`, `reviewAttemptFingerprint`, `sourceGeneratedVersionId`, `sourceGeneratedVersionFingerprint`, `instruction`, `instructionFingerprint`, `screenshotIncluded`.
+- Regeneration operation keys must be exactly `kind`, `logicalAttemptId`, `reviewAttemptFingerprint`, `sourceGeneratedVersionId`, `sourceGeneratedVersionFingerprint`, `screenshotIncluded`.
+- Regeneration forbids `instruction` and `instructionFingerprint`.
+- Any V2 `operation.kind: "initial-generation"` is rejected as underdefined and malformed for 6D.
+- `value` remains `ComponentGenerationResponseV1`.
 
-- V1 entries have no top-level `contractVersion` and are read as legacy initial-generation entries.
-- V1 entries remain immutable and readable.
-- New initial generation may remain V1 until a later implementation slice chooses to write V2 initial-generation entries. 6D-created revision/regeneration entries must be V2.
+Reader behavior:
 
-Ordering:
+- A valid object with no top-level `contractVersion` is validated only as legacy V1 with the current exact V1 keys.
+- A valid object with `contractVersion: 2` is validated only as the V2 union above.
+- Unknown top-level or operation keys are rejected.
+- Malformed legacy V1 entries are ignored or cleaned up according to existing reader behavior.
+- Malformed V2 entries are ignored or cleaned up by the same safe reader path only after validation failure; they must never be coerced into V1.
+- V1 legacy entries remain readable as initial-generation entries.
 
-- Version list remains newest-first by `createdAt`, then `id`.
-- Descendants can be shown beneath their source in later UI, but 6D MVP may list flat with lineage labels.
+Lineage:
 
-Deletion and orphan behavior:
+- `sourceCaptureId` is preserved on all V2 entries.
+- `sourceGeneratedVersionId` and `sourceGeneratedVersionFingerprint` are required for revision and regeneration.
+- Lineage is a soft reference, not an IndexedDB foreign key.
+- A valid descendant may be read with a missing-ancestor marker if a missing ancestor state is encountered.
 
-- Deleting a CaptureRecord deletes all generated versions with that `sourceCaptureId`, including descendants.
-- Deleting an individual generated version with descendants is allowed only after an explicit confirmation; descendants remain as immutable versions with a missing ancestor marker.
-- Lineage is a soft reference, not an enforced IndexedDB foreign key.
-- A missing ancestor is represented as "Source version deleted" with the stored source version ID/fingerprint.
-- A missing source CaptureRecord remains fatal; existing orphan cleanup may remove versions for a missing capture.
+## 11. Atomic Persistence Transaction
 
-## 9. Idempotency and Retry
+Preparation-time reads, pre-transport revalidation, and transaction-time persistence preconditions are distinct.
 
-Stable identity: `logicalAttemptId`.
+Preparation-time source reads:
 
-- Created when the user first enters Review for a valid revision/regeneration attempt.
-- Reused for transport Retry and persistence Retry from the same Review.
-- Transmitted to the backend only as an idempotency header, never in model-visible prompt text.
-- Used by the extension to derive the generated version ID:
+- read current CaptureRecord and screenshot asset;
+- read selected source generated version;
+- validate both;
+- compute source generated-version fingerprint;
+- build current CaptureRecord Review projection.
+
+Pre-transport Review revalidation:
+
+- verify the frozen Review still matches the current selected source, current CaptureRecord projection, screenshot choice, and source-generated-version fingerprint;
+- if any outbound value changed, invalidate the attempt and require returning to Review with a new `logicalAttemptId`.
+
+Final persistence operation:
+
+- use one `readwrite` transaction covering `captureRecords`, `screenshotAssets`, and `generatedComponentVersions`;
+- inside that same transaction, before adding the new V2 entry:
+  - re-read the current CaptureRecord;
+  - validate its wrapper, `sourceCaptureId`, `savedAt`, and frozen Review fingerprint/preconditions;
+  - validate screenshot asset/reference when the frozen Review includes screenshot;
+  - re-read the selected source generated version from `generatedComponentVersions`;
+  - validate it as V1 or V2;
+  - verify `sourceCaptureId` linkage;
+  - recompute and compare `sourceGeneratedVersionFingerprint`;
+  - verify the deterministic target generated-version ID;
+  - check whether an equal target already exists;
+  - add the new V2 entry only if all preconditions still hold;
+  - read the target entry back;
+  - validate exact equality before transaction success.
+
+The source generated-version read and new-entry add must occur in the same `generatedComponentVersions` readwrite transaction. Deletion or mutation during provider transport cannot pass a stale pre-request check.
+
+Deterministic target ID:
 
 ```text
-generated-version-${sha256("ElementCatcherRevisionV1:" + logicalAttemptId).slice(0, 32)}
+generated-version-${sha256HexText("ElementCatcher.RevisionGeneratedVersionId.V1\n" + logicalAttemptId).slice(0, 32)}
 ```
 
-Retry rules:
+Success ordering:
 
-| Scenario | Required behavior |
-| --- | --- |
-| Repeated submit click | Ignored while in-flight. |
-| Transport Retry | Reuses same `logicalAttemptId`, same Review projection, same screenshot choice, and same idempotency header. |
-| Persistence Retry | Reuses same pending entry and deterministic ID; no second provider call. |
-| Explicit new alternative/regeneration | Creates a new `logicalAttemptId` and therefore a distinct generated version ID. |
-| Duplicate backend delivery | Extension validates response and persists by deterministic ID; equal duplicate is idempotent. |
-| Same backend response returned twice | Equal entry read-back succeeds once; duplicate equal add resolves to existing entry. |
-| Transport success followed by extension timeout | Retry first searches by deterministic ID; if found and valid, show success after read-back; otherwise may call transport again with same idempotency header. |
-| Persistence success followed by interrupted UI | Reopen searches by deterministic ID and validates read-back before showing saved result. |
-| Panel close and reopen | In-memory drafts are lost, but persisted deterministic results are recoverable by ID. |
-| Stale duplicate response | Ignored unless bound source IDs and workflow token match the current workflow. |
+1. Validate and normalize input.
+2. Preparation-time source reads.
+3. Construct frozen Review.
+4. Create `logicalAttemptId`.
+5. Display frozen Review.
+6. Obtain consent.
+7. Pre-transport Review revalidation.
+8. Transmit with required idempotency header.
+9. Validate normalized response.
+10. Enforce componentName policy.
+11. Construct pending immutable V2 entry.
+12. Run the atomic persistence transaction.
+13. Expose success only after commit and validated read-back for the current workflow.
+14. Keep Preview closed.
 
-Backend deduplication is allowed but not required for correctness. Extension persistence deduplication is required.
-
-## 10. Cancellation and Stale Responses
-
-One-at-a-time rule: one active 6D workflow per Side Panel instance. Starting a new workflow aborts and retires the previous workflow generation token.
-
-Each async continuation is bound to:
-
-- `sourceCaptureId`;
-- `sourceGeneratedVersionId`;
-- `logicalAttemptId`;
-- workflow generation token.
-
-Cancellation coverage:
-
-| Event | Required behavior |
-| --- | --- |
-| Cancel before request | No transport; state becomes `cancelled`; draft can be reviewed again. |
-| Cancel during request | AbortController aborts fetch; late success/failure is ignored. |
-| Cancel after response before persistence | Best-effort abort; if write has not started, no entry is added. |
-| Cancel during persistence | Best-effort transaction abort; if commit already completed, result is accepted only after matching read-back. |
-| Close saved-capture detail | Abort and retire workflow token. |
-| Switch selected generated version | Abort current workflow; clear or confirm draft. |
-| Start second revision | Abort first workflow; first continuations become stale. |
-| Delete source CaptureRecord | Abort active workflow; persistence must fail if source is missing. |
-| Delete source generated version | Abort before persistence; if deletion races after request, persistence fails source-version re-read. |
-| Browser page unload / extension page unload | Best-effort abort; no UI success after unload. |
-| Late success after cancel | Must not update UI, persist under a different source, or trigger Preview. |
-| Late failure after newer attempt | Ignored. |
-| Stale persistence completion | Does not update current UI unless all binding values still match. |
-
-Guaranteed: stale continuations cannot update current UI, mutate the source version, mutate CaptureRecord, delete older versions, or trigger preview. Best-effort: network/provider work already accepted by backend may continue after client abort.
-
-## 11. Persistence Ordering
-
-Required success ordering:
-
-1. Re-read and validate source CaptureRecord.
-2. Re-read and validate selected source generated version.
-3. Validate revision input.
-4. Construct Review projection.
-5. Obtain consent.
-6. Create or reuse `logicalAttemptId`.
-7. Transmit.
-8. Validate normalized response.
-9. Enforce componentName policy.
-10. Construct immutable new generated version.
-11. Persist in one transaction.
-12. Read back by stable identity.
-13. Validate read-back.
-14. Expose success.
-15. Keep preview closed.
-
-Failure behavior:
+Failure and recovery:
 
 | Failure | Behavior |
 | --- | --- |
-| Missing CaptureRecord | Fail before transport or persistence; Retry unavailable until source exists. |
-| Missing source generated version | Fail before Review/transport; Retry unavailable. |
-| Source deleted before request | Fail before transport. |
-| Source deleted during request | Persistence fails before save. |
-| Invalid backend response | Reject as `invalid-response`; do not persist. |
-| ComponentName mismatch | Reject as invalid response under the component-name policy. |
-| Network error | `transport-failure`; Retry after Review available. |
-| Explicit abort | `cancelled`; no success until matching persisted result is later discovered by user action. |
-| Provider error | `backend/provider-failure`; safe bounded message only. |
-| Persistence quota error | `persistence-failure`; Retry saving unavailable if no pending entry can be kept. |
-| Transaction abort | `persistence-failure`; Retry saving available with pending entry when safe. |
-| Duplicate key | If existing entry equals pending entry, read-back succeeds; otherwise conflict failure. |
-| Write succeeded but read-back failed | No success; recovery searches deterministic ID before any new provider call. |
-| Unknown persistence outcome | Search deterministic ID; show success only after valid read-back. |
-| Orphan result | Do not persist if source CaptureRecord or source generated version cannot be validated. |
-| Retry after uncertain persistence | Search first, then retry save or transport according to whether pending entry exists. |
+| Missing CaptureRecord | Fail before transport or inside transaction; Retry unavailable until source exists. |
+| Missing source generated version | Fail before Review/transport or inside transaction; no V2 entry added. |
+| Current CaptureRecord projection changed after Review | Invalidate attempt; new Review creates new `logicalAttemptId`. |
+| Screenshot choice or digest changed after Review | Invalidate attempt. |
+| Source generated version changed/tampered | Fingerprint mismatch; fail safely. |
+| Source deleted during provider request | Same-transaction re-read fails; no entry added. |
+| Duplicate target ID with equal entry | Read back existing equal entry and treat as idempotent success only for current workflow. |
+| Duplicate target ID with different entry | Persistence conflict; no success. |
+| Unknown persistence outcome | Later deterministic recovery lookup may display a valid committed entry after read-back. |
 
-## 12. Component-Name Policy
+## 12. Idempotency and Retry
 
-Decision: preserve source `componentName` for all revisions and regenerations.
+`logicalAttemptId` is stable only for one frozen Review attempt.
 
-Justification:
+| Scenario | Required behavior |
+| --- | --- |
+| Repeated submit click | Ignored while in flight. |
+| Transport Retry with unchanged frozen Review | Reuses same `logicalAttemptId`, same idempotency header, same screenshot choice, same Review body. |
+| Back-to-edit changes instruction | Old attempt invalidated; next Review creates new `logicalAttemptId`. |
+| Back-to-edit changes screenshot choice | Old attempt invalidated; next Review creates new `logicalAttemptId`. |
+| Selected source version changes | Old attempt invalidated. |
+| CaptureRecord transmitted fields change | Old attempt invalidated. |
+| Persistence Retry | Reuses same pending V2 entry and deterministic ID; no provider call. |
+| Explicit new alternative | Creates new `logicalAttemptId` and new deterministic target ID. |
+| Duplicate backend delivery | Deterministic persistence dedupes equal entry or rejects conflict. |
+| Transport success followed by extension timeout | Recovery searches deterministic ID first; provider Retry may reuse same idempotency header if frozen Review still holds. |
 
-- It avoids silent provider renaming.
-- It keeps Preview binding deterministic.
-- It keeps version list continuity simple.
-- It avoids adding a separate rename UI to 6D.
+Transport Retry must not create uncontrolled duplicate versions. Persistence Retry must not call the provider.
+
+## 13. Cancellation and Stale Responses
+
+Abort is best effort.
 
 Rules:
 
-- Backend prompt instructs provider to return the same `componentName`.
-- Extension validates that response `componentName` equals selected source `componentName`.
-- Mismatch is `invalid-response` and is not persisted.
-- Retry reuses the same expected name.
-- Duplicate component names across versions are allowed and expected; version identity is `id` plus `createdAt`.
-- Lineage display can show `ButtonCard - revised from ButtonCard`.
-- Future user rename requires a separate explicit field and architecture approval.
+- If cancellation wins before IndexedDB commit, no V2 entry is added.
+- If the IndexedDB transaction has already committed, the entry may remain persisted.
+- A cancelled or stale workflow must not show success, update the active workflow, select the result, or trigger Preview.
+- A later user-triggered refresh, reopen, or deterministic recovery lookup may display the validated persisted version normally.
+- Cancellation must never delete an already committed valid version merely to make UI state appear cancelled.
 
-## 13. Preview and Execution Boundary
+Every async continuation is bound to:
+
+- `sourceCaptureId`;
+- `sourceGeneratedVersionId`;
+- `sourceGeneratedVersionFingerprint`;
+- `logicalAttemptId`;
+- `reviewAttemptFingerprint`;
+- workflow generation token.
+
+Cancellation and stale coverage:
+
+| Event | Required behavior |
+| --- | --- |
+| Cancel before transport | No request; workflow becomes cancelled. |
+| Cancel during transport | Abort fetch best-effort; late response ignored. |
+| Cancel before transaction commit | Transaction abort best-effort; no success UI. |
+| Cancel after commit | UI remains cancelled/stale; later refresh may discover valid result. |
+| Close detail | Abort and retire workflow token. |
+| Switch source version | Abort current workflow and invalidate attempt. |
+| Start second revision/regeneration | Retire previous token; late continuations ignored. |
+| Delete source CaptureRecord | Active workflow fails safely; capture-level cleanup remains existing behavior. |
+| Source generated version missing by transaction time | Persistence precondition fails. |
+| Late success after newer attempt | Ignored; no UI update, no selection, no Preview. |
+| Stale persistence completion | Cannot update active UI; committed result is discoverable only by later user action. |
+
+## 14. Deletion and Orphan Scope
+
+Milestone 6D does not add a new individual generated-version deletion button or production management workflow.
+
+Rules:
+
+- CaptureRecord deletion continues to remove all generated versions for `sourceCaptureId`.
+- During an active 6D workflow, a source generated version that becomes missing through storage mutation or test setup causes safe failure.
+- V2 lineage remains a soft reference, so a valid descendant can be read with a missing-ancestor marker if such a state is encountered.
+- A future user-facing individual version deletion feature requires separate scope and review.
+- Acceptance tests may seed a missing ancestor through storage/unit harnesses to validate safe reader behavior without introducing production delete UI.
+
+## 15. Component-Name Policy
+
+Revision and regeneration preserve the source `componentName`.
+
+- Backend prompt instructs the provider to return the same `componentName`.
+- Extension validates response `componentName` equals source `componentName`.
+- Silent provider rename is `invalid-response` and is not persisted.
+- Retry reuses the same expected name while the frozen Review remains unchanged.
+- Duplicate component names across versions are allowed because identity is the generated-version ID and lineage.
+- User rename is out of 6D scope and requires separate approval.
+
+## 16. Preview and Execution Boundary
 
 6D does not change preview architecture.
 
@@ -523,194 +610,167 @@ Rules:
 - Render realm never receives source.
 - Unsupported source remains visible and copyable.
 - Revision failure cannot modify source version.
-- Protocol V2, Previewable Subset V1, sibling sandbox topology, utility CSS registry, CSP, and preview limits remain unchanged.
+- Protocol V2, Previewable Subset V1, sibling sandbox topology, source-controlled utility CSS, CSP, and preview limits remain unchanged.
 
-## 14. Threat Model
+## 17. Threat Model
 
 | Threat | Trust boundary | Prevention | Detection | Failure behavior | Residual risk |
 | --- | --- | --- | --- | --- | --- |
-| Malicious revision instruction | User text to backend/provider | Bounds, normalization, visible Review, prompt says instruction is untrusted | Input validator | Reject before Review | Model may still follow style intent imperfectly |
-| Prompt injection in generated source | Persisted source to provider | Treat source as untrusted reference data | Backend prompt and bounds | Malformed/unsafe output rejected later by response/preview gates | Provider may produce poor code |
-| Prompt injection in CaptureRecord text | Capture text to provider | Existing projection bounds and untrusted-data prompt | Request validation | Reject oversized/malformed projection | Injection can influence aesthetics |
-| Hostile model output | Provider to extension | Strict response schema and bounds | Backend and extension validators | `invalid-response` or safe backend error | Valid-looking unsafe source remains inert until preview gate |
-| Source generated-version tampering | IndexedDB to UI | Re-read and validate source entry/fingerprint | V1/V2 validators | Retry unavailable | Local attacker with storage access can delete data |
-| Stale CaptureRecord relationship | Local storage | Re-read source and fingerprint | Persistence preconditions | Fail before save | User may need to regenerate from current source |
-| Cross-capture lineage mix-up | UI state to persistence | Bind IDs and workflow token | Source/version re-read | Reject stale continuation | Bugs in future filters |
-| Duplicate backend delivery | Backend to extension | Deterministic ID | Duplicate-key read-back | Idempotent success or conflict | Backend may still bill twice without server dedupe |
-| Replayed response | Network/backend | Attempt ID and source fingerprint binding | Persistence equality check | Ignore or reject | No cryptographic server signature in 6D |
-| Hidden outbound fields | Extension to backend | Review equals projection; exact keys | Privacy tests | Block request | Future prompt edits need review |
-| Repeated Retry cost abuse | UI/backend | Disable in-flight; same idempotency header; future rate limits | Backend logs | Safe provider/rate errors | Local demo backend lacks production quota |
-| Oversized instruction | User input | Code point and byte limits | Validator | Reject locally | Unicode edge cases need tests |
-| Oversized source component | Stored source to request | Existing response code bound; revision request source bound | Request validator | Reject before transport | Large valid source may be costly |
-| Response bomb | Provider to backend/extension | Response byte limit and schema | Bounded response read | Malformed response | Backend memory pressure still needs ops limits |
-| Raw provider error leakage | Provider to backend | Safe error mapping | Backend tests | Safe bounded error | Logs must stay controlled |
-| Persistence race | Local async | Single transaction and read-back | Transaction/read-back validation | No success | Browser transaction behavior is best-effort on unload |
-| Cancellation race | UI to async | AbortController and workflow token | Stale guards | Ignore late continuation | Backend work may continue after abort |
-| Stale UI continuation | Async to React state | Generation token | State guard | Ignore | Future refactors could omit guard |
-| Auto-preview/execution | Persistence to preview | Separate Preview action | UI tests | No preview opened | User may confuse saved with previewed |
-| Deletion race | Source deletion to workflow | Re-read source/version | Persistence preconditions | Fail safely | Individual version deletion needs careful UI |
-| Orphan lineage | Missing ancestor | Soft reference marker | Read validators | Show missing ancestor or cleanup missing capture | Descendant context may be incomplete |
+| Malicious revision instruction | User text to backend/provider | Bounds, normalization, visible Review, untrusted-data prompt | Input validator and instruction fingerprint | Reject before Review | Model may still misinterpret benign intent. |
+| Prompt injection in generated source | Persisted source to provider | Treat source as untrusted reference data | Request bounds and backend prompt | Invalid response rejected; preview still gated | Valid-looking unsafe source remains inert until Preview gate. |
+| Prompt injection in CaptureRecord text | Capture projection to provider | Existing bounded projection and untrusted-data prompt | Request validation | Reject malformed projection | Text may still affect aesthetics. |
+| Hostile model output | Provider to backend/extension | Strict response schema and component-name equality | Backend and extension validators | Safe error or invalid-response | Schema-valid hostile source remains inert and must pass 6C preview gate. |
+| Source version tampering | IndexedDB to workflow | Same-transaction re-read and fingerprint recompute | Fingerprint mismatch | No V2 entry added | Local storage attacker can still delete data. |
+| Current CaptureRecord TOCTOU | Local metadata/storage to persistence | Frozen Review fingerprint and transaction preconditions | Current Review mismatch | Attempt invalidated or persistence fails | User must review again. |
+| Cross-capture lineage mix-up | UI state to persistence | Local IDs in attempt fingerprint; source linkage checks | Transaction validation | Reject | Future UI filters must preserve binding. |
+| Duplicate backend delivery | Backend to extension | Required idempotency header and deterministic target ID | Duplicate-key equality check | Idempotent success or conflict | Provider billing may duplicate without server dedupe. |
+| Replayed response | Network/backend to extension | Attempt binding and deterministic target ID | Review/source fingerprint checks | Ignore/reject | No server response signature in 6D. |
+| Hidden outbound fields | Extension to backend/provider | Review equals request body; exact keys | Privacy tests | Block request | Future prompt edits need review. |
+| Raw idempotency leakage | Header/log boundary | Header excluded from prompt; no raw ordinary logs | Backend tests | Safe failure | Ops logging policy still needed for production. |
+| Oversized instruction/source/response | User/provider boundary | Bounds and byte limits | Validators | Reject | Large valid source may cost more. |
+| Persistence race | IndexedDB transaction | Same readwrite transaction over required stores | Read-back equality | No success | Browser unload can still interrupt UI. |
+| Cancellation after commit | UI to persistence | Stale guards; no cleanup deletion | Deterministic recovery lookup | Cancelled UI; later refresh can show valid result | User may see result after refresh. |
+| Auto-preview/execution | Persistence to preview | Separate Preview action | UI regression tests | No Preview opened | User education still needed. |
+| Missing ancestor | Reader lineage | Soft reference marker | Reader validation | Show marker, not crash | Descendant context may be incomplete. |
 
-## 15. Accessibility and UX Contract
+## 18. Accessibility and UX Contract
 
 - Field label: `Revision instruction`.
 - Help text: `Describe one change to make to this saved generated version. Do not include private data.`
-- Maximum-length presentation: live counter `0 / 1000 characters`, plus byte-limit validation only when exceeded.
-- Validation timing: on input for length/control characters; on Review for full contract.
+- Maximum-length display: `0 / 1000 characters`; byte-limit error appears only when exceeded.
+- Validation timing: live for obvious length/control issues, full at Review.
 - Review headings: `Source version`, `Instruction`, `Approved capture context`, `Optional screenshot`, `Excluded data`, `Consent`.
 - Consent action text: `I understand this displayed data will leave my device and may use paid AI capacity.`
-- Revise button: `Revise`.
-- Regenerate button: `Regenerate`.
-- Submit labels: `Send revision to AI`; `Send regeneration to AI`.
-- Cancel label: `Cancel`.
-- Retry labels: `Retry after review`; `Retry saving`.
-- Loading message: `Revising with the configured AI backend...` or `Regenerating with the configured AI backend...`.
-- Cancelled message: `Revision cancelled.` or `Regeneration cancelled.`
-- Failure messages reuse safe categories and avoid internal protocol terms.
-- Success message: `Saved revised generated version locally.` or `Saved regenerated version locally.`
-- Focus after error: invalid field, then Retry button for operation failures.
+- Buttons: `Revise`, `Regenerate`, `Review revision`, `Review regeneration`, `Send revision to AI`, `Send regeneration to AI`, `Back to edit`, `Cancel`, `Retry after review`, `Retry saving`, `Close revision`, `Preview`.
+- Progress status: `Revising with the configured AI backend...` or `Regenerating with the configured AI backend...`.
+- Cancelled status: `Revision cancelled.` or `Regeneration cancelled.`
+- Success status: `Saved revised generated version locally.` or `Saved regenerated version locally.`
+- Focus after error: invalid field or first Retry button.
 - Focus after cancellation: `Review again`.
-- Focus after success: new generated version heading.
-- Screen-reader live regions: polite for progress/success, assertive alert for validation/failure.
-- Keyboard: all controls reachable by Tab; Escape in editing cancels only when no modal confirmation is active; Enter in textarea inserts text, not submit.
-- Draft preservation: preserve only while same source version remains selected and workflow has not submitted.
-- Navigation warning: warn before discarding a non-empty unsent draft; active transport aborts without warning if the user explicitly leaves.
-- Plain product distinction: Revise means "make a described change"; Regenerate means "create another version without extra instructions."
+- Focus after success: new generated-version heading only for the current workflow.
+- Live regions: polite for progress/success, assertive alert for validation/failure.
+- Keyboard: Tab reaches every control; Enter in textarea inserts text; Escape cancels editing only when no confirmation is active.
 
-## 16. Acceptance Test Matrix
+## 19. Acceptance Test Matrix
 
 | Area | Test | Unit | Backend integration | IndexedDB integration | Playwright extension runtime |
 | --- | --- | --- | --- | --- | --- |
-| Contract | exact keys | Yes | Yes | No | No |
-| Contract | wrong contract version | Yes | Yes | No | No |
+| Attempt | `logicalAttemptId` created at frozen Review time | Yes | No | No | Yes |
+| Attempt | Back-to-edit instruction change creates new attempt | Yes | No | No | Yes |
+| Attempt | screenshot-choice change creates new attempt | Yes | No | No | Yes |
+| Attempt | repeated submit ignored while in flight | Yes | No | No | Yes |
+| Contract | exact revision input keys | Yes | No | No | No |
+| Contract | exact V2 revision keys | Yes | No | Yes | No |
+| Contract | exact V2 regeneration keys | Yes | No | Yes | No |
+| Contract | underdefined V2 initial-generation entry rejected | Yes | No | Yes | No |
+| Contract | wrong contract version | Yes | Yes | Yes | No |
 | Contract | wrong mode | Yes | Yes | No | No |
 | Contract | invalid IDs | Yes | Yes | Yes | No |
-| Contract | Unicode normalization | Yes | No | No | Yes |
-| Contract | whitespace | Yes | No | No | Yes |
-| Contract | invalid controls | Yes | Yes | No | Yes |
-| Contract | code-point limit | Yes | Yes | No | Yes |
-| Contract | UTF-8 byte limit | Yes | Yes | No | Yes |
-| Contract | unknown keys | Yes | Yes | No | No |
-| Privacy | Review projection equals transmitted projection | Yes | No | No | Yes |
+| Contract | unknown keys | Yes | Yes | Yes | No |
+| Contract | instruction code-point limit | Yes | Yes | No | Yes |
+| Contract | instruction UTF-8 byte limit | Yes | Yes | No | Yes |
+| Fingerprint | canonical stability across object key ordering | Yes | No | No | No |
+| Fingerprint | source V1 fingerprint | Yes | No | Yes | No |
+| Fingerprint | source V2 fingerprint | Yes | No | Yes | No |
+| Fingerprint | instruction normalization and fingerprint | Yes | No | No | Yes |
+| Fingerprint | review attempt fingerprint binds local IDs and outbound projection | Yes | No | No | Yes |
+| Fingerprint | fingerprint mismatch fails safely | Yes | No | Yes | Yes |
+| Privacy | Review projection exactly equals request body | Yes | No | No | Yes |
 | Privacy | excluded fields absent | Yes | Yes | No | Yes |
 | Privacy | screenshot rule enforced | Yes | Yes | No | Yes |
-| Privacy | no hidden CaptureRecord fields | Yes | Yes | No | Yes |
-| Privacy | no source URL/page title/local IDs unless approved | Yes | Yes | No | Yes |
-| Privacy | no cookies/storage | Yes | No | No | Yes |
-| Privacy | no real OpenAI request | No | Yes | No | Yes |
+| Privacy | no source URL/page title/local IDs in body | Yes | Yes | No | Yes |
+| Privacy | no cookies/storage/notes/prior provider metadata | Yes | Yes | No | Yes |
+| Privacy | no raw idempotency value in provider prompt, response, or ordinary logs | Yes | Yes | No | No |
+| Backend | required idempotency header | No | Yes | No | No |
+| Backend | CORS preflight allowlist includes idempotency header | No | Yes | No | No |
+| Backend | safe bounded errors | Yes | Yes | No | No |
+| Backend | no real OpenAI request during validation | No | Yes | No | Yes |
+| CaptureRecord | current metadata edit semantics | Yes | No | Yes | Yes |
+| CaptureRecord | current transmitted field change invalidates attempt | Yes | No | Yes | Yes |
 | Lineage | sourceCaptureId preserved | Yes | No | Yes | Yes |
 | Lineage | sourceGeneratedVersionId preserved | Yes | No | Yes | Yes |
-| Lineage | operation kind recorded | Yes | No | Yes | Yes |
-| Lineage | logicalAttemptId recorded | Yes | No | Yes | Yes |
-| Lineage | old version immutable | Yes | No | Yes | Yes |
-| Lineage | CaptureRecord immutable | Yes | No | Yes | Yes |
-| Lineage | legacy versions remain readable | Yes | No | Yes | Yes |
-| Lineage | deletion behavior | Yes | No | Yes | Yes |
-| Lineage | missing ancestor behavior | Yes | No | Yes | Yes |
-| Lineage | orphan behavior | Yes | No | Yes | Yes |
-| Idempotency | repeated click | Yes | No | No | Yes |
-| Idempotency | transport Retry | Yes | Yes | Yes | Yes |
-| Idempotency | persistence Retry | Yes | No | Yes | Yes |
-| Idempotency | duplicate backend response | Yes | Yes | Yes | Yes |
-| Idempotency | successful persistence then UI interruption | No | No | Yes | Yes |
-| Idempotency | unknown persistence outcome | Yes | No | Yes | Yes |
-| Idempotency | explicit new alternative creates distinct version | Yes | No | Yes | Yes |
-| Cancellation | cancel before transport | Yes | No | No | Yes |
-| Cancellation | cancel during transport | Yes | Yes | No | Yes |
-| Cancellation | cancel before persistence | Yes | No | Yes | Yes |
-| Cancellation | close detail | No | No | No | Yes |
-| Cancellation | switch source version | No | No | No | Yes |
-| Cancellation | source deletion | Yes | No | Yes | Yes |
-| Cancellation | late success | Yes | Yes | Yes | Yes |
-| Cancellation | late failure | Yes | Yes | No | Yes |
-| Cancellation | stale persistence completion | Yes | No | Yes | Yes |
-| Cancellation | newer workflow unaffected | Yes | No | Yes | Yes |
-| Backend | request exact-key validation | No | Yes | No | No |
-| Backend | bounds | Yes | Yes | No | No |
-| Backend | prompt construction | Yes | Yes | No | No |
-| Backend | provider normalization | Yes | Yes | No | No |
-| Backend | bounded safe errors | Yes | Yes | No | No |
-| Backend | no provider secret | No | Yes | No | No |
-| Backend | no raw provider response | Yes | Yes | No | No |
-| UI | editing | No | No | No | Yes |
-| UI | invalid | Yes | No | No | Yes |
-| UI | Review | No | No | No | Yes |
-| UI | consent | No | No | No | Yes |
-| UI | submitting | No | Yes | No | Yes |
-| UI | cancellation | No | Yes | Yes | Yes |
-| UI | success | No | No | Yes | Yes |
-| UI | failure | No | Yes | Yes | Yes |
-| UI | Retry | Yes | Yes | Yes | Yes |
-| UI | focus | No | No | No | Yes |
-| UI | live region | No | No | No | Yes |
-| UI | Preview remains separate | No | No | Yes | Yes |
-| Regression | Milestone 5 initial generation unchanged | Yes | Yes | Yes | Yes |
+| Lineage | source version deletion during provider request | Yes | No | Yes | Yes |
+| Lineage | source version changed/tampered before persistence | Yes | No | Yes | Yes |
+| Lineage | missing ancestor reader behavior without production delete UI | Yes | No | Yes | Yes |
+| Persistence | atomic same-transaction source-version re-read | Yes | No | Yes | No |
+| Persistence | deterministic target ID verified | Yes | No | Yes | No |
+| Persistence | equal duplicate target is idempotent | Yes | No | Yes | Yes |
+| Persistence | conflicting duplicate target fails | Yes | No | Yes | Yes |
+| Persistence | read-back equality required before success | Yes | No | Yes | Yes |
+| Idempotency | transport Retry with unchanged frozen Review | Yes | Yes | Yes | Yes |
+| Idempotency | persistence Retry uses pending entry, no provider call | Yes | No | Yes | Yes |
+| Idempotency | explicit new alternative creates distinct ID | Yes | No | Yes | Yes |
+| Cancellation | cancel before commit | Yes | No | Yes | Yes |
+| Cancellation | cancel after commit shows no stale UI success | Yes | No | Yes | Yes |
+| Cancellation | later refresh discovers committed valid result | Yes | No | Yes | Yes |
+| Cancellation | late success/failure after newer workflow ignored | Yes | Yes | Yes | Yes |
+| UI safety | no 6D UI path active before stale guards exist | No | No | No | Yes |
+| UI | focus and live regions | No | No | No | Yes |
 | Regression | Milestone 5 Review/consent unchanged | Yes | No | No | Yes |
-| Regression | Milestone 6C preview unchanged | Yes | No | No | Yes |
-| Regression | no storage corruption | No | No | Yes | Yes |
+| Regression | Milestone 6C preview isolation unchanged | Yes | No | No | Yes |
 | Regression | no automatic execution | Yes | No | No | Yes |
-| Regression | no real OpenAI request | No | Yes | No | Yes |
+| Regression | no runtime implementation in documentation task | No | No | No | No |
 
-## 17. Implementation Slices
+## 20. Implementation Slices
 
-| Slice | Purpose | Allowed files | Dependencies | Acceptance criteria | Independent commit? | Prohibited scope | Gate |
+Incomplete backend or transport helpers must remain unreachable from production UI until the trusted complete UI workflow is accepted.
+
+| Slice | Purpose | Allowed files | Dependencies | Acceptance criteria | May commit independently? | Prohibited scope | Gate |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 1. Contract and lineage foundation | Add revision input, V2 generated-version validators, deterministic IDs | `extension/src/shared/*`, focused unit tests | Approved design | V1 readable, V2 valid, malformed rejected | Yes | UI/backend behavior | Independent acceptance required |
-| 2. Backend revision route or mode | Add `/v1/revise-component`, prompt construction, response reuse | `backend/src/*`, backend tests | Slice 1 shared contracts | Exact keys, safe errors, no raw provider data | Yes | Provider secret exposure, V1 route change | Independent acceptance required |
-| 3. Extension transport and privacy Review projection | Build provider-neutral request and visible Review data | `extension/src/generation/*`, UI tests | Slices 1-2 | Review equals transmitted projection | Yes | Hidden outbound user data | Independent acceptance required |
-| 4. Persistence and idempotency | Persist V2 entries, deterministic ID, Retry recovery | `extension/src/storage/*`, tests | Slices 1 and 3 | Duplicate-safe, read-back required | Yes | IndexedDB schema bump unless separately approved | Independent acceptance required |
-| 5. Side Panel Revise/Regenerate workflow | Add trusted UI states and controls | `extension/src/sidepanel/*`, styles, Playwright | Slices 1,3,4 | Complete workflow and accessibility | Yes | Version comparison/export | Independent acceptance required |
-| 6. Cancellation and stale-response guards | Harden AbortController and workflow tokens | generation/storage/sidepanel tests | Slices 3-5 | Late continuations ignored | Yes | Preview protocol changes | Independent acceptance required |
-| 7. Full regression and documentation closeout | Validate M5/M6C unchanged and close 6D | tests and docs only | Slices 1-6 | All targeted suites pass; docs updated | Yes | 6E implementation | Independent acceptance required |
+| 1. Contract, canonicalization, and fingerprint foundation | Define revision input, V2 union validators, fingerprint helpers, deterministic ID helper | `extension/src/shared/*`, `extension/src/generation/*`, focused tests | Approved architecture | V1 readable; malformed V2 rejected; fingerprints stable | Yes | Reachable UI/backend behavior | Independent acceptance |
+| 2. Backend revision route, unreachable from production UI | Add `/v1/revise-component`, required idempotency header, CORS, validation, prompt construction | `backend/src/*`, backend tests | Slice 1 shared contracts | Exact keys, safe errors, no raw idempotency/provider data | Yes | Wiring to production UI | Independent acceptance |
+| 3. Extension transport and Review projection helpers, unreachable from production UI | Build request body and Review projection builders | `extension/src/generation/*`, tests | Slices 1-2 | Review equals request; hidden fields absent | Yes | User-visible send/save path | Independent acceptance |
+| 4. Atomic V2 persistence and deterministic recovery | Enforce same-transaction CaptureRecord/source-version re-read, target ID, read-back | `extension/src/storage/*`, tests | Slices 1 and 3 | TOCTOU closed; duplicate behavior correct | Yes | UI send path without stale guards | Independent acceptance |
+| 5. Complete trusted Side Panel workflow | Add first reachable Revise/Regenerate UI with AbortController ownership, workflow-token retirement, source/attempt binding, late-continuation rejection | `extension/src/sidepanel/*`, styles, Playwright | Slices 1-4 | Complete Review/consent/send/save/cancel/Retry safety in first UI release | Yes | Partial unsafe production UI | Independent acceptance |
+| 6. Regression hardening | Broaden stale, cancellation, privacy, M5, M6C tests | tests and docs | Slices 1-5 | Full accepted matrix coverage | Yes | New product scope | Independent acceptance |
+| 7. Documentation closeout | Mark implementation slice results without starting 6E | docs only | Slices 1-6 | Milestone status remains correct until acceptance | Yes | 6E/version comparison/export | Independent acceptance |
 
-## 18. Final Decisions Table
+## 21. Final Decisions Table
 
 | Topic | Selected design | Rejected alternatives | Reason | Implementation impact | Approval still required |
 | --- | --- | --- | --- | --- | --- |
-| Revision semantics | One selected persisted version plus one bounded instruction creates one new immutable version | Overwrite source; chat transcript | Simpler, private, lineage-safe | New workflow and V2 lineage | Yes, implementation approval |
-| Regeneration semantics | Same workflow, explicit mode, no instruction | Deferred; separate contract | Shares lineage/idempotency without ambiguity | Same route/request mode | Yes |
-| Instruction bounds | 4-1000 code points, 4096 bytes, NFC, trimmed/collapsed whitespace | Unbounded free text | Cost and validation control | Validator and UI counter | Yes |
-| Screenshot transmission | Optional explicit checkbox, off by default | Always, never | Balances fidelity/privacy/cost | Review checkbox and request branch | Yes |
-| CaptureRecord context | Existing Review projection sent by default | Hidden context or full record | Fidelity with existing bounds | Reuse projection | Yes |
-| Backend route | New `/v1/revise-component` | Reuse `/v1/generate-component` | Avoid V1 exact-key ambiguity | Backend route/tests | Yes |
-| Response contract | Reuse `ComponentGenerationResponseV1` | Revision-specific response | Lineage is local persistence concern | Existing response validator reused | Yes |
-| Prompt composition | Fixed hidden system categories plus visible request only | Hidden user-derived fields | Privacy reviewability | Backend prompt builder | Yes |
-| Lineage contract | V2 generated-version entry | Arbitrary V1 fields | V1 exact-key cannot carry lineage | Validator/readers update | Yes |
-| IndexedDB migration outcome | No version bump | New store/index | Store can hold V2; existing index sufficient | Same DB v2 | Yes |
-| ComponentName policy | Preserve source name | Provider rename; user rename | Deterministic Preview and list | Response name equality check | Yes |
-| logicalAttemptId | Stable per Review attempt | Random per Retry | Retry dedupe | Deterministic generated ID | Yes |
-| Transport Retry | Same attempt, same projection | New attempt each Retry | Prevent duplicates/cost drift | Retry state stores Review | Yes |
-| Persistence Retry | Same pending entry | Re-call provider by default | Avoid duplicate versions | Pending entry recovery | Yes |
-| Explicit new alternative | New attempt ID | Reuse Retry identity | User intent creates distinct result | New deterministic ID | Yes |
-| Cancellation | Best-effort abort plus stale guards | Assume abort is complete | Browser/provider work may continue | Token checks | Yes |
-| Source CaptureRecord deletion | Cancels; no orphan save | Persist orphan | Capture is source boundary | Re-read source | Yes |
-| Source generated-version deletion | Soft ancestor handling for descendants; active workflow fails | Cascade descendants automatically | Preserve immutable descendants | UI marker and validation | Yes |
-| Descendants | Remain immutable after ancestor deletion with marker | Forced delete | User may need saved result | Soft lineage | Yes |
-| Legacy version reading | V1 readable as initial generation | Migrate eagerly | Avoid unnecessary migration | Union validator | Yes |
-| Preview separation | Unchanged explicit Preview after persistence | Auto-preview | Preserve 6C boundary | No preview protocol change | Yes |
-| 6D/6E boundary | No comparison/export | Add comparison now | Keep scope tight | 6E remains Planned | Yes |
+| Revision semantics | Selected persisted version plus one bounded instruction creates new immutable V2 version | Overwrite source; chat transcript | Simpler and lineage-safe | V2 revision operation | Yes |
+| Regeneration semantics | Same workflow, explicit mode, no instruction | Deferred; separate model | Shares privacy/idempotency semantics | V2 regeneration operation | Yes |
+| `logicalAttemptId` lifecycle | Created after validation, source re-read, Review freeze, before Review display | Create on edit, on consent, or after transport | Single consistent Retry boundary | Frozen Review owns attempt | Yes |
+| `requestId` | Removed from 6D contract | Optional unused ID | Avoid unused identity | Stale binding uses attempt/review/token | Yes |
+| V2 contract | Discriminated union for revision/regeneration only | V2 initial-generation | Avoid underdefined initial behavior | Union validators | Yes |
+| Fingerprints | Domain-separated canonical SHA-256 | Descriptive hashes | Stable validation and TOCTOU checks | Fingerprint helpers/tests | Yes |
+| Current CaptureRecord edits | Current Review projection at Review time; no equality to ancestor fingerprint | Block title/tag/component-type edits | User metadata edits should not block revision | Store current fingerprint on V2 | Yes |
+| Screenshot | Optional explicit checkbox, off by default | Always or never | Privacy/cost/fidelity balance | Choice invalidates attempt when changed | Yes |
+| Backend route | Dedicated `/v1/revise-component` | Reuse `/v1/generate-component` | Avoid V1 exact-key ambiguity | New route and tests | Yes |
+| Idempotency header | Required `X-Element-Catcher-Idempotency-Key` | Optional header | Matches Retry contract | CORS/preflight update | Yes |
+| Response | Reuse `ComponentGenerationResponseV1` | Revision-specific response | Lineage is local | Existing validator reused | Yes |
+| Persistence | Same readwrite transaction over required stores | Pre-request source check only | Closes source-version deletion race | Atomic persistence function | Yes |
+| Cancellation after commit | Cancelled/stale UI does not show success; committed result may remain | Delete committed result | Preserve valid committed data | Recovery lookup later | Yes |
+| Individual deletion | Out of 6D production scope | Add delete UI now | Not approved product scope | Missing ancestor tests only | Yes |
+| ComponentName | Preserve source name | Provider rename | Deterministic preview/list | Equality check | Yes |
+| Preview | Separate explicit Preview after persistence | Auto-preview | Preserve 6C | No protocol changes | Yes |
+| Slice safety | First reachable UI includes stale/cancel guards | Add guards later | Avoid unsafe partial workflow | Reordered slices | Yes |
+| 6D/6E boundary | No comparison/export | Start 6E | Keep scope tight | 6E remains Planned | Yes |
 
-## 19. Residual Risks
+## 22. Residual Risks
 
-- Backend idempotency may not prevent provider billing if the backend cannot dedupe before provider call; extension persistence still prevents uncontrolled local duplicates.
-- No cryptographic signature binds backend response to request; extension relies on local attempt/source binding and schema validation.
-- Optional screenshot resend improves fidelity but increases privacy/cost; the checkbox and Review must be tested carefully.
-- Soft ancestor references make deletion user-friendly but require clear UI for missing ancestors.
-- V2 entries in the existing object store avoid migration, but all readers must be updated to avoid accidental cleanup of valid V2 records.
-- Model output is never trusted; preview safety still depends on the Milestone 6C parser/policy/render-plan boundary.
-- Production backend operations such as authentication, quotas, budgets, monitoring, and abuse prevention remain outside 6D and require separate approval.
+- Without server-side provider-call deduplication, duplicate provider billing can still occur after ambiguous transport Retry.
+- No server response signature binds response to request; the extension relies on source/review/attempt binding and deterministic persistence.
+- Optional screenshot resend improves fidelity but increases privacy and cost when selected.
+- Soft missing-ancestor handling needs careful UI language in implementation.
+- V2 entries in the existing object store require every generated-version reader to accept V1/V2 intentionally and reject malformed records safely.
+- Production backend operations such as authentication, quotas, budgets, monitoring, and abuse prevention remain separate future work.
 
-## 20. Production Approval Gate
+## 23. Production Approval Gate
 
-Before any implementation slice starts, independent review must approve:
+Before implementation starts, independent review must approve:
 
-- the dedicated backend route;
-- V2 generated-version contract without IndexedDB version bump;
-- optional screenshot resend rule;
-- deterministic generated version ID from `logicalAttemptId`;
-- componentName preservation;
-- soft ancestor deletion behavior;
-- no hidden user-derived outbound prompt data;
+- consistent `logicalAttemptId` lifecycle;
+- exact V2 discriminated union;
+- fingerprint algorithms and domain separators;
+- current CaptureRecord edit semantics;
+- atomic source-version re-read and persistence transaction;
+- cancellation-after-commit behavior;
+- individual generated-version deletion scope exclusion;
+- required idempotency header and CORS behavior;
+- safe implementation slice ordering;
+- expanded acceptance matrix;
 - preservation of Milestone 5 consent and Milestone 6C preview boundaries.
 
 No production implementation exists from this document alone.
