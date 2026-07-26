@@ -140,18 +140,10 @@ Explicitly excluded from Milestone 6D:
 
 Milestone 6E remains responsible for version comparison and final Milestone 6 regression.
 
-Open design questions requiring independent review before implementation:
+Milestone 6D architecture closure:
 
-- Revision request contract.
-- Relationship between the source generated version and the new version.
-- Idempotency and Retry behavior.
-- Revision prompt construction.
-- Consent review data.
-- Abort and stale-response handling.
-- Persistence ordering.
-- Failure recovery.
-- Whether regeneration without a revision instruction shares the same workflow.
-- Exact UI states and accessibility behavior.
+- `docs/MILESTONE_6D_REVISION_ARCHITECTURE.md` is the authoritative 6D design for revision and regeneration semantics, Review privacy projection, backend route selection, generated-version lineage, idempotency, Retry, cancellation, persistence ordering, component-name policy, accessibility, acceptance testing, and implementation slices.
+- Milestone 6D remains Current and unimplemented until that document receives independent approval and implementation slices land.
 
 ## Milestone 6B Accepted Foundation
 
