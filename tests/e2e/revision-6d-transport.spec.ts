@@ -15,10 +15,10 @@ import {
   prepareComponentRevisionReview,
   revalidateComponentRevisionReview,
   reviewRequestBodiesEqual,
+  validateFrozenComponentRevisionReviewV1,
   type FrozenComponentRevisionReviewV1
 } from "../../extension/src/generation/revision-review";
 import { createHttpRevisionTransport } from "../../extension/src/generation/revision-transport";
-import { canonicalJsonStringify } from "../../extension/src/generation/canonical-json";
 import type { StoredScreenshotAsset } from "../../extension/src/storage/indexed-db";
 
 const captureId = "capture-0123456789abcdef0123456789abcdef";
@@ -47,7 +47,8 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       rawRevisionInstruction: "  Update   primary label ",
       screenshotIncluded: false,
       endpointCategory: "local-development-proxy",
-      createLogicalAttemptId: () => attemptId
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
     });
 
     expect(review.mode).toBe("revision");
@@ -95,7 +96,8 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       sourceGeneratedVersionEntry: await validV2SourceEntry(),
       mode: "regeneration",
       screenshotIncluded: false,
-      createLogicalAttemptId: () => alternateAttemptId
+      createLogicalAttemptId: () => alternateAttemptId,
+      signal: activeSignal()
     });
     expect(regeneration.mode).toBe("regeneration");
     expect("instruction" in regeneration).toBe(false);
@@ -109,7 +111,8 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       mode: "regeneration",
       rawRevisionInstruction: "Update label",
       screenshotIncluded: false,
-      createLogicalAttemptId: () => attemptId
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
     })).rejects.toThrow();
   });
 
@@ -124,7 +127,8 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       mode: "revision",
       rawRevisionInstruction: "Update primary label",
       screenshotIncluded: false,
-      createLogicalAttemptId: () => attemptId
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
     });
     expect(screenshotFalse.reviewAttemptFingerprintInput.screenshot).toEqual({ included: false });
     expect(JSON.stringify(screenshotFalse.reviewAttemptFingerprintInput)).not.toContain("data:image/png");
@@ -134,14 +138,16 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentCaptureRecord: { ...validCaptureRecord(), library: { ...validCaptureRecord().library, notes: "Changed local notes only" } },
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(capture, { payload: "different-one-byte-payload" }),
-      sourceGeneratedVersionEntry: validV1Entry()
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: activeSignal()
     })).resolves.toEqual(screenshotFalse.request);
     await expect(revalidateComponentRevisionReview({
       review: screenshotFalse,
       currentCaptureRecord: validCaptureRecord(),
       currentSavedAt: sourceSavedAt,
       screenshotAsset: undefined,
-      sourceGeneratedVersionEntry: validV1Entry()
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: activeSignal()
     })).rejects.toThrow();
 
     const screenshotTrue = await prepareComponentRevisionReview({
@@ -152,7 +158,8 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       mode: "revision",
       rawRevisionInstruction: "Update primary label",
       screenshotIncluded: true,
-      createLogicalAttemptId: () => alternateAttemptId
+      createLogicalAttemptId: () => alternateAttemptId,
+      signal: activeSignal()
     });
     expect(screenshotTrue.screenshot.included).toBe(true);
     expect(screenshotTrue.request.screenshot).toMatchObject({ mediaType: "image/png", width: 1, height: 1 });
@@ -163,18 +170,42 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentCaptureRecord: validCaptureRecord(),
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord(), { payload: "different-one-byte-payload" }),
-      sourceGeneratedVersionEntry: validV1Entry()
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: activeSignal()
     })).rejects.toThrow();
     await expect(revalidateComponentRevisionReview({
       review: screenshotTrue,
       currentCaptureRecord: validCaptureRecord(),
       currentSavedAt: sourceSavedAt,
       screenshotAsset: { ...validScreenshotAsset(validCaptureRecord()), width: 2 },
-      sourceGeneratedVersionEntry: validV1Entry()
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: activeSignal()
     })).rejects.toThrow();
   });
 
   test("rejects source mismatch, tampered Review, and transmitted-field changes before transport", async () => {
+    await expect(prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: "not a timestamp",
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
+    })).rejects.toThrow();
+    await expect(prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: "2026-07-26T00:00:00Z",
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
+    })).rejects.toThrow();
     await expect(prepareComponentRevisionReview({
       currentCaptureRecord: validCaptureRecord(),
       currentSavedAt: sourceSavedAt,
@@ -183,7 +214,8 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       mode: "revision",
       rawRevisionInstruction: "Update primary label",
       screenshotIncluded: false,
-      createLogicalAttemptId: () => attemptId
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
     })).rejects.toThrow();
 
     const review = await validRevisionReview();
@@ -192,22 +224,130 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentCaptureRecord: validCaptureRecord(),
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
-      sourceGeneratedVersionEntry: validV1Entry()
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: activeSignal()
     })).rejects.toThrow();
     await expect(revalidateComponentRevisionReview({
       review,
       currentCaptureRecord: { ...validCaptureRecord(), library: { ...validCaptureRecord().library, title: "Changed transmitted title" } },
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
-      sourceGeneratedVersionEntry: validV1Entry()
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: activeSignal()
     })).rejects.toThrow();
     await expect(revalidateComponentRevisionReview({
       review,
       currentCaptureRecord: validCaptureRecord(),
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
-      sourceGeneratedVersionEntry: { ...validV1Entry(), value: { ...validResponse(), summary: "Changed source" } }
+      sourceGeneratedVersionEntry: { ...validV1Entry(), value: { ...validResponse(), summary: "Changed source" } },
+      signal: activeSignal()
     })).rejects.toThrow();
+
+    const tamperedCases = [
+      ["instruction fingerprint", { instructionFingerprint: "f".repeat(64) }],
+      ["contract version", { contractVersion: 2 }],
+      ["savedAt", { sourceCaptureSavedAt: "2026-07-26T00:00:00Z" }],
+      ["endpoint", { endpointCategory: "production-backend" }],
+      ["extra", { extra: true }],
+      ["canonical body", { canonicalRequestBody: "{}" }],
+      ["fingerprint input", { reviewAttemptFingerprintInput: { ...review.reviewAttemptFingerprintInput, currentCaptureProjectionFingerprint: "f".repeat(64) } }]
+    ];
+    for (const [name, patch] of tamperedCases) {
+      await expect(revalidateComponentRevisionReview({
+        review: deepFreezeJson({ ...review, ...patch }) as FrozenComponentRevisionReviewV1,
+        currentCaptureRecord: validCaptureRecord(),
+        currentSavedAt: sourceSavedAt,
+        screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+        sourceGeneratedVersionEntry: validV1Entry(),
+        signal: activeSignal()
+      }), String(name)).rejects.toThrow();
+    }
+
+    const regeneration = await prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "regeneration",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => alternateAttemptId,
+      signal: activeSignal()
+    });
+    expect(() => validateFrozenComponentRevisionReviewV1(deepFreezeJson({
+      ...regeneration,
+      instruction: "Update primary label",
+      instructionFingerprint: "f".repeat(64)
+    }))).toThrow();
+  });
+
+  test("honors AbortSignal during preparation and revalidation without producing trusted data", async () => {
+    const preAborted = new AbortController();
+    preAborted.abort();
+    let idCalls = 0;
+    await expect(prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => {
+        idCalls += 1;
+        return attemptId;
+      },
+      signal: preAborted.signal
+    })).rejects.toMatchObject({ code: "cancellation" });
+    expect(idCalls).toBe(0);
+
+    const duringScreenshot = new AbortController();
+    await expect(prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord(), { abortOnRead: duringScreenshot }),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: true,
+      createLogicalAttemptId: () => {
+        idCalls += 1;
+        return attemptId;
+      },
+      signal: duringScreenshot.signal
+    })).rejects.toMatchObject({ code: "cancellation" });
+    expect(idCalls).toBe(0);
+
+    const review = await validRevisionReview();
+    await expect(revalidateComponentRevisionReview({
+      review,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: preAborted.signal
+    })).rejects.toMatchObject({ code: "cancellation" });
+
+    const revalidationAbort = new AbortController();
+    const screenshotReview = await prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: true,
+      createLogicalAttemptId: () => alternateAttemptId,
+      signal: activeSignal()
+    });
+    await expect(revalidateComponentRevisionReview({
+      review: screenshotReview,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord(), { abortOnRead: revalidationAbort }),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      signal: revalidationAbort.signal
+    })).rejects.toMatchObject({ code: "cancellation" });
   });
 });
 
@@ -262,6 +402,53 @@ test.describe("Milestone 6D Slice 3 revision transport and pending V2", () => {
     )).rejects.toMatchObject({ code: "cancellation" });
   });
 
+  test("validates complete revision requests before fetch", async () => {
+    const review = await validRevisionReview();
+    let calls = 0;
+    const transport = createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component");
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      calls += 1;
+      return new Response(JSON.stringify(validResponse()), { status: 200 });
+    };
+    try {
+      await expect(transport.revise({
+        ...review.request,
+        screenshot: {
+          mediaType: "image/png",
+          width: 1,
+          height: 1,
+          byteLength: 8,
+          dataUrl: "data:image/png;base64,aGVsbG8="
+        }
+      }, review.logicalAttemptId, activeSignal())).rejects.toThrow();
+      await expect(transport.revise({
+        ...review.request,
+        screenshot: {
+          mediaType: "image/png",
+          width: 2,
+          height: 1,
+          byteLength: Buffer.from(pngBase64, "base64").byteLength,
+          dataUrl: `data:image/png;base64,${pngBase64}`
+        }
+      }, review.logicalAttemptId, activeSignal())).rejects.toThrow();
+      await expect(transport.revise({
+        ...review.request,
+        screenshot: {
+          mediaType: "image/png",
+          width: 1,
+          height: 1,
+          byteLength: 1,
+          dataUrl: `data:image/png;base64,${"A".repeat(6_400_000)}`
+        }
+      }, review.logicalAttemptId, activeSignal())).rejects.toThrow();
+      await expect(transport.revise({ ...review.request, screenshot: undefined }, review.logicalAttemptId, activeSignal())).rejects.toThrow();
+      expect(calls).toBe(0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("constructs immutable pending V2 only after valid response and honors cancellation", async () => {
     const review = await validRevisionReview();
     const result = await finalizeRevisionTransportResponse({
@@ -290,7 +477,8 @@ test.describe("Milestone 6D Slice 3 revision transport and pending V2", () => {
       sourceGeneratedVersionEntry: validV1Entry(),
       mode: "regeneration",
       screenshotIncluded: false,
-      createLogicalAttemptId: () => alternateAttemptId
+      createLogicalAttemptId: () => alternateAttemptId,
+      signal: activeSignal()
     });
     const regenerationResult = await finalizeRevisionTransportResponse({
       review: regeneration,
@@ -339,7 +527,8 @@ async function validRevisionReview(): Promise<FrozenComponentRevisionReviewV1> {
     rawRevisionInstruction: "Update primary label",
     screenshotIncluded: false,
     endpointCategory: "local-development-proxy",
-    createLogicalAttemptId: () => attemptId
+    createLogicalAttemptId: () => attemptId,
+    signal: activeSignal()
   });
 }
 
@@ -361,17 +550,50 @@ function validCaptureRecord() {
   });
 }
 
-function validScreenshotAsset(record = validCaptureRecord(), options: { payload?: string } = {}): StoredScreenshotAsset {
+function validScreenshotAsset(record = validCaptureRecord(), options: { payload?: string; abortOnRead?: AbortController } = {}): StoredScreenshotAsset {
   const bytes = options.payload ? fixedLengthPayloadBytes(options.payload) : Buffer.from(pngBase64, "base64");
+  const blob = options.abortOnRead
+    ? abortingBlob(bytes, options.abortOnRead)
+    : new Blob([bytes], { type: "image/png" });
   return {
     storageKey: record.assets.screenshot.storageKey,
-    blob: new Blob([bytes], { type: "image/png" }),
+    blob,
     mediaType: "image/png",
     width: record.assets.screenshot.width,
     height: record.assets.screenshot.height,
     byteLength: bytes.byteLength,
     crop: record.assets.screenshot.crop
   };
+}
+
+function activeSignal() {
+  return new AbortController().signal;
+}
+
+function deepFreezeJson<T>(value: T): T {
+  const clone = JSON.parse(JSON.stringify(value)) as T;
+  return deepFreeze(clone);
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) {
+      deepFreeze(child);
+    }
+  }
+  return value;
+}
+
+function abortingBlob(bytes: Uint8Array, controller: AbortController) {
+  const blob = new Blob([bytes], { type: "image/png" });
+  const read = blob.arrayBuffer.bind(blob);
+  return Object.assign(blob, {
+    async arrayBuffer() {
+      controller.abort();
+      return read();
+    }
+  });
 }
 
 function fixedLengthPayloadBytes(seed: string) {

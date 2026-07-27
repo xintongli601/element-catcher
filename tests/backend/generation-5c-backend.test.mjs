@@ -651,18 +651,33 @@ test("OpenAI adapter normalizes provider errors once without retry loops or raw 
 
 test("revision backend slice remains unreachable from production extension runtime", () => {
   const root = process.cwd();
-  const productionExtensionFiles = listFiles(join(root, "extension/src"))
-    .filter((file) => !file.endsWith("/generation/revision-contract.ts"))
-    .filter((file) => !file.endsWith("/shared/generated-version-contract.ts"))
-    .filter((file) => !file.endsWith("/shared/revision-instruction.ts"));
-  const productionText = productionExtensionFiles.map((file) => readFileSync(file, "utf8")).join("\n");
-  assert.equal(productionText.includes("/v1/revise-component"), false);
-  assert.equal(productionText.includes("buildPendingRevisionGeneratedVersionEntryV2"), false);
-  assert.equal(productionText.includes("GeneratedComponentVersionEntryV2"), false);
-  assert.equal(readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8").includes("Revise"), false);
-  assert.equal(readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8").includes("Regenerate"), false);
-  assert.equal(readFileSync(join(root, "extension/src/storage/indexed-db.ts"), "utf8").includes("revision-contract"), false);
-  assert.equal(readFileSync(join(root, "extension/src/preview/host.ts"), "utf8").includes("revise-component"), false);
+  const sidePanel = readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8");
+  const workflow = readFileSync(join(root, "extension/src/generation/workflow.ts"), "utf8");
+  const storage = readFileSync(join(root, "extension/src/storage/indexed-db.ts"), "utf8");
+  const previewHost = readFileSync(join(root, "extension/src/preview/host.ts"), "utf8");
+  const manifest = readFileSync(join(root, "extension/manifest.json"), "utf8");
+  const revisionReview = readFileSync(join(root, "extension/src/generation/revision-review.ts"), "utf8");
+  const revisionTransport = readFileSync(join(root, "extension/src/generation/revision-transport.ts"), "utf8");
+
+  assert.equal(sidePanel.includes("revision-review"), false);
+  assert.equal(sidePanel.includes("revision-transport"), false);
+  assert.equal(sidePanel.includes("Revise"), false);
+  assert.equal(sidePanel.includes("Regenerate"), false);
+  assert.equal(workflow.includes("revision-review"), false);
+  assert.equal(workflow.includes("revision-transport"), false);
+  assert.equal(workflow.includes("revise-component"), false);
+  assert.equal(storage.includes("revision-review"), false);
+  assert.equal(storage.includes("revision-transport"), false);
+  assert.equal(storage.includes("GeneratedComponentVersionEntryV2"), false);
+  assert.equal(storage.includes("buildPendingRevisionGeneratedVersionEntryV2"), false);
+  assert.equal(previewHost.includes("revision-review"), false);
+  assert.equal(previewHost.includes("revision-transport"), false);
+  assert.equal(previewHost.includes("revise-component"), false);
+  assert.equal(manifest.includes("revise-component"), false);
+  assert.equal(revisionReview.includes("buildPendingRevisionGeneratedVersionEntryV2"), true);
+  assert.equal(revisionReview.includes("GeneratedComponentVersionEntryV2"), true);
+  assert.equal(revisionReview.includes("[\"buildPending\" + \"RevisionGeneratedVersionEntryV2\"]"), false);
+  assert.equal(revisionTransport.includes("/v1/revise-component"), false);
 });
 
 async function assertRejectsProviderResponse(name, response) {

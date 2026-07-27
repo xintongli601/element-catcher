@@ -3,7 +3,11 @@ import { isValidLogicalAttemptId } from "../shared/generated-version-contract";
 import { getUtf8ByteLength } from "./canonical-json";
 import { GenerationError } from "./errors";
 import { validateGenerationResponse } from "./request-validation";
-import { validateComponentRevisionRequestShapeV1, type ComponentRevisionRequestV1 } from "./revision-contract";
+import {
+  validateComponentRevisionRequestShapeV1,
+  validateComponentRevisionRequestV1,
+  type ComponentRevisionRequestV1
+} from "./revision-contract";
 import type { RevisionTransport } from "./revision-review";
 
 const RESPONSE_BODY_LIMIT_BYTES = 100_000;
@@ -11,10 +15,26 @@ const RESPONSE_BODY_LIMIT_BYTES = 100_000;
 export function createHttpRevisionTransport(endpoint: string): RevisionTransport {
   return {
     async revise(request, logicalAttemptId, signal) {
-      validateComponentRevisionRequestShapeV1(request);
       if (!isValidLogicalAttemptId(logicalAttemptId)) {
         throw new GenerationError("request_validation_failed");
       }
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
+      validateComponentRevisionRequestShapeV1(request);
+      let cleanRequest: ComponentRevisionRequestV1;
+      try {
+        cleanRequest = await validateComponentRevisionRequestV1(cloneJson(request));
+      } catch (error) {
+        if (error instanceof GenerationError) {
+          throw error;
+        }
+        throw new GenerationError("request_validation_failed", undefined, error);
+      }
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
+      const body = JSON.stringify(cleanRequest);
 
       let response: Response;
       try {
@@ -25,7 +45,7 @@ export function createHttpRevisionTransport(endpoint: string): RevisionTransport
             "X-Element-Catcher-Contract-Version": String(GENERATION_CONTRACT_VERSION),
             "X-Element-Catcher-Idempotency-Key": logicalAttemptId
           },
-          body: JSON.stringify(request),
+          body,
           credentials: "omit",
           cache: "no-store",
           signal
@@ -49,7 +69,7 @@ export function createHttpRevisionTransport(endpoint: string): RevisionTransport
         throw new GenerationError(parseBackendErrorCode(parsed));
       }
 
-      validateRevisionTransportResponse(parsed, request);
+      validateRevisionTransportResponse(parsed, cleanRequest);
       return parsed;
     }
   };
@@ -117,4 +137,8 @@ function parseBackendErrorCode(value: unknown): GenerationBackendErrorCodeV1 {
     default:
       return "network_unavailable";
   }
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
