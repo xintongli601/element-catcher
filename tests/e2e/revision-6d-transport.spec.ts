@@ -1,0 +1,485 @@
+import { expect, test } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { createCaptureRecordFixture, DEFAULT_CAPTURE_FIXTURES } from "./indexed-db-fixtures";
+import { REQUESTED_OUTPUT, type ComponentGenerationResponseV1 } from "../../extension/src/shared/generation-contract";
+import {
+  buildPendingRevisionGeneratedVersionEntryV2,
+  computeRevisionInstructionFingerprint,
+  computeSourceGeneratedVersionFingerprint,
+  deriveRevisionGeneratedVersionId
+} from "../../extension/src/generation/revision-contract";
+import {
+  canonicalRevisionRequestBody,
+  finalizeRevisionTransportResponse,
+  prepareComponentRevisionReview,
+  revalidateComponentRevisionReview,
+  reviewRequestBodiesEqual,
+  type FrozenComponentRevisionReviewV1
+} from "../../extension/src/generation/revision-review";
+import { createHttpRevisionTransport } from "../../extension/src/generation/revision-transport";
+import { canonicalJsonStringify } from "../../extension/src/generation/canonical-json";
+import type { StoredScreenshotAsset } from "../../extension/src/storage/indexed-db";
+
+const captureId = "capture-0123456789abcdef0123456789abcdef";
+const sourceVersionId = "generated-version-0123456789abcdef0123456789abcdef";
+const sourceSavedAt = "2026-07-26T00:00:00.000Z";
+const attemptId = "revision-attempt-0123456789abcdef0123456789abcdef";
+const alternateAttemptId = "revision-attempt-fedcba9876543210fedcba9876543210";
+const createdAt = "2026-07-26T00:05:00.000Z";
+const pngBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
+
+test.beforeEach(() => {
+  installCreateImageBitmapPngMock();
+});
+
+test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
+  test("prepares deeply frozen revision and regeneration Reviews with exact outbound projection and privacy", async () => {
+    const capture = validCaptureRecord();
+    const asset = validScreenshotAsset(capture);
+    const source = validV1Entry();
+    const review = await prepareComponentRevisionReview({
+      currentCaptureRecord: capture,
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: asset,
+      sourceGeneratedVersionEntry: source,
+      mode: "revision",
+      rawRevisionInstruction: "  Update   primary label ",
+      screenshotIncluded: false,
+      endpointCategory: "local-development-proxy",
+      createLogicalAttemptId: () => attemptId
+    });
+
+    expect(review.mode).toBe("revision");
+    expect(review.instruction).toBe("Update primary label");
+    expect(review.instructionFingerprint).toBe(await computeRevisionInstructionFingerprint("Update primary label"));
+    expect(review.logicalAttemptId).toBe(attemptId);
+    expect(review.targetGeneratedVersionId).toBe(await deriveRevisionGeneratedVersionId(attemptId));
+    expect(review.sourceGeneratedVersionFingerprint).toBe(await computeSourceGeneratedVersionFingerprint(source));
+    expect(review.screenshot).toEqual({ included: false });
+    expect("screenshot" in review.request).toBe(false);
+    expect(review.request.revisionInstruction).toBe("Update primary label");
+    expect(review.request.sourceComponent).toEqual({
+      componentName: "GeneratedFixture",
+      framework: "react",
+      styling: "tailwind",
+      code: source.value.code,
+      summary: source.value.summary,
+      approximationNotes: source.value.approximationNotes
+    });
+    expect(JSON.stringify(review.request)).not.toContain("providerLabel");
+    expect(JSON.stringify(review.request)).not.toContain("sourceCaptureId");
+    expect(JSON.stringify(review.request)).not.toContain("sourceGeneratedVersionId");
+    expect(JSON.stringify(review.request)).not.toContain("Fingerprint");
+    expect(JSON.stringify(review.request)).not.toContain("logicalAttemptId");
+    expect(JSON.stringify(review.request)).not.toContain("savedAt");
+    expect(JSON.stringify(review.request)).not.toContain("storageKey");
+    expect(JSON.stringify(review.request)).not.toContain("notes");
+    expect(JSON.stringify(review.request)).not.toContain("https://private.example.test");
+    expect(JSON.stringify(review.request)).not.toContain("Private Page");
+    expect(review.request.requestedOutput).toEqual(REQUESTED_OUTPUT);
+    expect(reviewRequestBodiesEqual(review, review.request)).toBe(true);
+    expect(review.canonicalRequestBody).toBe(JSON.stringify(review.request));
+    expect(Object.isFrozen(review)).toBe(true);
+    expect(isDeepFrozen(review)).toBe(true);
+
+    source.value.summary = "Mutated by caller";
+    capture.library.title = "Mutated by caller";
+    expect(review.sourceComponent.summary).toBe("Accessible button");
+    expect(review.captureContext.library.title).toBe("Button");
+
+    const regeneration = await prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: await validV2SourceEntry(),
+      mode: "regeneration",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => alternateAttemptId
+    });
+    expect(regeneration.mode).toBe("regeneration");
+    expect("instruction" in regeneration).toBe(false);
+    expect("instructionFingerprint" in regeneration).toBe(false);
+    expect("revisionInstruction" in regeneration.request).toBe(false);
+    await expect(prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "regeneration",
+      rawRevisionInstruction: "Update label",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => attemptId
+    })).rejects.toThrow();
+  });
+
+  test("binds screenshot false and true semantics during preparation and revalidation", async () => {
+    const capture = validCaptureRecord();
+    const source = validV1Entry();
+    const screenshotFalse = await prepareComponentRevisionReview({
+      currentCaptureRecord: capture,
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(capture),
+      sourceGeneratedVersionEntry: source,
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => attemptId
+    });
+    expect(screenshotFalse.reviewAttemptFingerprintInput.screenshot).toEqual({ included: false });
+    expect(JSON.stringify(screenshotFalse.reviewAttemptFingerprintInput)).not.toContain("data:image/png");
+    expect(JSON.stringify(screenshotFalse.reviewAttemptFingerprintInput)).not.toContain("digest");
+    await expect(revalidateComponentRevisionReview({
+      review: screenshotFalse,
+      currentCaptureRecord: { ...validCaptureRecord(), library: { ...validCaptureRecord().library, notes: "Changed local notes only" } },
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(capture, { payload: "different-one-byte-payload" }),
+      sourceGeneratedVersionEntry: validV1Entry()
+    })).resolves.toEqual(screenshotFalse.request);
+    await expect(revalidateComponentRevisionReview({
+      review: screenshotFalse,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: undefined,
+      sourceGeneratedVersionEntry: validV1Entry()
+    })).rejects.toThrow();
+
+    const screenshotTrue = await prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: true,
+      createLogicalAttemptId: () => alternateAttemptId
+    });
+    expect(screenshotTrue.screenshot.included).toBe(true);
+    expect(screenshotTrue.request.screenshot).toMatchObject({ mediaType: "image/png", width: 1, height: 1 });
+    expect(screenshotTrue.request.screenshot?.dataUrl).toBe(`data:image/png;base64,${pngBase64}`);
+    expect(JSON.stringify(screenshotTrue.reviewAttemptFingerprintInput)).not.toContain(screenshotTrue.request.screenshot?.dataUrl);
+    await expect(revalidateComponentRevisionReview({
+      review: screenshotTrue,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord(), { payload: "different-one-byte-payload" }),
+      sourceGeneratedVersionEntry: validV1Entry()
+    })).rejects.toThrow();
+    await expect(revalidateComponentRevisionReview({
+      review: screenshotTrue,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: { ...validScreenshotAsset(validCaptureRecord()), width: 2 },
+      sourceGeneratedVersionEntry: validV1Entry()
+    })).rejects.toThrow();
+  });
+
+  test("rejects source mismatch, tampered Review, and transmitted-field changes before transport", async () => {
+    await expect(prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: { ...validV1Entry(), sourceCaptureId: "capture-fedcba9876543210fedcba9876543210" },
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => attemptId
+    })).rejects.toThrow();
+
+    const review = await validRevisionReview();
+    await expect(revalidateComponentRevisionReview({
+      review: { ...review },
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry()
+    })).rejects.toThrow();
+    await expect(revalidateComponentRevisionReview({
+      review,
+      currentCaptureRecord: { ...validCaptureRecord(), library: { ...validCaptureRecord().library, title: "Changed transmitted title" } },
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry()
+    })).rejects.toThrow();
+    await expect(revalidateComponentRevisionReview({
+      review,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: { ...validV1Entry(), value: { ...validResponse(), summary: "Changed source" } }
+    })).rejects.toThrow();
+  });
+});
+
+test.describe("Milestone 6D Slice 3 revision transport and pending V2", () => {
+  test("sends exact body and idempotency header, reuses retry identity, and maps safe errors", async () => {
+    const review = await validRevisionReview();
+    const calls: Array<{ url: string; init: RequestInit }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push({ url: String(url), init });
+      return new Response(JSON.stringify(validResponse()), { status: 200, headers: { "Content-Type": "application/json" } });
+    };
+    try {
+      const transport = createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component");
+      await expect(transport.revise(review.request, review.logicalAttemptId, new AbortController().signal)).resolves.toMatchObject({
+        componentName: review.sourceComponent.componentName
+      });
+      await transport.revise(review.request, review.logicalAttemptId, new AbortController().signal);
+      expect(calls).toHaveLength(2);
+      expect(calls[0].url).toBe("http://127.0.0.1:8787/v1/revise-component");
+      expect(calls[0].init.method).toBe("POST");
+      expect(calls[0].init.credentials).toBe("omit");
+      expect(calls[0].init.cache).toBe("no-store");
+      expect(calls[0].init.headers).toEqual({
+        "Content-Type": "application/json",
+        "X-Element-Catcher-Contract-Version": "1",
+        "X-Element-Catcher-Idempotency-Key": review.logicalAttemptId
+      });
+      expect(calls[0].init.body).toBe(review.canonicalRequestBody);
+      expect(calls[1].init.body).toBe(calls[0].init.body);
+      expect((calls[1].init.headers as Record<string, string>)["X-Element-Catcher-Idempotency-Key"]).toBe(review.logicalAttemptId);
+      expect(String(calls[0].init.body)).not.toContain(review.logicalAttemptId);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    await expect(withFetchResponse(new Response(JSON.stringify({ ...validResponse(), componentName: "RenamedFixture" })), async () =>
+      createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component").revise(review.request, review.logicalAttemptId, new AbortController().signal)
+    )).rejects.toMatchObject({ code: "malformed_response" });
+    await expect(withFetchResponse(new Response(JSON.stringify({ contractVersion: 1, error: { code: "rate_limited", message: "safe" } }), { status: 429 }), async () =>
+      createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component").revise(review.request, review.logicalAttemptId, new AbortController().signal)
+    )).rejects.toMatchObject({ code: "rate_limited" });
+    await expect(withFetchResponse(new Response("x".repeat(100_001)), async () =>
+      createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component").revise(review.request, review.logicalAttemptId, new AbortController().signal)
+    )).rejects.toMatchObject({ code: "malformed_response" });
+    const abortController = new AbortController();
+    abortController.abort();
+    await expect(withFetchImplementation(async () => {
+      throw new DOMException("Operation aborted.", "AbortError");
+    }, async () =>
+      createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component").revise(review.request, review.logicalAttemptId, abortController.signal)
+    )).rejects.toMatchObject({ code: "cancellation" });
+  });
+
+  test("constructs immutable pending V2 only after valid response and honors cancellation", async () => {
+    const review = await validRevisionReview();
+    const result = await finalizeRevisionTransportResponse({
+      review,
+      response: validResponse(),
+      signal: new AbortController().signal,
+      createdAt
+    });
+    expect(result.pendingEntry.id).toBe(review.targetGeneratedVersionId);
+    expect(result.pendingEntry.sourceReviewFingerprint).toBe(review.currentCaptureProjectionFingerprint);
+    expect(result.pendingEntry.operation.kind).toBe("revision");
+    expect(result.pendingEntry.operation.logicalAttemptId).toBe(review.logicalAttemptId);
+    expect(result.pendingEntry.operation.reviewAttemptFingerprint).toBe(review.reviewAttemptFingerprint);
+    expect(result.pendingEntry.operation.sourceGeneratedVersionId).toBe(review.sourceGeneratedVersionId);
+    expect(result.pendingEntry.operation.sourceGeneratedVersionFingerprint).toBe(review.sourceGeneratedVersionFingerprint);
+    expect(result.pendingEntry.operation.instruction).toBe(review.instruction);
+    expect(result.pendingEntry.operation.instructionFingerprint).toBe(review.instructionFingerprint);
+    expect(result.pendingEntry.operation.screenshotIncluded).toBe(false);
+    expect(Object.isFrozen(result)).toBe(true);
+    expect(isDeepFrozen(result)).toBe(true);
+
+    const regeneration = await prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "regeneration",
+      screenshotIncluded: false,
+      createLogicalAttemptId: () => alternateAttemptId
+    });
+    const regenerationResult = await finalizeRevisionTransportResponse({
+      review: regeneration,
+      response: validResponse(),
+      signal: new AbortController().signal,
+      createdAt
+    });
+    expect(regenerationResult.pendingEntry.operation.kind).toBe("regeneration");
+    expect("instruction" in regenerationResult.pendingEntry.operation).toBe(false);
+
+    await expect(finalizeRevisionTransportResponse({
+      review,
+      response: { ...validResponse(), componentName: "RenamedFixture" },
+      signal: new AbortController().signal,
+      createdAt
+    })).rejects.toMatchObject({ code: "malformed_response" });
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(finalizeRevisionTransportResponse({
+      review,
+      response: validResponse(),
+      signal: aborted.signal,
+      createdAt
+    })).rejects.toMatchObject({ code: "cancellation" });
+  });
+
+  test("keeps Slice 3 unreachable from production UI, storage, preview, backend, package and manifest boundaries", () => {
+    const root = process.cwd();
+    expect(readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8")).not.toContain("revision-review");
+    expect(readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8")).not.toContain("revision-transport");
+    expect(readFileSync(join(root, "extension/src/storage/indexed-db.ts"), "utf8")).not.toContain("GeneratedComponentVersionEntryV2");
+    expect(readFileSync(join(root, "extension/src/preview/host.ts"), "utf8")).not.toContain("revision-review");
+    expect(readFileSync(join(root, "backend/src/app.ts"), "utf8")).not.toContain("revision-review");
+    expect(readFileSync(join(root, "package.json"), "utf8")).not.toContain("revision-transport");
+    expect(readFileSync(join(root, "extension/manifest.json"), "utf8")).not.toContain("revise-component");
+  });
+});
+
+async function validRevisionReview(): Promise<FrozenComponentRevisionReviewV1> {
+  return prepareComponentRevisionReview({
+    currentCaptureRecord: validCaptureRecord(),
+    currentSavedAt: sourceSavedAt,
+    screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+    sourceGeneratedVersionEntry: validV1Entry(),
+    mode: "revision",
+    rawRevisionInstruction: "Update primary label",
+    screenshotIncluded: false,
+    endpointCategory: "local-development-proxy",
+    createLogicalAttemptId: () => attemptId
+  });
+}
+
+function validCaptureRecord() {
+  return createCaptureRecordFixture({
+    ...DEFAULT_CAPTURE_FIXTURES[0],
+    id: captureId,
+    title: "Button",
+    sourceUrl: "https://private.example.test/path?token=secret",
+    pageTitle: "Private Page",
+    width: 1,
+    height: 1,
+    tagName: "button",
+    semanticRole: "button",
+    libraryComponentType: "Button",
+    libraryTags: ["cta"],
+    libraryNotes: "Private notes",
+    summaryComponentType: "Button"
+  });
+}
+
+function validScreenshotAsset(record = validCaptureRecord(), options: { payload?: string } = {}): StoredScreenshotAsset {
+  const bytes = options.payload ? fixedLengthPayloadBytes(options.payload) : Buffer.from(pngBase64, "base64");
+  return {
+    storageKey: record.assets.screenshot.storageKey,
+    blob: new Blob([bytes], { type: "image/png" }),
+    mediaType: "image/png",
+    width: record.assets.screenshot.width,
+    height: record.assets.screenshot.height,
+    byteLength: bytes.byteLength,
+    crop: record.assets.screenshot.crop
+  };
+}
+
+function fixedLengthPayloadBytes(seed: string) {
+  const original = Buffer.from(pngBase64, "base64");
+  const replacement = Buffer.from(original);
+  const seedBytes = Buffer.from(seed);
+  for (let index = 24; index < replacement.length && index - 24 < seedBytes.length; index += 1) {
+    replacement[index] = seedBytes[index - 24];
+  }
+  return replacement;
+}
+
+function validV1Entry() {
+  return {
+    id: sourceVersionId,
+    sourceCaptureId: captureId,
+    sourceCaptureSavedAt: sourceSavedAt,
+    sourceReviewFingerprint: "a".repeat(64),
+    createdAt: "2026-07-26T00:01:00.000Z",
+    value: validResponse()
+  };
+}
+
+async function validV2SourceEntry() {
+  const instruction = "Update primary label";
+  return buildPendingRevisionGeneratedVersionEntryV2({
+    id: await deriveRevisionGeneratedVersionId(attemptId),
+    sourceCaptureId: captureId,
+    sourceCaptureSavedAt: sourceSavedAt,
+    currentCaptureProjectionFingerprint: "b".repeat(64),
+    createdAt: "2026-07-26T00:02:00.000Z",
+    value: validResponse(),
+    expectedSourceComponentName: "GeneratedFixture",
+    logicalAttemptId: attemptId,
+    reviewAttemptFingerprint: "c".repeat(64),
+    sourceGeneratedVersionId: sourceVersionId,
+    sourceGeneratedVersionFingerprint: "d".repeat(64),
+    instruction,
+    instructionFingerprint: await computeRevisionInstructionFingerprint(instruction),
+    screenshotIncluded: false
+  });
+}
+
+function validResponse(): ComponentGenerationResponseV1 {
+  return {
+    contractVersion: 1,
+    componentName: "GeneratedFixture",
+    framework: "react",
+    styling: "tailwind",
+    code: "export function GeneratedFixture() { return <button>Save</button>; }",
+    summary: "Accessible button",
+    approximationNotes: "None",
+    metadata: { providerLabel: "mock", providerModelLabel: "fixture" }
+  };
+}
+
+async function withFetchResponse<T>(response: Response, run: () => Promise<T>) {
+  return withFetchImplementation(async () => response, run);
+}
+
+async function withFetchImplementation<T>(implementation: typeof fetch, run: () => Promise<T>) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = implementation;
+  try {
+    return await run();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+function isDeepFrozen(value: unknown): boolean {
+  if (!value || typeof value !== "object") {
+    return true;
+  }
+  if (!Object.isFrozen(value)) {
+    return false;
+  }
+  return Object.values(value as Record<string, unknown>).every(isDeepFrozen);
+}
+
+function installCreateImageBitmapPngMock() {
+  const globalWithImageBitmap = globalThis as typeof globalThis & {
+    createImageBitmap?: (blob: Blob) => Promise<{ width: number; height: number; close: () => void }>;
+  };
+  globalWithImageBitmap.createImageBitmap = async (blob: Blob) => {
+    const bytes = new Uint8Array(await blob.arrayBuffer());
+    if (bytes.length < 24) {
+      throw new Error("invalid png");
+    }
+    const signature = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+    for (let index = 0; index < signature.length; index += 1) {
+      if (bytes[index] !== signature[index]) {
+        throw new Error("invalid png");
+      }
+    }
+    return {
+      width: readUint32(bytes, 16),
+      height: readUint32(bytes, 20),
+      close() {}
+    };
+  };
+}
+
+function readUint32(bytes: Uint8Array, offset: number) {
+  return (
+    bytes[offset] * 0x1000000 +
+    bytes[offset + 1] * 0x10000 +
+    bytes[offset + 2] * 0x100 +
+    bytes[offset + 3]
+  );
+}
