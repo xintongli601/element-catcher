@@ -3,12 +3,19 @@ import { validateCaptureRecordV1 } from "../capture/capture-record-v1";
 import {
   GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
-  generatedComponentVersionEntriesEqual,
+  isValidGeneratedComponentVersionId,
+  isValidLogicalAttemptId,
+  isValidSha256Hex,
+  validateGeneratedComponentVersionEntry,
   validateGeneratedComponentVersionEntryV1,
+  type GeneratedComponentVersionEntry,
   type GeneratedComponentVersionEntryV1
 } from "../shared/generated-version-contract";
+import { REQUESTED_OUTPUT } from "../shared/generation-contract";
 import { assertJsonCompatible } from "../shared/json";
 import { createScreenshotStorageKey } from "../shared/screenshot-storage";
+import { canonicalJsonStringify, type CanonicalJsonValue } from "../generation/canonical-json";
+import { buildExactCaptureContextProjection } from "../generation/projection";
 import { PersistenceError, toPersistenceError } from "./persistence-errors";
 
 declare global {
@@ -32,6 +39,11 @@ declare global {
         expectedReviewFingerprint: string;
         expectedSourceRecordValue: JsonObject;
       }): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1>>;
+      persistPendingGeneratedComponentVersionV2(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2PreAborted(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2AbortBeforeAdd(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      recoverGeneratedComponentVersionV2(input: RecoverGeneratedComponentVersionV2Input): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2 | undefined>>;
+      getGeneratedComponentVersionUnionById(id: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntry | undefined>>;
       getGeneratedComponentVersionById(id: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1 | undefined>>;
       listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1[]>>;
     };
@@ -41,6 +53,8 @@ declare global {
 type GeneratedVersionStorageBridgeResult<T> =
   | { ok: true; value: T }
   | { ok: false; code: string; name: string; message: string };
+
+type GeneratedVersionEntryV2 = Extract<GeneratedComponentVersionEntry, { contractVersion: 2 }>;
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
 export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
@@ -63,6 +77,33 @@ export type StoredRecordEntry = {
   id: string;
   value: JsonObject;
   savedAt?: string;
+};
+
+export type PersistPendingGeneratedComponentVersionV2Input = {
+  pendingEntry: GeneratedVersionEntryV2;
+  sourceCaptureId: string;
+  sourceCaptureSavedAt: string;
+  sourceGeneratedVersionId: string;
+  canonicalSourceGeneratedVersionEntry: string;
+  canonicalCurrentCaptureProjection: string;
+  screenshotIncluded: boolean;
+  expectedScreenshotStorageKey: string;
+  screenshot?: {
+    mediaType: "image/png";
+    width: number;
+    height: number;
+    byteLength: number;
+  };
+  targetGeneratedVersionId: string;
+  signal: AbortSignal;
+};
+
+export type RecoverGeneratedComponentVersionV2Input = {
+  targetGeneratedVersionId: string;
+  expectedSourceCaptureId?: string;
+  expectedSourceGeneratedVersionId?: string;
+  expectedLogicalAttemptId?: string;
+  expectedReviewAttemptFingerprint?: string;
 };
 
 export type PersistenceBundle = {
@@ -538,7 +579,7 @@ export async function addGeneratedComponentVersion({
                     try {
                       const readback = readbackRequest.result as GeneratedComponentVersionEntryV1 | undefined;
                       validateGeneratedComponentVersionEntryV1(readback);
-                      if (!generatedComponentVersionEntriesEqual(readback, entry)) {
+                      if (!generatedComponentVersionEntriesCanonicalEqual(readback, entry)) {
                         throw new PersistenceError("readback", "Generated version read-back did not match.");
                       }
                       confirmAfterReadBack(readback);
@@ -557,7 +598,7 @@ export async function addGeneratedComponentVersion({
                     try {
                       const existing = existingRequest.result as GeneratedComponentVersionEntryV1 | undefined;
                       validateGeneratedComponentVersionEntryV1(existing);
-                      if (!generatedComponentVersionEntriesEqual(existing, entry)) {
+                      if (!generatedComponentVersionEntriesCanonicalEqual(existing, entry)) {
                         throw new PersistenceError("persistence-conflict", "Generated version id conflicted.");
                       }
                       confirmAfterReadBack(existing);
@@ -629,6 +670,274 @@ export async function addGeneratedComponentVersion({
   );
 }
 
+export async function persistPendingGeneratedComponentVersionV2(input: PersistPendingGeneratedComponentVersionV2Input) {
+  throwIfAborted(input.signal);
+  const prepared = validatePendingGeneratedComponentVersionV2Input(input);
+
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedVersionEntryV2>((resolve, reject) => {
+        throwIfAborted(input.signal);
+        const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
+        const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
+        const assetStore = transaction.objectStore(SCREENSHOT_ASSET_STORE_NAME);
+        const versionStore = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
+        const recordRequest = recordStore.get(prepared.sourceCaptureId);
+        const sourceRequest = versionStore.get(prepared.sourceGeneratedVersionId);
+        const targetRequest = versionStore.get(prepared.targetGeneratedVersionId);
+        let currentRecord: StoredRecordEntry | undefined;
+        let currentSource: GeneratedComponentVersionEntry | undefined;
+        let existingTarget: unknown;
+        let confirmedEntry: GeneratedVersionEntryV2 | undefined;
+        let completedReads = 0;
+        let requestError: DOMException | null = null;
+        let abortError: DOMException | null = null;
+        let settled = false;
+
+        const cleanupAbortListener = () => input.signal.removeEventListener("abort", abortTransaction);
+        const abortTransaction = () => {
+          abortError = createAbortError();
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may already be inactive after completion or abort.
+          }
+        };
+        input.signal.addEventListener("abort", abortTransaction, { once: true });
+
+        const failAndAbort = (error: PersistenceError) => {
+          settled = true;
+          cleanupAbortListener();
+          try {
+            transaction.abort();
+          } catch {
+            // The transaction may already be inactive after a request error.
+          }
+          reject(error);
+        };
+
+        const maybeValidateAndPersist = () => {
+          completedReads += 1;
+          if (completedReads !== 3) {
+            return;
+          }
+          if (input.signal.aborted) {
+            abortTransaction();
+            return;
+          }
+
+          try {
+            validateStoredV2Preconditions({
+              prepared,
+              currentRecord,
+              currentSource
+            });
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "persistence-failed"));
+            return;
+          }
+
+          const screenshotKey = getScreenshotStorageKeyFromRecordValue(currentRecord!.value);
+          const assetRequest = assetStore.get(screenshotKey!);
+          assetRequest.onsuccess = () => {
+            if (input.signal.aborted) {
+              abortTransaction();
+              return;
+            }
+            try {
+              validateStoredV2ScreenshotPreconditions({
+                prepared,
+                currentRecord: currentRecord!,
+                currentAsset: assetRequest.result as StoredScreenshotAsset | undefined
+              });
+              persistOrConfirmTarget();
+            } catch (error) {
+              failAndAbort(toPersistenceError(error, "persistence-failed"));
+            }
+          };
+          assetRequest.onerror = () => {
+            requestError = assetRequest.error;
+          };
+        };
+
+        const persistOrConfirmTarget = () => {
+          if (existingTarget !== undefined) {
+            try {
+              validateGeneratedVersionEntryV2(existingTarget);
+              if (!generatedComponentVersionEntriesCanonicalEqual(existingTarget, prepared.pendingEntry)) {
+                throw new PersistenceError("persistence-conflict", "Generated version id conflicted.");
+              }
+              const readbackRequest = versionStore.get(prepared.targetGeneratedVersionId);
+              readbackRequest.onsuccess = () => confirmReadBack(readbackRequest.result);
+              readbackRequest.onerror = () => {
+                requestError = readbackRequest.error;
+              };
+            } catch (error) {
+              failAndAbort(toPersistenceError(error, "persistence-conflict"));
+            }
+            return;
+          }
+
+          const addRequest = versionStore.add(prepared.pendingEntry);
+          addRequest.onsuccess = () => {
+            if (input.signal.aborted) {
+              abortTransaction();
+              return;
+            }
+            const readbackRequest = versionStore.get(prepared.targetGeneratedVersionId);
+            readbackRequest.onsuccess = () => confirmReadBack(readbackRequest.result);
+            readbackRequest.onerror = () => {
+              requestError = readbackRequest.error;
+            };
+          };
+          addRequest.onerror = (event) => {
+            event.preventDefault();
+            failAndAbort(new PersistenceError("persistence-conflict", "Generated version id conflicted."));
+          };
+        };
+
+        const confirmReadBack = (value: unknown) => {
+          if (input.signal.aborted) {
+            abortTransaction();
+            return;
+          }
+          try {
+            validateGeneratedVersionEntryV2(value);
+            if (!generatedComponentVersionEntriesCanonicalEqual(value, prepared.pendingEntry)) {
+              throw new PersistenceError("readback", "Generated version read-back did not match.");
+            }
+            confirmedEntry = value;
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "readback"));
+          }
+        };
+
+        recordRequest.onsuccess = () => {
+          currentRecord = recordRequest.result as StoredRecordEntry | undefined;
+          maybeValidateAndPersist();
+        };
+        recordRequest.onerror = () => {
+          requestError = recordRequest.error;
+        };
+        sourceRequest.onsuccess = () => {
+          currentSource = sourceRequest.result as GeneratedComponentVersionEntry | undefined;
+          maybeValidateAndPersist();
+        };
+        sourceRequest.onerror = () => {
+          requestError = sourceRequest.error;
+        };
+        targetRequest.onsuccess = () => {
+          existingTarget = targetRequest.result;
+          maybeValidateAndPersist();
+        };
+        targetRequest.onerror = () => {
+          requestError = targetRequest.error;
+        };
+        transaction.onerror = (event) => {
+          const target = event.target;
+          if (!requestError && target instanceof IDBRequest && target.error) {
+            requestError = target.error;
+          }
+        };
+        transaction.onabort = () => {
+          cleanupAbortListener();
+          if (!settled) {
+            settled = true;
+            reject(abortError ?? toPersistenceError(transaction.error ?? requestError, "persistence-failed"));
+          }
+        };
+        transaction.oncomplete = () => {
+          cleanupAbortListener();
+          if (settled) {
+            return;
+          }
+          if (!confirmedEntry) {
+            reject(new PersistenceError("readback", "Generated version persistence completed without a validated read-back."));
+            return;
+          }
+          settled = true;
+          resolve(deepFreeze(cloneJson(confirmedEntry)));
+        };
+      })
+  );
+}
+
+export async function recoverGeneratedComponentVersionV2(input: RecoverGeneratedComponentVersionV2Input) {
+  validateRecoveryInput(input);
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedVersionEntryV2 | undefined>((resolve, reject) => {
+        const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
+        const request = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME).get(input.targetGeneratedVersionId);
+        let result: GeneratedVersionEntryV2 | undefined;
+        let requestError: DOMException | null = null;
+
+        request.onsuccess = () => {
+          const value = request.result as unknown;
+          if (value === undefined) {
+            result = undefined;
+            return;
+          }
+          try {
+            validateGeneratedVersionEntryV2(value);
+            assertRecoveryLineage(value, input);
+            result = deepFreeze(cloneJson(value));
+          } catch (error) {
+            transaction.abort();
+            reject(toPersistenceError(error, "persistence-conflict"));
+          }
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(result);
+        transaction.onabort = () => {
+          if (requestError) {
+            reject(toPersistenceError(requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
+export async function getGeneratedComponentVersionUnionById(id: string) {
+  if (!isValidGeneratedComponentVersionId(id)) {
+    throw new PersistenceError("validation", "Generated version id was invalid.");
+  }
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedComponentVersionEntry | undefined>((resolve, reject) => {
+        const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
+        const request = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME).get(id);
+        let result: GeneratedComponentVersionEntry | undefined;
+        let requestError: DOMException | null = null;
+
+        request.onsuccess = () => {
+          if (request.result === undefined) {
+            result = undefined;
+            return;
+          }
+          try {
+            validateGeneratedComponentVersionEntry(request.result);
+            result = deepFreeze(cloneJson(request.result as GeneratedComponentVersionEntry));
+          } catch (error) {
+            transaction.abort();
+            reject(toPersistenceError(error, "validation"));
+          }
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(result);
+        transaction.onabort = () => {
+          if (requestError) {
+            reject(toPersistenceError(requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
 export async function getGeneratedComponentVersionById(id: string) {
   return withDatabase(
     (database) =>
@@ -662,8 +971,12 @@ export async function getGeneratedComponentVersionById(id: string) {
               requestError = sourceRequest.error;
             };
           } catch {
-            if (typeof id === "string") {
-              versionStore.delete(id);
+            try {
+              validateGeneratedVersionEntryV2(request.result);
+            } catch {
+              if (typeof id === "string") {
+                versionStore.delete(id);
+              }
             }
             result = undefined;
           }
@@ -708,9 +1021,13 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
 
           const candidates = valuesRequest.result as unknown[];
           if (!sourceValid) {
-            for (const key of keysRequest.result) {
-              versionStore.delete(key);
-            }
+            candidates.forEach((candidate, index) => {
+              try {
+                validateGeneratedVersionEntryV2(candidate);
+              } catch {
+                versionStore.delete(keysRequest.result[index]);
+              }
+            });
             entries = [];
             return;
           }
@@ -720,6 +1037,11 @@ export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCapt
               validateGeneratedComponentVersionEntryV1(candidate);
               return candidate.sourceCaptureId === sourceCaptureId ? [candidate] : [];
             } catch {
+              try {
+                validateGeneratedVersionEntryV2(candidate);
+              } catch {
+                // Malformed generated-version entries remain hidden from the V1 compatibility reader.
+              }
               return [];
             }
           });
@@ -884,6 +1206,208 @@ function requestResult<T>(request: IDBRequest<T>) {
   });
 }
 
+function validatePendingGeneratedComponentVersionV2Input(input: PersistPendingGeneratedComponentVersionV2Input) {
+  assertExactKeys(input, [
+    "pendingEntry",
+    "sourceCaptureId",
+    "sourceCaptureSavedAt",
+    "sourceGeneratedVersionId",
+    "canonicalSourceGeneratedVersionEntry",
+    "canonicalCurrentCaptureProjection",
+    "screenshotIncluded",
+    "expectedScreenshotStorageKey",
+    ...(input.screenshotIncluded ? ["screenshot"] : []),
+    "targetGeneratedVersionId",
+    "signal"
+  ]);
+  if (!input.signal || typeof input.signal.aborted !== "boolean") {
+    throw new PersistenceError("validation", "AbortSignal was invalid.");
+  }
+  if (!isValidGeneratedComponentVersionId(input.targetGeneratedVersionId) || !isValidGeneratedComponentVersionId(input.sourceGeneratedVersionId)) {
+    throw new PersistenceError("validation", "Generated version id was invalid.");
+  }
+  validateGeneratedVersionEntryV2(input.pendingEntry);
+  const sourceEntry = parseCanonicalGeneratedVersionEntry(input.canonicalSourceGeneratedVersionEntry);
+  if (
+    input.pendingEntry.id !== input.targetGeneratedVersionId ||
+    input.pendingEntry.sourceCaptureId !== input.sourceCaptureId ||
+    input.pendingEntry.sourceCaptureSavedAt !== input.sourceCaptureSavedAt ||
+    input.pendingEntry.operation.sourceGeneratedVersionId !== input.sourceGeneratedVersionId ||
+    input.pendingEntry.operation.screenshotIncluded !== input.screenshotIncluded ||
+    sourceEntry.id !== input.sourceGeneratedVersionId ||
+    sourceEntry.sourceCaptureId !== input.sourceCaptureId
+  ) {
+    throw new PersistenceError("validation", "Generated version V2 persistence input linkage was invalid.");
+  }
+  parseCanonicalJson(input.canonicalCurrentCaptureProjection);
+  if (input.screenshotIncluded) {
+    validateExpectedScreenshotPrecondition(input.screenshot);
+  } else if ("screenshot" in input) {
+    throw new PersistenceError("validation", "Unexpected screenshot metadata for screenshot-excluded persistence.");
+  }
+  return {
+    ...cloneJson(input),
+    pendingEntry: deepFreeze(cloneJson(input.pendingEntry)),
+    canonicalSourceGeneratedVersionEntry: input.canonicalSourceGeneratedVersionEntry,
+    canonicalCurrentCaptureProjection: input.canonicalCurrentCaptureProjection
+  };
+}
+
+function validateStoredV2Preconditions({
+  prepared,
+  currentRecord,
+  currentSource
+}: {
+  prepared: ReturnType<typeof validatePendingGeneratedComponentVersionV2Input>;
+  currentRecord: StoredRecordEntry | undefined;
+  currentSource: GeneratedComponentVersionEntry | undefined;
+}) {
+  validateGeneratedVersionSource(currentRecord, prepared.sourceCaptureId);
+  if (currentRecord!.savedAt !== prepared.sourceCaptureSavedAt) {
+    throw new PersistenceError("readback", "Revision source capture changed before V2 persistence.");
+  }
+  validateGeneratedComponentVersionEntry(currentSource);
+  if (currentSource.id !== prepared.sourceGeneratedVersionId || currentSource.sourceCaptureId !== prepared.sourceCaptureId) {
+    throw new PersistenceError("reference-mismatch", "Revision source generated version linkage was invalid.");
+  }
+  if (canonicalJsonStringify(currentSource as unknown as CanonicalJsonValue) !== prepared.canonicalSourceGeneratedVersionEntry) {
+    throw new PersistenceError("readback", "Revision source generated version changed before V2 persistence.");
+  }
+  const currentProjection = canonicalJsonStringify({
+    captureContext: buildExactCaptureContextProjection(currentRecord!.value as unknown as Parameters<typeof buildExactCaptureContextProjection>[0]),
+    requestedOutput: REQUESTED_OUTPUT
+  } as CanonicalJsonValue);
+  if (currentProjection !== prepared.canonicalCurrentCaptureProjection) {
+    throw new PersistenceError("readback", "Revision current capture projection changed before V2 persistence.");
+  }
+}
+
+function validateStoredV2ScreenshotPreconditions({
+  prepared,
+  currentRecord,
+  currentAsset
+}: {
+  prepared: ReturnType<typeof validatePendingGeneratedComponentVersionV2Input>;
+  currentRecord: StoredRecordEntry;
+  currentAsset: StoredScreenshotAsset | undefined;
+}) {
+  validateScreenshotAsset(currentAsset);
+  const screenshotReference = getScreenshotReferenceFromRecordValue(currentRecord.value);
+  if (!screenshotReference || screenshotReference.storageKey !== currentAsset.storageKey || currentAsset.storageKey !== prepared.expectedScreenshotStorageKey) {
+    throw new PersistenceError("reference-mismatch", "Revision source screenshot reference changed before V2 persistence.");
+  }
+  if (screenshotReference.mediaType !== "image/png" || currentAsset.mediaType !== "image/png") {
+    throw new PersistenceError("reference-mismatch", "Revision source screenshot media type was invalid.");
+  }
+  if (!prepared.screenshotIncluded) {
+    return;
+  }
+  if (!prepared.screenshot) {
+    throw new PersistenceError("validation", "Expected screenshot metadata was missing.");
+  }
+  if (
+    currentAsset.mediaType !== prepared.screenshot.mediaType ||
+    currentAsset.width !== prepared.screenshot.width ||
+    currentAsset.height !== prepared.screenshot.height ||
+    currentAsset.byteLength !== prepared.screenshot.byteLength
+  ) {
+    throw new PersistenceError("readback", "Revision source screenshot metadata changed before V2 persistence.");
+  }
+}
+
+function parseCanonicalGeneratedVersionEntry(value: string): GeneratedComponentVersionEntry {
+  const parsed = parseCanonicalJson(value);
+  validateGeneratedComponentVersionEntry(parsed);
+  if (canonicalJsonStringify(parsed as CanonicalJsonValue) !== value) {
+    throw new PersistenceError("validation", "Generated version source entry was not canonical.");
+  }
+  return parsed;
+}
+
+function validateGeneratedVersionEntryV2(value: unknown): asserts value is GeneratedVersionEntryV2 {
+  validateGeneratedComponentVersionEntry(value);
+  if ((value as { contractVersion?: unknown }).contractVersion !== 2) {
+    throw new PersistenceError("validation", "Generated version entry was not V2.");
+  }
+}
+
+function parseCanonicalJson(value: string) {
+  if (typeof value !== "string") {
+    throw new PersistenceError("validation", "Canonical JSON text was invalid.");
+  }
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (error) {
+    throw new PersistenceError("validation", "Canonical JSON text was invalid.", error);
+  }
+}
+
+function validateExpectedScreenshotPrecondition(value: PersistPendingGeneratedComponentVersionV2Input["screenshot"]) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PersistenceError("validation", "Expected screenshot metadata was invalid.");
+  }
+  assertExactKeys(value, ["mediaType", "width", "height", "byteLength"]);
+  if (
+    value.mediaType !== "image/png" ||
+    !Number.isSafeInteger(value.width) ||
+    !Number.isSafeInteger(value.height) ||
+    !Number.isSafeInteger(value.byteLength) ||
+    value.width <= 0 ||
+    value.height <= 0 ||
+    value.byteLength <= 0
+  ) {
+    throw new PersistenceError("validation", "Expected screenshot metadata was invalid.");
+  }
+}
+
+function validateRecoveryInput(input: RecoverGeneratedComponentVersionV2Input) {
+  assertExactKeys(input, [
+    "targetGeneratedVersionId",
+    ...(input.expectedSourceCaptureId !== undefined ? ["expectedSourceCaptureId"] : []),
+    ...(input.expectedSourceGeneratedVersionId !== undefined ? ["expectedSourceGeneratedVersionId"] : []),
+    ...(input.expectedLogicalAttemptId !== undefined ? ["expectedLogicalAttemptId"] : []),
+    ...(input.expectedReviewAttemptFingerprint !== undefined ? ["expectedReviewAttemptFingerprint"] : [])
+  ]);
+  if (
+    !isValidGeneratedComponentVersionId(input.targetGeneratedVersionId) ||
+    (input.expectedSourceGeneratedVersionId !== undefined && !isValidGeneratedComponentVersionId(input.expectedSourceGeneratedVersionId)) ||
+    (input.expectedLogicalAttemptId !== undefined && !isValidLogicalAttemptId(input.expectedLogicalAttemptId)) ||
+    (input.expectedReviewAttemptFingerprint !== undefined && !isValidSha256Hex(input.expectedReviewAttemptFingerprint))
+  ) {
+    throw new PersistenceError("validation", "Generated version recovery input was invalid.");
+  }
+}
+
+function assertRecoveryLineage(entry: GeneratedVersionEntryV2, input: RecoverGeneratedComponentVersionV2Input) {
+  if (
+    (input.expectedSourceCaptureId !== undefined && entry.sourceCaptureId !== input.expectedSourceCaptureId) ||
+    (input.expectedSourceGeneratedVersionId !== undefined && entry.operation.sourceGeneratedVersionId !== input.expectedSourceGeneratedVersionId) ||
+    (input.expectedLogicalAttemptId !== undefined && entry.operation.logicalAttemptId !== input.expectedLogicalAttemptId) ||
+    (input.expectedReviewAttemptFingerprint !== undefined && entry.operation.reviewAttemptFingerprint !== input.expectedReviewAttemptFingerprint)
+  ) {
+    throw new PersistenceError("persistence-conflict", "Recovered generated version lineage did not match.");
+  }
+}
+
+function generatedComponentVersionEntriesCanonicalEqual(left: GeneratedComponentVersionEntry, right: GeneratedComponentVersionEntry) {
+  return canonicalJsonStringify(left as unknown as CanonicalJsonValue) === canonicalJsonStringify(right as unknown as CanonicalJsonValue);
+}
+
+function assertExactKeys(value: unknown, expected: string[]) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PersistenceError("validation", "Object shape was invalid.");
+  }
+  const actual = Reflect.ownKeys(value);
+  if (actual.some((key) => typeof key !== "string")) {
+    throw new PersistenceError("validation", "Object shape was invalid.");
+  }
+  const sortedActual = [...actual].sort();
+  const sortedExpected = [...expected].sort();
+  if (sortedActual.length !== sortedExpected.length || sortedActual.some((key, index) => key !== sortedExpected[index])) {
+    throw new PersistenceError("validation", "Object shape was invalid.");
+  }
+}
+
 function applyGeneratedVersionPersistenceTestHarness({
   entry,
   recordStore,
@@ -980,7 +1504,7 @@ function validateDatabaseSchema(database: IDBDatabase) {
   }
 }
 
-function validateScreenshotAsset(asset: StoredScreenshotAsset | undefined) {
+function validateScreenshotAsset(asset: StoredScreenshotAsset | undefined): asserts asset is StoredScreenshotAsset {
   if (!asset) {
     throw new PersistenceError("not-found", "Saved screenshot asset was not found.");
   }
@@ -1091,6 +1615,10 @@ function assertDeletionPreconditions({
 }
 
 function getScreenshotStorageKeyFromRecordValue(value: JsonObject) {
+  return getScreenshotReferenceFromRecordValue(value)?.storageKey;
+}
+
+function getScreenshotReferenceFromRecordValue(value: JsonObject) {
   const assets = value.assets;
   if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
     return undefined;
@@ -1101,7 +1629,10 @@ function getScreenshotStorageKeyFromRecordValue(value: JsonObject) {
     return undefined;
   }
 
-  return typeof screenshot.storageKey === "string" ? screenshot.storageKey : undefined;
+  return {
+    storageKey: typeof screenshot.storageKey === "string" ? screenshot.storageKey : undefined,
+    mediaType: typeof screenshot.mediaType === "string" ? screenshot.mediaType : undefined
+  };
 }
 
 function storedScreenshotAssetsMatch(left: StoredScreenshotAsset, right: StoredScreenshotAsset) {
@@ -1115,6 +1646,20 @@ function storedScreenshotAssetsMatch(left: StoredScreenshotAsset, right: StoredS
     left.blob.size === right.blob.size &&
     rectsEqual(left.crop, right.crop)
   );
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    Object.freeze(value);
+    for (const child of Object.values(value as { [key: string]: unknown })) {
+      deepFreeze(child);
+    }
+  }
+  return value;
 }
 
 function installGeneratedVersionStorageTestBridge() {
@@ -1133,6 +1678,50 @@ function installGeneratedVersionStorageTestBridge() {
           signal: new AbortController().signal
         })
       );
+    },
+    async persistPendingGeneratedComponentVersionV2(input) {
+      return bridgeResult(() =>
+        persistPendingGeneratedComponentVersionV2({
+          ...input,
+          signal: new AbortController().signal
+        })
+      );
+    },
+    async persistPendingGeneratedComponentVersionV2PreAborted(input) {
+      return bridgeResult(() => {
+        const controller = new AbortController();
+        controller.abort();
+        return persistPendingGeneratedComponentVersionV2({
+          ...input,
+          signal: controller.signal
+        });
+      });
+    },
+    async persistPendingGeneratedComponentVersionV2AbortBeforeAdd(input) {
+      return bridgeResult(async () => {
+        const controller = new AbortController();
+        const originalAdd = IDBObjectStore.prototype.add;
+        IDBObjectStore.prototype.add = function patchedAdd(this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+          if (this.name === GENERATED_COMPONENT_VERSION_STORE_NAME && (value as { id?: unknown }).id === input.targetGeneratedVersionId) {
+            controller.abort();
+          }
+          return key === undefined ? originalAdd.call(this, value) : originalAdd.call(this, value, key);
+        };
+        try {
+          return await persistPendingGeneratedComponentVersionV2({
+            ...input,
+            signal: controller.signal
+          });
+        } finally {
+          IDBObjectStore.prototype.add = originalAdd;
+        }
+      });
+    },
+    async recoverGeneratedComponentVersionV2(input) {
+      return bridgeResult(() => recoverGeneratedComponentVersionV2(input));
+    },
+    async getGeneratedComponentVersionUnionById(id) {
+      return bridgeResult(() => getGeneratedComponentVersionUnionById(id));
     },
     async getGeneratedComponentVersionById(id) {
       return bridgeResult(() => getGeneratedComponentVersionById(id));
