@@ -51,6 +51,14 @@ export function parsePngDimensions(bytes: Uint8Array) {
 }
 
 export async function validatePngDataUrl(dataUrl: string, expected: Pick<VerifiedScreenshot, "byteLength" | "width" | "height">) {
+  await decodeValidatedPngDataUrlBytes(dataUrl, expected);
+}
+
+export async function computePngDataUrlDigest(dataUrl: string, expected: Pick<VerifiedScreenshot, "byteLength" | "width" | "height">) {
+  return sha256HexBytes(await decodeValidatedPngDataUrlBytes(dataUrl, expected));
+}
+
+async function decodeValidatedPngDataUrlBytes(dataUrl: string, expected: Pick<VerifiedScreenshot, "byteLength" | "width" | "height">) {
   if (!dataUrl.startsWith(PNG_DATA_URL_PREFIX)) {
     throw new GenerationError("invalid_screenshot");
   }
@@ -69,6 +77,7 @@ export async function validatePngDataUrl(dataUrl: string, expected: Pick<Verifie
   if (bytes.byteLength !== expected.byteLength || dimensions.width !== expected.width || dimensions.height !== expected.height) {
     throw new GenerationError("invalid_screenshot");
   }
+  return bytes;
 }
 
 export async function blobToPngDataUrl(blob: Blob) {

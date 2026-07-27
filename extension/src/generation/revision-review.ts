@@ -33,7 +33,7 @@ import {
   type ReviewAttemptFingerprintInputV1,
   type ReviewAttemptScreenshotStateV1
 } from "./revision-contract";
-import { blobToPngDataUrl, verifyScreenshotAsset } from "./screenshot";
+import { blobToPngDataUrl, computePngDataUrlDigest, verifyScreenshotAsset } from "./screenshot";
 import { throwIfAborted } from "./workflow";
 
 export type RevisionReviewMode = "revision" | "regeneration";
@@ -624,7 +624,7 @@ export async function validateCompleteFrozenComponentRevisionReviewV1(review: un
     }
 
     await validateComponentRevisionRequestV1(cloneJson(review.request));
-    validateScreenshotBinding(review);
+    await validateScreenshotBinding(review);
     return review;
   } catch (error) {
     throw toGenerationError(error, "review_fingerprint_mismatch");
@@ -690,7 +690,7 @@ function parseCanonicalSourceGeneratedVersionEntry(value: string): GeneratedComp
   return parsed;
 }
 
-function validateScreenshotBinding(review: FrozenComponentRevisionReviewV1) {
+async function validateScreenshotBinding(review: FrozenComponentRevisionReviewV1) {
   const requestHasScreenshot = Object.prototype.hasOwnProperty.call(review.request, "screenshot");
   if (review.screenshotIncluded === false) {
     assertExactOwnKeys(review.screenshot, ["included"]);
@@ -717,6 +717,18 @@ function validateScreenshotBinding(review: FrozenComponentRevisionReviewV1) {
     review.request.screenshot.height !== review.screenshot.height ||
     review.request.screenshot.byteLength !== review.screenshot.byteLength ||
     canonicalJsonStringify(review.reviewAttemptFingerprintInput as unknown as CanonicalJsonValue).includes("data:image/png")
+  ) {
+    throw new GenerationError("review_fingerprint_mismatch");
+  }
+  const requestScreenshot = review.request.screenshot;
+  const actualDigest = await computePngDataUrlDigest(requestScreenshot.dataUrl, {
+    byteLength: requestScreenshot.byteLength,
+    width: requestScreenshot.width,
+    height: requestScreenshot.height
+  });
+  if (
+    actualDigest !== review.screenshot.digest ||
+    actualDigest !== review.reviewAttemptFingerprintInput.screenshot.digest
   ) {
     throw new GenerationError("review_fingerprint_mismatch");
   }

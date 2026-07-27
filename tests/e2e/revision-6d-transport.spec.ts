@@ -5,6 +5,7 @@ import { createCaptureRecordFixture, DEFAULT_CAPTURE_FIXTURES } from "./indexed-
 import { REQUESTED_OUTPUT, type ComponentGenerationResponseV1 } from "../../extension/src/shared/generation-contract";
 import {
   buildPendingRevisionGeneratedVersionEntryV2,
+  computeReviewAttemptFingerprint,
   computeRevisionInstructionFingerprint,
   computeSourceGeneratedVersionFingerprint,
   deriveRevisionGeneratedVersionId
@@ -21,6 +22,7 @@ import {
 } from "../../extension/src/generation/revision-review";
 import { createHttpRevisionTransport } from "../../extension/src/generation/revision-transport";
 import { canonicalJsonStringify, type CanonicalJsonValue } from "../../extension/src/generation/canonical-json";
+import { computePngDataUrlDigest } from "../../extension/src/generation/screenshot";
 import type { StoredScreenshotAsset } from "../../extension/src/storage/indexed-db";
 
 const captureId = "capture-0123456789abcdef0123456789abcdef";
@@ -135,6 +137,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
     expect(screenshotFalse.reviewAttemptFingerprintInput.screenshot).toEqual({ included: false });
     expect(JSON.stringify(screenshotFalse.reviewAttemptFingerprintInput)).not.toContain("data:image/png");
     expect(JSON.stringify(screenshotFalse.reviewAttemptFingerprintInput)).not.toContain("digest");
+    await expect(validateCompleteFrozenComponentRevisionReviewV1(screenshotFalse)).resolves.toBe(screenshotFalse);
     await expect(revalidateComponentRevisionReview({
       review: screenshotFalse,
       currentCaptureRecord: { ...validCaptureRecord(), library: { ...validCaptureRecord().library, notes: "Changed local notes only" } },
@@ -169,6 +172,13 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
     expect(screenshotTrue.request.screenshot).toMatchObject({ mediaType: "image/png", width: 1, height: 1 });
     expect(screenshotTrue.request.screenshot?.dataUrl).toBe(`data:image/png;base64,${pngBase64}`);
     expect(JSON.stringify(screenshotTrue.reviewAttemptFingerprintInput)).not.toContain(screenshotTrue.request.screenshot?.dataUrl);
+    await expect(validateCompleteFrozenComponentRevisionReviewV1(screenshotTrue)).resolves.toBe(screenshotTrue);
+    expect(screenshotTrue.screenshot.included).toBe(true);
+    expect(screenshotTrue.screenshot.digest).toBe(await computePngDataUrlDigest(screenshotTrue.request.screenshot?.dataUrl ?? "", {
+      byteLength: screenshotTrue.request.screenshot?.byteLength ?? 0,
+      width: screenshotTrue.request.screenshot?.width ?? 0,
+      height: screenshotTrue.request.screenshot?.height ?? 0
+    }));
     await expect(revalidateComponentRevisionReview({
       review: screenshotTrue,
       currentCaptureRecord: validCaptureRecord(),
@@ -609,6 +619,60 @@ test.describe("Milestone 6D Slice 3 revision transport and pending V2", () => {
     }
   });
 
+  test("rejects fabricated screenshot digest lineage bound to valid request bytes", async () => {
+    const review = await validScreenshotRevisionReview();
+    if (review.screenshot.included !== true || review.reviewAttemptFingerprintInput.screenshot.included !== true || !review.request.screenshot) {
+      throw new Error("invalid screenshot fixture");
+    }
+    const falseDigest = "f".repeat(64);
+    expect(falseDigest).not.toBe(review.screenshot.digest);
+    const fabricatedFingerprintInput = {
+      ...review.reviewAttemptFingerprintInput,
+      screenshot: {
+        ...review.reviewAttemptFingerprintInput.screenshot,
+        digest: falseDigest
+      }
+    };
+    const fabricated = deepFreezeJson({
+      ...review,
+      screenshot: {
+        ...review.screenshot,
+        digest: falseDigest
+      },
+      reviewAttemptFingerprintInput: fabricatedFingerprintInput,
+      reviewAttemptFingerprint: await computeReviewAttemptFingerprint(fabricatedFingerprintInput)
+    }) as FrozenComponentRevisionReviewV1;
+
+    expect(() => validateFrozenComponentRevisionReviewV1(fabricated)).not.toThrow();
+    await expect(validateCompleteFrozenComponentRevisionReviewV1(fabricated)).rejects.toThrow();
+    await expect(finalizeRevisionTransportResponse({
+      review: fabricated,
+      response: validResponse(),
+      signal: activeSignal(),
+      createdAt
+    })).rejects.toMatchObject({ code: "review_fingerprint_mismatch" });
+  });
+
+  test("rejects screenshot request byte changes even when metadata remains bound", async () => {
+    const review = await validScreenshotRevisionReview();
+    if (!review.request.screenshot) {
+      throw new Error("invalid screenshot fixture");
+    }
+    const changedRequest = {
+      ...review.request,
+      screenshot: {
+        ...review.request.screenshot,
+        dataUrl: changedPngDataUrlSameShape()
+      }
+    };
+    expect(changedRequest.screenshot.dataUrl).not.toBe(review.request.screenshot.dataUrl);
+    await expect(validateCompleteFrozenComponentRevisionReviewV1(deepFreezeJson({
+      ...review,
+      request: changedRequest,
+      canonicalRequestBody: JSON.stringify(changedRequest)
+    }) as FrozenComponentRevisionReviewV1)).rejects.toThrow();
+  });
+
   test("maps response-body and response-validation cancellation without retrying", async () => {
     const review = await validRevisionReview();
     const transport = createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component");
@@ -704,6 +768,21 @@ async function validRevisionReview(): Promise<FrozenComponentRevisionReviewV1> {
   });
 }
 
+async function validScreenshotRevisionReview(): Promise<FrozenComponentRevisionReviewV1> {
+  return prepareComponentRevisionReview({
+    currentCaptureRecord: validCaptureRecord(),
+    currentSavedAt: sourceSavedAt,
+    screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+    sourceGeneratedVersionEntry: validV1Entry(),
+    mode: "revision",
+    rawRevisionInstruction: "Update primary label",
+    screenshotIncluded: true,
+    endpointCategory: "local-development-proxy",
+    createLogicalAttemptId: () => alternateAttemptId,
+    signal: activeSignal()
+  });
+}
+
 function validCaptureRecord() {
   return createCaptureRecordFixture({
     ...DEFAULT_CAPTURE_FIXTURES[0],
@@ -784,6 +863,10 @@ function fixedLengthPayloadBytes(seed: string) {
     replacement[index] = seedBytes[index - 24];
   }
   return replacement;
+}
+
+function changedPngDataUrlSameShape() {
+  return `data:image/png;base64,${Buffer.from(fixedLengthPayloadBytes("changed-digest")).toString("base64")}`;
 }
 
 function validV1Entry() {
