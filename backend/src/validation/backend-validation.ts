@@ -197,12 +197,32 @@ function validateRevisionScreenshot(value: ComponentRevisionRequestV1["screensho
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new BackendSafeError("invalid_screenshot", 400);
   }
+  assertExactObjectKeys(value, ["mediaType", "width", "height", "byteLength", "dataUrl"]);
+  validateStrictPngBase64DataUrl((value as Record<string, unknown>).dataUrl);
   validateScreenshot({
     contractVersion: GENERATION_CONTRACT_VERSION,
     screenshot: value,
     captureContext: minimalCaptureContext(),
     requestedOutput: REQUESTED_OUTPUT
   });
+}
+
+function validateStrictPngBase64DataUrl(value: unknown) {
+  if (typeof value !== "string" || !value.startsWith(PNG_DATA_URL_PREFIX)) {
+    throw new BackendSafeError("invalid_screenshot", 400);
+  }
+  const payload = value.slice(PNG_DATA_URL_PREFIX.length);
+  if (
+    payload.length === 0 ||
+    payload.length % 4 !== 0 ||
+    !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(payload)
+  ) {
+    throw new BackendSafeError("invalid_screenshot", 400);
+  }
+  const decoded = Buffer.from(payload, "base64");
+  if (decoded.byteLength === 0 || decoded.toString("base64") !== payload) {
+    throw new BackendSafeError("invalid_screenshot", 400);
+  }
 }
 
 function validateSourceComponent(value: unknown) {

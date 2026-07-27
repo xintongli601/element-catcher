@@ -57,6 +57,17 @@ export function createApp({
     let screenshotWidth: number | undefined;
     let screenshotHeight: number | undefined;
     let corsAllowed = false;
+    const controller = new AbortController();
+    let completedNormally = false;
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+    const abortController = () => controller.abort();
+    const abortOnUnfinishedClose = () => {
+      if (!completedNormally) {
+        controller.abort();
+      }
+    };
+    request.on("aborted", abortController);
+    response.on("close", abortOnUnfinishedClose);
 
     try {
       applyBaseHeaders(response);
@@ -66,45 +77,41 @@ export function createApp({
       corsAllowed = true;
       validateRequestHeaders(request, routeConfig);
       if (request.method === "OPTIONS") {
-        validatePreflightHeaders(request, routeConfig);
-        writeJson(response, 204, undefined, config, corsAllowed, routeConfig);
         status = 204;
         outcome = "ok";
+        validatePreflightHeaders(request, routeConfig);
+        completedNormally = writeJson(response, status, undefined, config, corsAllowed, routeConfig);
         return;
       }
       const body = await readLimitedBody(request);
       bodyBytes = body.byteLength;
       const parsed = parseJson(body);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60_000);
-      request.on("aborted", () => controller.abort());
-      try {
-        const validated = routeConfig.kind === "generation"
-          ? await handleGenerationRequest(provider, parsed, controller.signal, (metrics) => {
-              screenshotBytes = metrics.byteLength;
-              screenshotWidth = metrics.width;
-              screenshotHeight = metrics.height;
-            })
-          : await handleRevisionRequest(provider, parsed, controller.signal, (metrics) => {
-              mode = metrics.mode;
-              if (metrics.screenshot) {
-                screenshotBytes = metrics.screenshot.byteLength;
-                screenshotWidth = metrics.screenshot.width;
-                screenshotHeight = metrics.screenshot.height;
-              }
-            });
-        writeJson(response, 200, validated, config, corsAllowed, routeConfig);
-        status = 200;
-        outcome = "ok";
-      } finally {
-        clearTimeout(timeout);
-      }
+      const validated = routeConfig.kind === "generation"
+        ? await handleGenerationRequest(provider, parsed, controller.signal, (metrics) => {
+            screenshotBytes = metrics.byteLength;
+            screenshotWidth = metrics.width;
+            screenshotHeight = metrics.height;
+          })
+        : await handleRevisionRequest(provider, parsed, controller.signal, (metrics) => {
+            mode = metrics.mode;
+            if (metrics.screenshot) {
+              screenshotBytes = metrics.screenshot.byteLength;
+              screenshotWidth = metrics.screenshot.width;
+              screenshotHeight = metrics.screenshot.height;
+            }
+          });
+      status = 200;
+      outcome = "ok";
+      completedNormally = writeJson(response, status, validated, config, corsAllowed, routeConfig);
     } catch (error) {
       const safe = normalizeError(error);
       status = safe.status;
       outcome = safe.code;
-      writeJson(response, status, safeErrorResponse(safe.code), config, corsAllowed, route === "revision" ? revisionRouteConfig() : generationRouteConfig());
+      completedNormally = writeJson(response, status, safeErrorResponse(safe.code), config, corsAllowed, route === "revision" ? revisionRouteConfig() : generationRouteConfig());
     } finally {
+      clearTimeout(timeout);
+      request.off("aborted", abortController);
+      response.off("close", abortOnUnfinishedClose);
       logger.log({
         correlationId,
         route,
@@ -199,7 +206,7 @@ function validateRequestHeaders(request: IncomingMessage, routeConfig: RouteConf
     throw new BackendSafeError("request_validation_failed", 400);
   }
   if (routeConfig.kind === "revision") {
-    validateIdempotencyHeader(request.headers["x-element-catcher-idempotency-key"]);
+    validateParsedIdempotencyHeader(request.headers["x-element-catcher-idempotency-key"]);
   }
   const declared = request.headers["content-length"];
   if (declared !== undefined) {
@@ -222,7 +229,7 @@ function validatePreflightHeaders(request: IncomingMessage, routeConfig: RouteCo
   }
 }
 
-function validateIdempotencyHeader(value: string | string[] | undefined) {
+export function validateParsedIdempotencyHeader(value: string | string[] | undefined) {
   if (
     typeof value !== "string" ||
     value.trim() !== value ||
@@ -305,11 +312,15 @@ function applyCors(response: ServerResponse, config: BackendConfig, routeConfig:
 }
 
 function writeJson(response: ServerResponse, status: number, body: unknown, config: BackendConfig, corsAllowed: boolean, routeConfig: RouteConfig) {
+  if (response.destroyed || response.writableEnded) {
+    return false;
+  }
   if (corsAllowed) {
     applyCors(response, config, routeConfig);
   }
   response.statusCode = status;
   response.end(body === undefined ? "" : JSON.stringify(body));
+  return true;
 }
 
 type RouteConfig = {

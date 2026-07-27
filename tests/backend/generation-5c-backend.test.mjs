@@ -6,7 +6,7 @@ import { Socket } from "node:net";
 import { join } from "node:path";
 import test from "node:test";
 import { PNG } from "pngjs";
-import { createApp } from "../../.backend-dist/backend/src/app.js";
+import { createApp, validateParsedIdempotencyHeader } from "../../.backend-dist/backend/src/app.js";
 import { readBackendConfig } from "../../.backend-dist/backend/src/config.js";
 import {
   OPENAI_MAX_RETRIES,
@@ -179,17 +179,21 @@ test("backend revision route validates CORS, idempotency, body shape, provider d
   try {
     const revision = validRevisionRequest();
     const regeneration = validRevisionRequest({ mode: "regeneration", screenshot: false });
+    const idempotencyCases = [
+      ["missing idempotency", { "X-Element-Catcher-Idempotency-Key": undefined }, IDEMPOTENCY_KEY],
+      ["empty idempotency", { "X-Element-Catcher-Idempotency-Key": "" }, ""],
+      ["bad idempotency prefix", { "X-Element-Catcher-Idempotency-Key": "attempt-0123456789abcdef0123456789abcdef" }, "attempt-0123456789abcdef0123456789abcdef"],
+      ["bad idempotency length", { "X-Element-Catcher-Idempotency-Key": "revision-attempt-0123456789abcdef0123456789abcde" }, "revision-attempt-0123456789abcdef0123456789abcde"],
+      ["uppercase idempotency", { "X-Element-Catcher-Idempotency-Key": "revision-attempt-0123456789ABCDEF0123456789abcdef" }, "revision-attempt-0123456789ABCDEF0123456789abcdef"],
+      ["comma idempotency", { "X-Element-Catcher-Idempotency-Key": `${IDEMPOTENCY_KEY}, ${IDEMPOTENCY_KEY}` }, IDEMPOTENCY_KEY]
+    ];
     const cases = [
       ["missing origin", () => requestRevisionJson(base, "POST", revision, { headers: { Origin: undefined } }), 403, false],
       ["wrong origin", () => requestRevisionJson(base, "POST", revision, { headers: { Origin: "chrome-extension://wrongwrongwrongwrongwrongwrongwr" } }), 403, false],
       ["wrong method", () => requestRevisionJson(base, "GET", undefined), 405, false],
       ["missing content type", () => requestRevisionJson(base, "POST", JSON.stringify(revision), { raw: true, headers: { "Content-Type": undefined } }), 415, true],
       ["wrong contract header", () => requestRevisionJson(base, "POST", revision, { headers: { "X-Element-Catcher-Contract-Version": "2" } }), 400, true],
-      ["missing idempotency", () => requestRevisionJson(base, "POST", revision, { headers: { "X-Element-Catcher-Idempotency-Key": undefined } }), 400, true],
-      ["empty idempotency", () => requestRevisionJson(base, "POST", revision, { headers: { "X-Element-Catcher-Idempotency-Key": "" } }), 400, true],
-      ["bad idempotency prefix", () => requestRevisionJson(base, "POST", revision, { headers: { "X-Element-Catcher-Idempotency-Key": "attempt-0123456789abcdef0123456789abcdef" } }), 400, true],
-      ["bad idempotency length", () => requestRevisionJson(base, "POST", revision, { headers: { "X-Element-Catcher-Idempotency-Key": "revision-attempt-0123456789abcdef0123456789abcde" } }), 400, true],
-      ["uppercase idempotency", () => requestRevisionJson(base, "POST", revision, { headers: { "X-Element-Catcher-Idempotency-Key": "revision-attempt-0123456789ABCDEF0123456789abcdef" } }), 400, true],
+      ...idempotencyCases.map(([name, headers]) => [name, () => requestRevisionJson(base, "POST", revision, { headers }), 400, true]),
       ["malformed JSON", () => requestRevisionJson(base, "POST", "{bad", { raw: true }), 400, true],
       ["unknown top-level field", () => requestRevisionJson(base, "POST", { ...revision, logicalAttemptId: IDEMPOTENCY_KEY }), 400, true],
       ["unknown nested source field", () => requestRevisionJson(base, "POST", { ...revision, sourceComponent: { ...revision.sourceComponent, metadata: { providerLabel: "raw" } } }), 400, true],
@@ -213,6 +217,13 @@ test("backend revision route validates CORS, idempotency, body shape, provider d
       assert.equal(text.includes("export function"), false, name);
       if (text) {
         assert.equal(JSON.parse(text).contractVersion, 1, name);
+      }
+    }
+    assert.equal(calls.revise.length, 0);
+    for (const [name, , rawValue] of idempotencyCases) {
+      const serializedLogs = JSON.stringify(logs);
+      if (rawValue) {
+        assert.equal(serializedLogs.includes(rawValue), false, name);
       }
     }
 
@@ -240,9 +251,17 @@ test("backend revision route validates CORS, idempotency, body shape, provider d
         "Access-Control-Request-Headers": "content-type, x-element-catcher-contract-version"
       }
     })).status, 204);
-    assert.equal((await requestRaw(base, `POST /v1/revise-component HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nOrigin: ${EXTENSION_ORIGIN}\r\nContent-Type: application/json\r\nX-Element-Catcher-Contract-Version: 1\r\nX-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}\r\nX-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}\r\nContent-Length: 2\r\n\r\n{}`)).statusCode, 400);
-    assert.equal((await requestRaw(base, `POST /v1/revise-component HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nOrigin: ${EXTENSION_ORIGIN}\r\nContent-Type: application/json\r\nX-Element-Catcher-Contract-Version: 1\r\nX-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY} \r\nContent-Length: 2\r\n\r\n{}`)).statusCode, 400);
-    assert.equal((await requestRaw(base, `POST /v1/revise-component HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\nOrigin: ${EXTENSION_ORIGIN}\r\nContent-Type: application/json\r\nX-Element-Catcher-Contract-Version: 1\r\nX-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}\r\nX-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}\r\nContent-Length: 2\r\n\r\n{}`)).statusCode, 400);
+    assert.equal((await requestRawRevision(base, revision, [
+      `X-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}`,
+      `X-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}`
+    ])).statusCode, 400);
+    assert.equal((await requestRawRevision(base, revision, [
+      `X-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}, ${IDEMPOTENCY_KEY}`
+    ])).statusCode, 400);
+    assert.equal(calls.revise.length, 0);
+    assert.throws(() => validateParsedIdempotencyHeader([IDEMPOTENCY_KEY, IDEMPOTENCY_KEY]));
+    assert.throws(() => validateParsedIdempotencyHeader(` ${IDEMPOTENCY_KEY}`));
+    assert.throws(() => validateParsedIdempotencyHeader(`${IDEMPOTENCY_KEY} `));
     assert.equal((await requestRevisionJson(base, "POST", "x".repeat(GENERATION_LIMITS.serializedRequestBytes + 1), { raw: true })).status, 413);
 
     const revisionOk = await requestRevisionJson(base, "POST", revision);
@@ -265,6 +284,143 @@ test("backend revision route validates CORS, idempotency, body shape, provider d
     assert.equal(serializedLogs.includes("test-key-not-real"), false);
     assert.equal(logs.at(-1).route, "revision");
     assert.equal(logs.at(-1).mode, "regeneration");
+  } finally {
+    await close();
+  }
+});
+
+test("backend revision route rejects non-canonical Base64 screenshots before provider dispatch", async () => {
+  const logs = [];
+  const calls = { revise: 0 };
+  const { base, close } = await startServer({
+    logs,
+    async generate() {
+      throw new Error("generate should not be called");
+    },
+    async revise(request) {
+      calls.revise += 1;
+      return { ...validResponse(), componentName: request.sourceComponent.componentName };
+    }
+  });
+
+  try {
+    const valid = validRevisionRequest();
+    const validPayload = valid.screenshot.dataUrl.slice("data:image/png;base64,".length);
+    const validBytes = Buffer.from(validPayload, "base64");
+    const invalidSuffixPayload = `${validPayload}!!!!`;
+    assert.equal(Buffer.from(invalidSuffixPayload, "base64").equals(validBytes), true);
+    const malformedCases = [
+      ["invalid suffix after valid PNG", invalidSuffixPayload],
+      ["embedded invalid characters", `${validPayload.slice(0, 8)}!!!!${validPayload.slice(8)}`],
+      ["space inside Base64", `${validPayload.slice(0, 8)} ${validPayload.slice(8)}`],
+      ["tab inside Base64", `${validPayload.slice(0, 8)}\t${validPayload.slice(8)}`],
+      ["CRLF inside Base64", `${validPayload.slice(0, 8)}\r\n${validPayload.slice(8)}`],
+      ["arbitrary trailing text", `${validPayload}abcd`],
+      ["malformed padding in middle", `${validPayload.slice(0, 8)}=${validPayload.slice(8)}`],
+      ["excessive padding", `${validPayload}===`],
+      ["non-canonical missing padding", validPayload.replace(/=+$/, "")]
+    ];
+    const accepted = await requestRevisionJson(base, "POST", valid);
+    assert.equal(accepted.status, 200);
+    assert.equal(calls.revise, 1);
+    for (const [name, payload] of malformedCases) {
+      const request = {
+        ...valid,
+        screenshot: {
+          ...valid.screenshot,
+          dataUrl: `data:image/png;base64,${payload}`
+        }
+      };
+      const response = await requestRevisionJson(base, "POST", request);
+      assert.equal(response.status, 400, name);
+      assert.deepEqual(await response.json(), safeEnvelope("invalid_screenshot"), name);
+      assert.equal(calls.revise, 1, name);
+    }
+    const serializedLogs = JSON.stringify(logs);
+    assert.equal(serializedLogs.includes(IDEMPOTENCY_KEY), false);
+    assert.equal(serializedLogs.includes(valid.screenshot.dataUrl), false);
+    assert.equal(serializedLogs.includes("Change the label"), false);
+  } finally {
+    await close();
+  }
+});
+
+test("backend aborts in-flight revision provider when client disconnects after complete body", async () => {
+  const logs = [];
+  const processErrors = [];
+  const onUnhandledRejection = (error) => processErrors.push(error);
+  const onUncaughtException = (error) => processErrors.push(error);
+  process.once("unhandledRejection", onUnhandledRejection);
+  process.once("uncaughtException", onUncaughtException);
+  let calls = 0;
+  let providerStarted;
+  let resolveProviderStarted;
+  let signalAborted;
+  let resolveSignalAborted;
+  providerStarted = new Promise((resolve) => {
+    resolveProviderStarted = resolve;
+  });
+  signalAborted = new Promise((resolve) => {
+    resolveSignalAborted = resolve;
+  });
+  const { base, close } = await startServer({
+    logs,
+    async generate() {
+      throw new Error("generate should not be called");
+    },
+    revise(request, signal) {
+      calls += 1;
+      resolveProviderStarted();
+      signal.addEventListener("abort", () => resolveSignalAborted(signal.aborted), { once: true });
+      return signalAborted.then(() => {
+        const error = new Error("client disconnected raw provider detail");
+        error.name = "AbortError";
+        throw error;
+      });
+    }
+  });
+
+  try {
+    const socket = writeRawRevisionAndKeepOpen(base, validRevisionRequest());
+    await providerStarted;
+    socket.destroy();
+    assert.equal(await signalAborted, true);
+    await waitFor(() => logs.length > 0);
+    assert.equal(calls, 1);
+    const serializedLogs = JSON.stringify(logs);
+    assert.equal(serializedLogs.includes(IDEMPOTENCY_KEY), false);
+    assert.equal(serializedLogs.includes("Change the label"), false);
+    assert.equal(serializedLogs.includes("export function SourceFixture"), false);
+    assert.equal(serializedLogs.includes("data:image/png;base64"), false);
+    assert.equal(serializedLogs.includes("client disconnected raw provider detail"), false);
+    assert.equal(serializedLogs.includes("test-key-not-real"), false);
+    assert.deepEqual(processErrors, []);
+  } finally {
+    process.off("unhandledRejection", onUnhandledRejection);
+    process.off("uncaughtException", onUncaughtException);
+    await close();
+  }
+});
+
+test("backend normal revision success does not abort after completed response close", async () => {
+  let observedSignal;
+  const { base, close } = await startServer({
+    logs: [],
+    async generate() {
+      throw new Error("generate should not be called");
+    },
+    async revise(request, signal) {
+      observedSignal = signal;
+      return { ...validResponse(), componentName: request.sourceComponent.componentName };
+    }
+  });
+
+  try {
+    const response = await requestRevisionJson(base, "POST", validRevisionRequest({ screenshot: false }));
+    assert.equal(response.status, 200);
+    await response.text();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(observedSignal.aborted, false);
   } finally {
     await close();
   }
@@ -623,6 +779,54 @@ function requestRaw(base, raw) {
     });
     socket.on("error", reject);
   });
+}
+
+function requestRawRevision(base, body, idempotencyHeaderLines) {
+  const payload = JSON.stringify(body);
+  return requestRaw(base, [
+    "POST /v1/revise-component HTTP/1.1",
+    "Host: 127.0.0.1",
+    "Connection: close",
+    `Origin: ${EXTENSION_ORIGIN}`,
+    "Content-Type: application/json",
+    "X-Element-Catcher-Contract-Version: 1",
+    ...idempotencyHeaderLines,
+    `Content-Length: ${Buffer.byteLength(payload)}`,
+    "",
+    payload
+  ].join("\r\n"));
+}
+
+function writeRawRevisionAndKeepOpen(base, body) {
+  const { port } = new URL(base);
+  const payload = JSON.stringify(body);
+  const socket = new Socket();
+  socket.on("error", () => {});
+  socket.connect(Number(port), "127.0.0.1", () => {
+    socket.write([
+      "POST /v1/revise-component HTTP/1.1",
+      "Host: 127.0.0.1",
+      "Connection: keep-alive",
+      `Origin: ${EXTENSION_ORIGIN}`,
+      "Content-Type: application/json",
+      "X-Element-Catcher-Contract-Version: 1",
+      `X-Element-Catcher-Idempotency-Key: ${IDEMPOTENCY_KEY}`,
+      `Content-Length: ${Buffer.byteLength(payload)}`,
+      "",
+      payload
+    ].join("\r\n"));
+  });
+  return socket;
+}
+
+async function waitFor(predicate) {
+  const started = Date.now();
+  while (!predicate()) {
+    if (Date.now() - started > 1_000) {
+      throw new Error("timed out waiting for condition");
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 function safeEnvelope(code) {
