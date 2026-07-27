@@ -82,6 +82,7 @@ export type RevalidateComponentRevisionReviewInput = {
   currentSavedAt: string;
   screenshotAsset: StoredScreenshotAsset | undefined;
   sourceGeneratedVersionEntry: GeneratedComponentVersionEntry;
+  endpointCategory: FrozenComponentRevisionReviewV1["endpointCategory"];
   signal: AbortSignal;
 };
 
@@ -158,9 +159,11 @@ export async function prepareComponentRevisionReview(input: PrepareComponentRevi
       canonicalSourceGeneratedVersionEntry: finalized.canonicalSourceGeneratedVersionEntry
     };
 
-    assertReviewCanonicalIntegrity(review);
     throwIfAborted(input.signal);
-    return deepFreeze(cloneJson(review));
+    const frozenReview = deepFreeze(cloneJson(review));
+    await validateCompleteFrozenComponentRevisionReviewV1(frozenReview);
+    throwIfAborted(input.signal);
+    return frozenReview;
   } catch (error) {
     throw toGenerationError(error);
   }
@@ -169,7 +172,9 @@ export async function prepareComponentRevisionReview(input: PrepareComponentRevi
 export async function revalidateComponentRevisionReview(input: RevalidateComponentRevisionReviewInput): Promise<ComponentRevisionRequestV1> {
   try {
     throwIfAborted(input.signal);
-    validateFrozenComponentRevisionReviewV1(input.review);
+    validateEndpointCategory(input.endpointCategory);
+    await validateCompleteFrozenComponentRevisionReviewV1(input.review);
+    throwIfAborted(input.signal);
     const finalized = await finalizeReviewInputs({
       currentCaptureRecord: input.currentCaptureRecord,
       currentSavedAt: input.currentSavedAt,
@@ -178,7 +183,7 @@ export async function revalidateComponentRevisionReview(input: RevalidateCompone
       mode: input.review.mode,
       rawRevisionInstruction: input.review.mode === "revision" ? input.review.instruction : undefined,
       screenshotIncluded: input.review.screenshotIncluded,
-      endpointCategory: input.review.endpointCategory,
+      endpointCategory: input.endpointCategory,
       createLogicalAttemptId: () => input.review.logicalAttemptId,
       signal: input.signal
     });
@@ -202,6 +207,7 @@ export async function revalidateComponentRevisionReview(input: RevalidateCompone
       input.review.sourceCaptureId !== finalized.currentCaptureRecord.id ||
       input.review.sourceCaptureSavedAt !== input.currentSavedAt ||
       !isCanonicalIsoTimestamp(input.review.sourceCaptureSavedAt) ||
+      input.review.endpointCategory !== input.endpointCategory ||
       input.review.endpointCategory !== finalized.endpointCategory ||
       input.review.sourceGeneratedVersionId !== finalized.sourceGeneratedVersionEntry.id ||
       input.review.sourceGeneratedVersionFingerprint !== finalized.sourceGeneratedVersionFingerprint ||
@@ -222,7 +228,7 @@ export async function revalidateComponentRevisionReview(input: RevalidateCompone
       throw new GenerationError("review_fingerprint_mismatch");
     }
 
-    assertReviewCanonicalIntegrity(input.review);
+    await validateCompleteFrozenComponentRevisionReviewV1(input.review);
     throwIfAborted(input.signal);
     return deepFreeze(cloneJson(finalized.request));
   } catch (error) {
@@ -233,7 +239,8 @@ export async function revalidateComponentRevisionReview(input: RevalidateCompone
 export async function finalizeRevisionTransportResponse(input: FinalizeRevisionTransportResponseInput): Promise<FinalizedRevisionPendingResultV1> {
   try {
     throwIfAborted(input.signal);
-    validateFrozenComponentRevisionReviewV1(input.review);
+    await validateCompleteFrozenComponentRevisionReviewV1(input.review);
+    throwIfAborted(input.signal);
     validateGenerationResponse(input.response);
     if (input.response.componentName !== input.review.sourceComponent.componentName) {
       throw new GenerationError("malformed_response");
@@ -558,6 +565,72 @@ export function validateFrozenComponentRevisionReviewV1(review: unknown): assert
   assertReviewCanonicalIntegrity(value);
 }
 
+export async function validateCompleteFrozenComponentRevisionReviewV1(review: unknown): Promise<FrozenComponentRevisionReviewV1> {
+  validateFrozenComponentRevisionReviewV1(review);
+  try {
+    const parsedSourceEntry = parseCanonicalSourceGeneratedVersionEntry(review.canonicalSourceGeneratedVersionEntry);
+    const expectedSourceComponent = sourceComponentFromEntry(parsedSourceEntry);
+    const expectedSourceFingerprint = await computeSourceGeneratedVersionFingerprint(parsedSourceEntry);
+    const expectedCurrentFingerprint = await computeCurrentCaptureProjectionFingerprint({
+      captureContext: review.captureContext,
+      requestedOutput: review.requestedOutput
+    });
+    const expectedReviewAttemptFingerprint = await computeReviewAttemptFingerprint(review.reviewAttemptFingerprintInput);
+    const expectedTargetGeneratedVersionId = await deriveRevisionGeneratedVersionId(review.logicalAttemptId);
+
+    if (
+      parsedSourceEntry.id !== review.sourceGeneratedVersionId ||
+      parsedSourceEntry.sourceCaptureId !== review.sourceCaptureId ||
+      expectedSourceFingerprint !== review.sourceGeneratedVersionFingerprint ||
+      expectedCurrentFingerprint !== review.currentCaptureProjectionFingerprint ||
+      expectedReviewAttemptFingerprint !== review.reviewAttemptFingerprint ||
+      expectedTargetGeneratedVersionId !== review.targetGeneratedVersionId ||
+      !canonicalValuesEqual(expectedSourceComponent, review.sourceComponent) ||
+      JSON.stringify(review.request) !== review.canonicalRequestBody ||
+      review.request.mode !== review.mode ||
+      review.reviewAttemptFingerprintInput.mode !== review.mode ||
+      review.reviewAttemptFingerprintInput.localSourceCaptureId !== review.sourceCaptureId ||
+      review.reviewAttemptFingerprintInput.localSourceGeneratedVersionId !== review.sourceGeneratedVersionId ||
+      review.reviewAttemptFingerprintInput.sourceGeneratedVersionFingerprint !== review.sourceGeneratedVersionFingerprint ||
+      review.reviewAttemptFingerprintInput.currentCaptureProjectionFingerprint !== review.currentCaptureProjectionFingerprint ||
+      review.reviewAttemptFingerprintInput.logicalAttemptId !== review.logicalAttemptId ||
+      !canonicalValuesEqual(review.sourceComponent, review.request.sourceComponent) ||
+      !canonicalValuesEqual(review.sourceComponent, review.reviewAttemptFingerprintInput.sourceComponent) ||
+      !canonicalValuesEqual(review.captureContext, review.request.captureContext) ||
+      !canonicalValuesEqual(review.captureContext, review.reviewAttemptFingerprintInput.captureContext) ||
+      !canonicalValuesEqual(review.requestedOutput, review.request.requestedOutput) ||
+      !canonicalValuesEqual(review.requestedOutput, review.reviewAttemptFingerprintInput.requestedOutput)
+    ) {
+      throw new GenerationError("review_fingerprint_mismatch");
+    }
+
+    if (review.mode === "revision") {
+      const expectedInstructionFingerprint = await computeRevisionInstructionFingerprint(review.instruction ?? "");
+      if (
+        review.request.mode !== "revision" ||
+        expectedInstructionFingerprint !== review.instructionFingerprint ||
+        review.request.revisionInstruction !== review.instruction ||
+        review.reviewAttemptFingerprintInput.revisionInstruction !== review.instruction
+      ) {
+        throw new GenerationError("review_fingerprint_mismatch");
+      }
+    } else if (
+      "instruction" in review ||
+      "instructionFingerprint" in review ||
+      "revisionInstruction" in review.request ||
+      "revisionInstruction" in review.reviewAttemptFingerprintInput
+    ) {
+      throw new GenerationError("review_fingerprint_mismatch");
+    }
+
+    await validateComponentRevisionRequestV1(cloneJson(review.request));
+    validateScreenshotBinding(review);
+    return review;
+  } catch (error) {
+    throw toGenerationError(error, "review_fingerprint_mismatch");
+  }
+}
+
 function validateCurrentSavedAt(value: unknown) {
   if (!isCanonicalIsoTimestamp(value)) {
     throw new GenerationError("capture_changed");
@@ -578,7 +651,11 @@ function assertExactOwnKeys(value: object, expected: string[]) {
       throw new GenerationError("review_fingerprint_mismatch");
     }
   }
-  const actual = Object.keys(value).sort();
+  const ownKeys = Reflect.ownKeys(value);
+  if (ownKeys.some((key) => typeof key !== "string")) {
+    throw new GenerationError("review_fingerprint_mismatch");
+  }
+  const actual = ownKeys.sort();
   const sortedExpected = [...expected].sort();
   if (
     actual.length !== sortedExpected.length ||
@@ -593,6 +670,66 @@ function assertReviewCanonicalIntegrity(review: FrozenComponentRevisionReviewV1)
     throw new GenerationError("review_fingerprint_mismatch");
   }
   validateComponentRevisionRequestShapeV1(review.request);
+}
+
+function parseCanonicalSourceGeneratedVersionEntry(value: string): GeneratedComponentVersionEntry {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch (error) {
+    throw new GenerationError("review_fingerprint_mismatch", undefined, error);
+  }
+  try {
+    validateGeneratedComponentVersionEntry(parsed);
+  } catch (error) {
+    throw new GenerationError("review_fingerprint_mismatch", undefined, error);
+  }
+  if (canonicalJsonStringify(parsed as unknown as CanonicalJsonValue) !== value) {
+    throw new GenerationError("review_fingerprint_mismatch");
+  }
+  return parsed;
+}
+
+function validateScreenshotBinding(review: FrozenComponentRevisionReviewV1) {
+  const requestHasScreenshot = Object.prototype.hasOwnProperty.call(review.request, "screenshot");
+  if (review.screenshotIncluded === false) {
+    assertExactOwnKeys(review.screenshot, ["included"]);
+    assertExactOwnKeys(review.reviewAttemptFingerprintInput.screenshot, ["included"]);
+    if (
+      review.screenshot.included !== false ||
+      review.reviewAttemptFingerprintInput.screenshot.included !== false ||
+      requestHasScreenshot
+    ) {
+      throw new GenerationError("review_fingerprint_mismatch");
+    }
+    return;
+  }
+
+  if (
+    review.screenshotIncluded !== true ||
+    review.screenshot.included !== true ||
+    review.reviewAttemptFingerprintInput.screenshot.included !== true ||
+    !requestHasScreenshot ||
+    !review.request.screenshot ||
+    !canonicalValuesEqual(review.screenshot, review.reviewAttemptFingerprintInput.screenshot) ||
+    review.request.screenshot.mediaType !== review.screenshot.mediaType ||
+    review.request.screenshot.width !== review.screenshot.width ||
+    review.request.screenshot.height !== review.screenshot.height ||
+    review.request.screenshot.byteLength !== review.screenshot.byteLength ||
+    canonicalJsonStringify(review.reviewAttemptFingerprintInput as unknown as CanonicalJsonValue).includes("data:image/png")
+  ) {
+    throw new GenerationError("review_fingerprint_mismatch");
+  }
+}
+
+function validateEndpointCategory(value: unknown): asserts value is FrozenComponentRevisionReviewV1["endpointCategory"] {
+  if (value !== "backend-unconfigured" && value !== "deterministic-mock" && value !== "local-development-proxy") {
+    throw new GenerationError("review_fingerprint_mismatch");
+  }
+}
+
+function canonicalValuesEqual(left: unknown, right: unknown) {
+  return canonicalJsonStringify(left as CanonicalJsonValue) === canonicalJsonStringify(right as CanonicalJsonValue);
 }
 
 function validateReviewAttemptFingerprintInputShape(input: ReviewAttemptFingerprintInputV1) {

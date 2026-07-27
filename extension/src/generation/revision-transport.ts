@@ -22,6 +22,9 @@ export function createHttpRevisionTransport(endpoint: string): RevisionTransport
         throw new GenerationError("cancellation");
       }
       validateComponentRevisionRequestShapeV1(request);
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
       let cleanRequest: ComponentRevisionRequestV1;
       try {
         cleanRequest = await validateComponentRevisionRequestV1(cloneJson(request));
@@ -35,6 +38,9 @@ export function createHttpRevisionTransport(endpoint: string): RevisionTransport
         throw new GenerationError("cancellation");
       }
       const body = JSON.stringify(cleanRequest);
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
 
       let response: Response;
       try {
@@ -56,20 +62,35 @@ export function createHttpRevisionTransport(endpoint: string): RevisionTransport
         }
         throw new GenerationError("network_unavailable");
       }
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
 
-      const text = await readBoundedResponseText(response);
+      const text = await readBoundedResponseText(response, signal);
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
       let parsed: unknown;
       try {
         parsed = JSON.parse(text);
       } catch {
         throw new GenerationError(response.ok ? "malformed_response" : "network_unavailable");
       }
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
 
       if (!response.ok) {
         throw new GenerationError(parseBackendErrorCode(parsed));
       }
 
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
       validateRevisionTransportResponse(parsed, cleanRequest);
+      if (signal.aborted) {
+        throw new GenerationError("cancellation");
+      }
       return parsed;
     }
   };
@@ -92,8 +113,19 @@ export function validateRevisionTransportResponse(
   }
 }
 
-async function readBoundedResponseText(response: Response) {
-  const text = await response.text();
+async function readBoundedResponseText(response: Response, signal: AbortSignal) {
+  let text: string;
+  try {
+    text = await response.text();
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new GenerationError("cancellation");
+    }
+    throw error;
+  }
+  if (signal.aborted) {
+    throw new GenerationError("cancellation");
+  }
   if (getUtf8ByteLength(text) > RESPONSE_BODY_LIMIT_BYTES) {
     throw new GenerationError("malformed_response");
   }

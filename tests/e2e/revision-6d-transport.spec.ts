@@ -15,10 +15,12 @@ import {
   prepareComponentRevisionReview,
   revalidateComponentRevisionReview,
   reviewRequestBodiesEqual,
+  validateCompleteFrozenComponentRevisionReviewV1,
   validateFrozenComponentRevisionReviewV1,
   type FrozenComponentRevisionReviewV1
 } from "../../extension/src/generation/revision-review";
 import { createHttpRevisionTransport } from "../../extension/src/generation/revision-transport";
+import { canonicalJsonStringify, type CanonicalJsonValue } from "../../extension/src/generation/canonical-json";
 import type { StoredScreenshotAsset } from "../../extension/src/storage/indexed-db";
 
 const captureId = "capture-0123456789abcdef0123456789abcdef";
@@ -139,6 +141,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(capture, { payload: "different-one-byte-payload" }),
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: screenshotFalse.endpointCategory,
       signal: activeSignal()
     })).resolves.toEqual(screenshotFalse.request);
     await expect(revalidateComponentRevisionReview({
@@ -147,6 +150,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: undefined,
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: screenshotFalse.endpointCategory,
       signal: activeSignal()
     })).rejects.toThrow();
 
@@ -171,6 +175,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord(), { payload: "different-one-byte-payload" }),
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: screenshotTrue.endpointCategory,
       signal: activeSignal()
     })).rejects.toThrow();
     await expect(revalidateComponentRevisionReview({
@@ -179,6 +184,60 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: { ...validScreenshotAsset(validCaptureRecord()), width: 2 },
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: screenshotTrue.endpointCategory,
+      signal: activeSignal()
+    })).rejects.toThrow();
+  });
+
+  test("binds revalidation to the independently resolved endpoint category", async () => {
+    const localProxyReview = await validRevisionReview();
+    await expect(revalidateComponentRevisionReview({
+      review: localProxyReview,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: "local-development-proxy",
+      signal: activeSignal()
+    })).resolves.toEqual(localProxyReview.request);
+    await expect(revalidateComponentRevisionReview({
+      review: localProxyReview,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: "deterministic-mock",
+      signal: activeSignal()
+    })).rejects.toThrow();
+
+    const deterministicReview = await prepareComponentRevisionReview({
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      mode: "revision",
+      rawRevisionInstruction: "Update primary label",
+      screenshotIncluded: false,
+      endpointCategory: "deterministic-mock",
+      createLogicalAttemptId: () => attemptId,
+      signal: activeSignal()
+    });
+    await expect(revalidateComponentRevisionReview({
+      review: deterministicReview,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: "backend-unconfigured",
+      signal: activeSignal()
+    })).rejects.toThrow();
+    await expect(revalidateComponentRevisionReview({
+      review: deterministicReview,
+      currentCaptureRecord: validCaptureRecord(),
+      currentSavedAt: sourceSavedAt,
+      screenshotAsset: validScreenshotAsset(validCaptureRecord()),
+      sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: "production-backend" as FrozenComponentRevisionReviewV1["endpointCategory"],
       signal: activeSignal()
     })).rejects.toThrow();
   });
@@ -225,6 +284,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: review.endpointCategory,
       signal: activeSignal()
     })).rejects.toThrow();
     await expect(revalidateComponentRevisionReview({
@@ -233,6 +293,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: review.endpointCategory,
       signal: activeSignal()
     })).rejects.toThrow();
     await expect(revalidateComponentRevisionReview({
@@ -241,6 +302,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
       sourceGeneratedVersionEntry: { ...validV1Entry(), value: { ...validResponse(), summary: "Changed source" } },
+      endpointCategory: review.endpointCategory,
       signal: activeSignal()
     })).rejects.toThrow();
 
@@ -260,6 +322,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
         currentSavedAt: sourceSavedAt,
         screenshotAsset: validScreenshotAsset(validCaptureRecord()),
         sourceGeneratedVersionEntry: validV1Entry(),
+        endpointCategory: review.endpointCategory,
         signal: activeSignal()
       }), String(name)).rejects.toThrow();
     }
@@ -325,6 +388,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord()),
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: review.endpointCategory,
       signal: preAborted.signal
     })).rejects.toMatchObject({ code: "cancellation" });
 
@@ -346,6 +410,7 @@ test.describe("Milestone 6D Slice 3 frozen revision Review preparation", () => {
       currentSavedAt: sourceSavedAt,
       screenshotAsset: validScreenshotAsset(validCaptureRecord(), { abortOnRead: revalidationAbort }),
       sourceGeneratedVersionEntry: validV1Entry(),
+      endpointCategory: screenshotReview.endpointCategory,
       signal: revalidationAbort.signal
     })).rejects.toMatchObject({ code: "cancellation" });
   });
@@ -505,6 +570,113 @@ test.describe("Milestone 6D Slice 3 revision transport and pending V2", () => {
     })).rejects.toMatchObject({ code: "cancellation" });
   });
 
+  test("rejects fabricated frozen Review lineage before pending V2 finalization", async () => {
+    const review = await validRevisionReview();
+    const requestWithMismatchedSource = {
+      ...review.request,
+      sourceComponent: {
+        ...review.request.sourceComponent,
+        summary: "Different request source component"
+      }
+    };
+    const otherSourceEntry = {
+      ...validV1Entry(),
+      id: "generated-version-fedcba9876543210fedcba9876543210",
+      sourceCaptureId: "capture-fedcba9876543210fedcba9876543210"
+    };
+    const fabricatedCases = [
+      ["screenshot lineage", { screenshotIncluded: true }],
+      ["source fingerprint", { sourceGeneratedVersionFingerprint: "f".repeat(64) }],
+      ["review attempt fingerprint", { reviewAttemptFingerprint: "f".repeat(64) }],
+      ["target generated version", { targetGeneratedVersionId: "generated-version-fedcba9876543210fedcba9876543210" }],
+      ["logical attempt binding", { reviewAttemptFingerprintInput: { ...review.reviewAttemptFingerprintInput, logicalAttemptId: alternateAttemptId } }],
+      ["request source component", { request: requestWithMismatchedSource, canonicalRequestBody: JSON.stringify(requestWithMismatchedSource) }],
+      ["canonical source entry id", { canonicalSourceGeneratedVersionEntry: canonicalJson(otherSourceEntry) }]
+    ];
+
+    for (const [name, patch] of fabricatedCases) {
+      const fabricated = deepFreezeJson({ ...review, ...patch }) as FrozenComponentRevisionReviewV1;
+      if (name === "screenshot lineage") {
+        expect(() => validateFrozenComponentRevisionReviewV1(fabricated)).not.toThrow();
+        await expect(validateCompleteFrozenComponentRevisionReviewV1(fabricated)).rejects.toThrow();
+      }
+      await expect(finalizeRevisionTransportResponse({
+        review: fabricated,
+        response: validResponse(),
+        signal: activeSignal(),
+        createdAt
+      }), String(name)).rejects.toMatchObject({ code: "review_fingerprint_mismatch" });
+    }
+  });
+
+  test("maps response-body and response-validation cancellation without retrying", async () => {
+    const review = await validRevisionReview();
+    const transport = createHttpRevisionTransport("http://127.0.0.1:8787/v1/revise-component");
+    let calls = 0;
+    const pendingBodyAbort = new AbortController();
+    await expect(withFetchImplementation(async () => {
+      calls += 1;
+      return responseLike({
+        ok: true,
+        text: async () => {
+          await Promise.resolve();
+          pendingBodyAbort.abort();
+          throw new DOMException("Operation aborted.", "AbortError");
+        }
+      });
+    }, async () => transport.revise(review.request, review.logicalAttemptId, pendingBodyAbort.signal))).rejects.toMatchObject({ code: "cancellation" });
+    expect(calls).toBe(1);
+
+    calls = 0;
+    const afterBodyAbort = new AbortController();
+    await expect(withFetchImplementation(async () => {
+      calls += 1;
+      return responseLike({
+        ok: true,
+        text: async () => {
+          afterBodyAbort.abort();
+          return JSON.stringify(validResponse());
+        }
+      });
+    }, async () => transport.revise(review.request, review.logicalAttemptId, afterBodyAbort.signal))).rejects.toMatchObject({ code: "cancellation" });
+    expect(calls).toBe(1);
+
+    calls = 0;
+    const afterParseAbort = new AbortController();
+    const originalParse = JSON.parse;
+    JSON.parse = ((text: string) => {
+      const parsed = originalParse(text);
+      if (calls > 0 && text.includes("\"componentName\"")) {
+        afterParseAbort.abort();
+      }
+      return parsed;
+    }) as JSON["parse"];
+    try {
+      await expect(withFetchImplementation(async () => {
+        calls += 1;
+        return responseLike({
+          ok: true,
+          text: async () => JSON.stringify(validResponse())
+        });
+      }, async () => transport.revise(review.request, review.logicalAttemptId, afterParseAbort.signal))).rejects.toMatchObject({ code: "cancellation" });
+    } finally {
+      JSON.parse = originalParse;
+    }
+    expect(calls).toBe(1);
+
+    calls = 0;
+    await expect(withFetchImplementation(async () => {
+      calls += 1;
+      return responseLike({
+        ok: true,
+        text: async () => JSON.stringify(validResponse())
+      });
+    }, async () => transport.revise(review.request, review.logicalAttemptId, activeSignal()))).resolves.toMatchObject({
+      componentName: review.sourceComponent.componentName
+    });
+    expect(calls).toBe(1);
+  });
+
   test("keeps Slice 3 unreachable from production UI, storage, preview, backend, package and manifest boundaries", () => {
     const root = process.cwd();
     expect(readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8")).not.toContain("revision-review");
@@ -583,6 +755,14 @@ function deepFreeze<T>(value: T): T {
     }
   }
   return value;
+}
+
+function canonicalJson(value: unknown) {
+  return canonicalJsonStringify(value as CanonicalJsonValue);
+}
+
+function responseLike(input: { ok: boolean; text: () => Promise<string> }): Response {
+  return input as Response;
 }
 
 function abortingBlob(bytes: Uint8Array, controller: AbortController) {
