@@ -331,10 +331,20 @@ function GeneratedVersionsSection({
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [previewOpenId, setPreviewOpenId] = useState<string | null>(null);
   const [revisionSourceId, setRevisionSourceId] = useState<string | null>(null);
+  const previousSourceCaptureIdRef = useRef(sourceCaptureId);
 
   useEffect(() => {
     let cancelled = false;
-    setState((current) => (current.status === "loaded" ? current : { status: "loading" }));
+    const sourceChanged = previousSourceCaptureIdRef.current !== sourceCaptureId;
+    previousSourceCaptureIdRef.current = sourceCaptureId;
+    if (sourceChanged) {
+      setExpandedId(null);
+      setPreviewOpenId(null);
+      setRevisionSourceId(null);
+      setState({ status: "loading" });
+    } else {
+      setState((current) => (current.status === "loaded" ? current : { status: "loading" }));
+    }
     listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId)
       .then((versions) => {
         if (!cancelled) {
@@ -453,6 +463,7 @@ function SelectedRevisionWorkflow({
   }
   return (
     <RevisionWorkflow
+      key={`${savedCapture.record.id}:${sourceEntry.id}`}
       savedCapture={savedCapture}
       sourceEntry={sourceEntry}
       onSaved={onSaved}

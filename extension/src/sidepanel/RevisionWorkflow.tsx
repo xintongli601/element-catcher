@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { canonicalJsonStringify, type CanonicalJsonValue } from "../generation/canonical-json";
-import { getSafeGenerationMessage } from "../generation/errors";
+import { GenerationError, getSafeGenerationMessage, toGenerationError, type GenerationErrorCode } from "../generation/errors";
 import {
   finalizeRevisionTransportResponse,
   prepareComponentRevisionReview,
@@ -11,7 +11,7 @@ import {
 } from "../generation/revision-review";
 import { createHttpRevisionTransport } from "../generation/revision-transport";
 import { normalizeRevisionInstruction } from "../generation/revision-contract";
-import { getSafePersistenceMessage } from "../storage/persistence-errors";
+import { getSafePersistenceMessage, PersistenceError, toPersistenceError, type PersistenceErrorCode } from "../storage/persistence-errors";
 import { loadSavedCaptureById, type SavedCaptureReadModel } from "../storage/capture-save";
 import {
   getGeneratedComponentVersionUnionById,
@@ -20,76 +20,64 @@ import {
 } from "../storage/indexed-db";
 import type { GeneratedComponentVersionEntry } from "../shared/generated-version-contract";
 
-const REVISION_ENDPOINT = "http://127.0.0.1:8787/v1/revise-component";
+declare global {
+  interface Window {
+    __EC_REVISION_WORKFLOW_TEST_LOOPBACK__?: true;
+  }
+}
+
+const LOOPBACK_ORIGIN = "http://127.0.0.1:8787";
+const REVISION_ENDPOINT_PATH = "/v1/revise-component";
 const MAX_REVISION_INSTRUCTION_CODE_POINTS = 1000;
-const MAX_REVISION_INSTRUCTION_BYTES = 4000;
 const CONSENT_TEXT = "I understand this displayed data will leave my device and may use paid AI capacity.";
+
+type TransportConfig =
+  | { endpointCategory: "backend-unconfigured"; endpoint?: undefined }
+  | { endpointCategory: "local-development-proxy"; endpoint: string };
 
 type WorkflowBase = {
   token: number;
   sourceCaptureId: string;
   sourceGeneratedVersionId: string;
   mode: RevisionReviewMode;
-};
-
-type EditingState = WorkflowBase & {
-  status: "editing";
   draftInstruction: string;
-  normalizedInstruction?: string;
   includeScreenshot: boolean;
 };
 
-type InvalidState = WorkflowBase & {
-  status: "invalid";
-  draftInstruction: string;
-  includeScreenshot: boolean;
-  message: string;
-};
-
-type ReviewState = WorkflowBase & {
-  status: "review";
-  draftInstruction: string;
-  includeScreenshot: boolean;
+type ReviewBound = {
   review: FrozenComponentRevisionReviewV1;
-  consent: boolean;
 };
 
-type SubmittingState = WorkflowBase & {
-  status: "submitting" | "saving";
-  draftInstruction: string;
-  includeScreenshot: boolean;
-  review: FrozenComponentRevisionReviewV1;
-  pending?: FinalizedRevisionPendingResultV1;
+type PendingBound = ReviewBound & {
+  pending: FinalizedRevisionPendingResultV1;
 };
 
-type FailureState = WorkflowBase & {
-  status: "transport-failed" | "invalid-response-failed" | "persistence-failed" | "retry-unavailable";
-  draftInstruction: string;
-  includeScreenshot: boolean;
-  review?: FrozenComponentRevisionReviewV1;
-  pending?: FinalizedRevisionPendingResultV1;
-  message: string;
-};
+type FailureKind =
+  | "transport-failed"
+  | "invalid-response-failed"
+  | "persistence-failed"
+  | "retry-unavailable";
 
 type RevisionWorkflowState =
   | { status: "idle" }
-  | EditingState
-  | InvalidState
-  | (WorkflowBase & { status: "preparing-review"; draftInstruction: string; includeScreenshot: boolean })
-  | ReviewState
-  | SubmittingState
-  | (WorkflowBase & { status: "cancelling"; message: string })
+  | (WorkflowBase & { status: "editing" })
+  | (WorkflowBase & { status: "invalid"; message: string })
+  | (WorkflowBase & { status: "preparing-review" | "recovering" | "submitting" | "finalizing" | "saving"; review?: FrozenComponentRevisionReviewV1; pending?: FinalizedRevisionPendingResultV1 })
+  | (WorkflowBase & ReviewBound & { status: "review"; consent: boolean })
   | (WorkflowBase & { status: "cancelled"; message: string })
-  | (WorkflowBase & {
-      status: "response-received";
-      draftInstruction: string;
-      includeScreenshot: boolean;
-      review: FrozenComponentRevisionReviewV1;
-      pending: FinalizedRevisionPendingResultV1;
-    })
   | (WorkflowBase & { status: "success"; savedEntry: GeneratedComponentVersionEntry; message: string })
-  | FailureState
-  | (WorkflowBase & { status: "stale-ignored"; message: string });
+  | (WorkflowBase & Partial<PendingBound> & { status: FailureKind; message: string; retryTransport: boolean; retryPersistence: boolean });
+
+type OperationOwner = {
+  token: number;
+  sourceCaptureId: string;
+  sourceGeneratedVersionId: string;
+  mode: RevisionReviewMode;
+  controller: AbortController;
+  logicalAttemptId?: string;
+  reviewAttemptFingerprint?: string;
+  targetGeneratedVersionId?: string;
+};
 
 export function RevisionWorkflow({
   savedCapture,
@@ -103,7 +91,8 @@ export function RevisionWorkflow({
   onCancelSelection: () => void;
 }) {
   const workflowTokenRef = useRef(0);
-  const controllerRef = useRef<AbortController | null>(null);
+  const ownerRef = useRef<OperationOwner | null>(null);
+  const deliveredTargetsRef = useRef(new Set<string>());
   const successHeadingRef = useRef<HTMLHeadingElement | null>(null);
   const alertRef = useRef<HTMLParagraphElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -112,27 +101,33 @@ export function RevisionWorkflow({
   const [state, setState] = useState<RevisionWorkflowState>({ status: "idle" });
 
   useEffect(() => {
+    retireActiveOperation();
+    workflowTokenRef.current += 1;
+    setState({ status: "idle" });
     return () => {
-      retireController();
+      retireActiveOperation();
       workflowTokenRef.current += 1;
     };
-  }, []);
+  }, [savedCapture.record.id, sourceEntry.id]);
 
   useEffect(() => {
     if (state.status === "success") {
       successHeadingRef.current?.focus();
     }
-    if (state.status === "invalid" || state.status.endsWith("failed") || state.status === "retry-unavailable") {
+    if (state.status === "invalid") {
+      textareaRef.current?.focus();
+    }
+    if (state.status.endsWith("failed") || state.status === "retry-unavailable") {
       alertRef.current?.focus();
     }
   }, [state.status]);
 
   const startWorkflow = (mode: RevisionReviewMode) => {
-    retireController();
-    const token = nextToken();
+    retireActiveOperation();
+    workflowTokenRef.current += 1;
     setState({
       status: "editing",
-      token,
+      token: workflowTokenRef.current,
       sourceCaptureId: savedCapture.record.id,
       sourceGeneratedVersionId: sourceEntry.id,
       mode,
@@ -143,45 +138,60 @@ export function RevisionWorkflow({
   };
 
   const cancelWorkflow = () => {
-    retireController();
-    const base = currentBase(state, savedCapture.record.id, sourceEntry.id);
+    const current = state;
+    const base = stateBase(current, savedCapture.record.id, sourceEntry.id);
+    retireActiveOperation();
     workflowTokenRef.current += 1;
     setState({
       ...base,
       token: workflowTokenRef.current,
       status: "cancelled",
-      message: "Revision workflow cancelled. No request is active."
+      message: `${modeLabel(base.mode)} cancelled.`
     });
+  };
+
+  const closeWorkflow = () => {
+    retireActiveOperation();
+    workflowTokenRef.current += 1;
     onCancelSelection();
   };
 
-  const prepareReview = async (candidate: EditingState | InvalidState) => {
+  const reviewAgain = () => {
+    const base = stateBase(state, savedCapture.record.id, sourceEntry.id);
+    retireActiveOperation();
+    workflowTokenRef.current += 1;
+    setState({
+      ...base,
+      token: workflowTokenRef.current,
+      status: "editing"
+    });
+    window.setTimeout(() => textareaRef.current?.focus(), 0);
+  };
+
+  const prepareReview = async (candidate: Extract<RevisionWorkflowState, { status: "editing" | "invalid" }>) => {
     const normalized = validateDraft(candidate);
     if (!normalized.ok) {
       setState({ ...candidate, status: "invalid", message: normalized.message });
+      window.setTimeout(() => textareaRef.current?.focus(), 0);
       return;
     }
 
-    retireController();
-    const token = nextToken();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    setState({
-      sourceCaptureId: candidate.sourceCaptureId,
-      sourceGeneratedVersionId: candidate.sourceGeneratedVersionId,
-      mode: candidate.mode,
-      draftInstruction: candidate.draftInstruction,
-      includeScreenshot: candidate.includeScreenshot,
-      token,
-      status: "preparing-review"
-    });
+    const owner = acquireOwner(candidate);
+    setState({ ...candidate, token: owner.token, status: "preparing-review", draftInstruction: normalized.rawDraft });
 
     try {
       const latestCapture = await loadSavedCaptureById(savedCapture.record.id);
-      const latestSource = await getGeneratedComponentVersionUnionById(sourceEntry.id);
-      if (!latestSource || latestSource.sourceCaptureId !== latestCapture.record.id) {
-        throw new Error("source generated version changed");
+      if (!owns(owner)) {
+        return;
       }
+      const latestSource = await getGeneratedComponentVersionUnionById(sourceEntry.id);
+      if (!owns(owner)) {
+        return;
+      }
+      if (!latestSource || latestSource.sourceCaptureId !== latestCapture.record.id) {
+        throw new GenerationError("capture_changed");
+      }
+      const config = resolveRevisionTransportConfig();
       const review = await prepareComponentRevisionReview({
         currentCaptureRecord: latestCapture.record,
         currentSavedAt: latestCapture.savedAt,
@@ -190,108 +200,143 @@ export function RevisionWorkflow({
         mode: candidate.mode,
         rawRevisionInstruction: candidate.mode === "revision" ? normalized.instruction : undefined,
         screenshotIncluded: candidate.includeScreenshot,
-        endpointCategory: "local-development-proxy",
-        signal: controller.signal
+        endpointCategory: config.endpointCategory,
+        signal: owner.controller.signal
       });
-      if (!isCurrent(token, latestCapture.record.id, latestSource.id)) {
-        setState({ ...candidate, token, status: "stale-ignored", message: "A newer revision workflow is active." });
+      if (!owns(owner)) {
         return;
       }
+      bindReviewOwner(owner, review);
+      if (!owns(owner, review)) {
+        return;
+      }
+      clearOwner(owner);
       setState({
         ...candidate,
-        token,
+        token: owner.token,
         status: "review",
         draftInstruction: normalized.rawDraft,
-        includeScreenshot: candidate.includeScreenshot,
         review,
         consent: false
       });
     } catch (error) {
-      if (controller.signal.aborted) {
-        setState({ ...candidate, token, status: "cancelled", message: "Revision workflow cancelled." });
+      if (!owns(owner)) {
         return;
       }
+      clearOwner(owner);
       setState({
         ...candidate,
-        token,
+        token: owner.token,
         status: "retry-unavailable",
-        message: getSafeGenerationMessage(error)
+        message: getSafeGenerationMessage(error),
+        retryTransport: false,
+        retryPersistence: false
       });
     }
   };
 
-  const sendReview = async (candidate: ReviewState | FailureState) => {
+  const sendReview = async (candidate: Extract<RevisionWorkflowState, { status: "review" }> | Extract<RevisionWorkflowState, { status: FailureKind }>) => {
     if (!candidate.review || (candidate.status === "review" && !candidate.consent)) {
       return;
     }
-    const recovered = await recoverIfCommitted(candidate.review);
-    if (recovered) {
-      setState({ ...candidate, status: "success", savedEntry: recovered, message: "Recovered saved revision result." });
-      onSaved(recovered.id);
+    if (ownerRef.current) {
       return;
     }
-
-    retireController();
-    const token = nextToken();
-    const controller = new AbortController();
-    controllerRef.current = controller;
     const review = candidate.review;
-    setState({ ...candidate, token, status: "submitting", review });
+    const owner = acquireOwner(candidate, review);
+    setState({ ...candidate, token: owner.token, status: "recovering", review });
 
     try {
-      const request = await revalidateFrozenReview(review, controller.signal);
+      const recovered = await recoverIfCommitted(review);
+      if (!owns(owner, review)) {
+        return;
+      }
+      if (recovered) {
+        deliverSuccess(owner, candidate, recovered, `Recovered saved ${modeNoun(review.mode)} result.`);
+        return;
+      }
+      const config = resolveRevisionTransportConfig();
+      if (config.endpointCategory !== "local-development-proxy") {
+        throw new GenerationError("configuration_unavailable");
+      }
+      setState({ ...candidate, token: owner.token, status: "submitting", review });
+      const request = await revalidateFrozenReview(review, owner.controller.signal);
+      if (!owns(owner, review)) {
+        return;
+      }
       if (JSON.stringify(request) !== review.canonicalRequestBody) {
-        throw new Error("review request changed");
+        throw new GenerationError("review_fingerprint_mismatch");
       }
-      const response = await createHttpRevisionTransport(REVISION_ENDPOINT).revise(request, review.logicalAttemptId, controller.signal);
-      if (!isCurrent(token, review.sourceCaptureId, review.sourceGeneratedVersionId)) {
-        setState({ ...candidate, token, status: "stale-ignored", message: "A newer revision workflow is active." });
+      const response = await createHttpRevisionTransport(config.endpoint).revise(request, review.logicalAttemptId, owner.controller.signal);
+      if (!owns(owner, review)) {
         return;
       }
-      const pending = await finalizeRevisionTransportResponse({ review, response, signal: controller.signal });
-      setState({ ...candidate, token, status: "response-received", review, pending });
-      await savePending(candidate, review, pending, token, controller.signal);
+      setState({ ...candidate, token: owner.token, status: "finalizing", review });
+      const pending = await finalizeRevisionTransportResponse({ review, response, signal: owner.controller.signal });
+      if (!owns(owner, review)) {
+        return;
+      }
+      setState({ ...candidate, token: owner.token, status: "saving", review, pending });
+      await savePending(candidate, owner, review, pending);
     } catch (error) {
-      if (controller.signal.aborted) {
-        setState({ ...candidate, token, status: "cancelled", message: "Revision workflow cancelled." });
+      if (!owns(owner, review)) {
         return;
       }
+      clearOwner(owner);
+      const failure = classifyRevisionFailure(error);
       setState({
         ...candidate,
-        token,
-        status: classifyFailure(error),
+        token: owner.token,
+        status: failure.status,
         review,
-        message: getSafeGenerationMessage(error)
+        message: failure.message,
+        retryTransport: failure.retryTransport,
+        retryPersistence: false
       });
     }
   };
 
-  const retryPersistence = async (candidate: FailureState) => {
-    if (!candidate.review || !candidate.pending) {
+  const retryPersistence = async (candidate: Extract<RevisionWorkflowState, { status: FailureKind }>) => {
+    if (!candidate.review || !candidate.pending || !candidate.retryPersistence || ownerRef.current) {
       return;
     }
-    const recovered = await recoverIfCommitted(candidate.review);
-    if (recovered) {
-      setState({ ...candidate, status: "success", savedEntry: recovered, message: "Recovered saved revision result." });
-      onSaved(recovered.id);
-      return;
+    const owner = acquireOwner(candidate, candidate.review);
+    setState({ ...candidate, token: owner.token, status: "recovering", review: candidate.review, pending: candidate.pending });
+    try {
+      const recovered = await recoverIfCommitted(candidate.review);
+      if (!owns(owner, candidate.review)) {
+        return;
+      }
+      if (recovered) {
+        deliverSuccess(owner, candidate, recovered, `Recovered saved ${modeNoun(candidate.review.mode)} result.`);
+        return;
+      }
+      setState({ ...candidate, token: owner.token, status: "saving", review: candidate.review, pending: candidate.pending });
+      await savePending(candidate, owner, candidate.review, candidate.pending);
+    } catch (error) {
+      if (!owns(owner, candidate.review)) {
+        return;
+      }
+      clearOwner(owner);
+      const persistenceError = toPersistenceError(error, "persistence-conflict");
+      setState({
+        ...candidate,
+        token: owner.token,
+        status: "persistence-failed",
+        message: persistenceError.userMessage,
+        retryTransport: false,
+        retryPersistence: persistenceError.code !== "persistence-conflict",
+        review: candidate.review,
+        pending: candidate.pending
+      });
     }
-    retireController();
-    const token = nextToken();
-    const controller = new AbortController();
-    controllerRef.current = controller;
-    const review = candidate.review;
-    const pending = candidate.pending;
-    setState({ ...candidate, token, status: "saving", review, pending });
-    await savePending(candidate, review, pending, token, controller.signal);
   };
 
   const savePending = async (
     candidate: RevisionWorkflowState,
+    owner: OperationOwner,
     review: FrozenComponentRevisionReviewV1,
-    pending: FinalizedRevisionPendingResultV1,
-    token: number,
-    signal: AbortSignal
+    pending: FinalizedRevisionPendingResultV1
   ) => {
     try {
       const saved = await persistPendingGeneratedComponentVersionV2({
@@ -317,34 +362,27 @@ export function RevisionWorkflow({
             }
           : {}),
         targetGeneratedVersionId: review.targetGeneratedVersionId,
-        signal
+        signal: owner.controller.signal
       });
-      if (!isCurrent(token, review.sourceCaptureId, review.sourceGeneratedVersionId)) {
-        setState({ ...currentBase(candidate, review.sourceCaptureId, review.sourceGeneratedVersionId), token, status: "stale-ignored", message: "Saved result committed after cancellation and was left unselected." });
+      if (!owns(owner, review)) {
         return;
       }
-      setState({
-        ...currentBase(candidate, review.sourceCaptureId, review.sourceGeneratedVersionId),
-        token,
-        status: "success",
-        savedEntry: saved,
-        message: "Revision result saved locally."
-      });
-      onSaved(saved.id);
+      deliverSuccess(owner, candidate, saved, `${modeLabel(review.mode)} result saved locally.`);
     } catch (error) {
-      if (signal.aborted) {
-        setState({ ...currentBase(candidate, review.sourceCaptureId, review.sourceGeneratedVersionId), token, status: "cancelled", message: "Revision workflow cancelled." });
+      if (!owns(owner, review)) {
         return;
       }
+      clearOwner(owner);
+      const persistenceError = toPersistenceError(error, "persistence-failed");
       setState({
-        ...currentBase(candidate, review.sourceCaptureId, review.sourceGeneratedVersionId),
-        token,
+        ...stateBase(candidate, review.sourceCaptureId, review.sourceGeneratedVersionId),
+        token: owner.token,
         status: "persistence-failed",
-        draftInstruction: "draftInstruction" in candidate ? candidate.draftInstruction : "",
-        includeScreenshot: "includeScreenshot" in candidate ? candidate.includeScreenshot : review.screenshotIncluded,
         review,
         pending,
-        message: getSafePersistenceMessage(error)
+        message: persistenceError.userMessage,
+        retryTransport: false,
+        retryPersistence: persistenceError.code !== "persistence-conflict"
       });
     }
   };
@@ -353,36 +391,14 @@ export function RevisionWorkflow({
     if (state.status !== "editing" && state.status !== "invalid") {
       return;
     }
-    setState({
-      ...state,
-      status: "editing",
-      draftInstruction
-    });
+    setState({ ...state, status: "editing", draftInstruction });
   };
 
   const updateScreenshot = (includeScreenshot: boolean) => {
     if (state.status !== "editing" && state.status !== "invalid") {
       return;
     }
-    setState({
-      ...state,
-      status: "editing",
-      includeScreenshot
-    });
-  };
-
-  const backToEdit = (reviewState: ReviewState | FailureState) => {
-    retireController();
-    workflowTokenRef.current += 1;
-    setState({
-      status: "editing",
-      token: workflowTokenRef.current,
-      sourceCaptureId: reviewState.sourceCaptureId,
-      sourceGeneratedVersionId: reviewState.sourceGeneratedVersionId,
-      mode: reviewState.mode,
-      draftInstruction: reviewState.draftInstruction,
-      includeScreenshot: reviewState.includeScreenshot
-    });
+    setState({ ...state, status: "editing", includeScreenshot });
   };
 
   return (
@@ -446,14 +462,14 @@ export function RevisionWorkflow({
           </div>
         </div>
       ) : null}
-      <BusyStatus state={state} />
+      <BusyStatus state={state} onCancel={cancelWorkflow} />
       {state.status === "review" ? (
         <ReviewPanel
           state={state}
           consentId={consentId}
           setConsent={(consent) => setState({ ...state, consent })}
           onSend={() => void sendReview(state)}
-          onBack={() => backToEdit(state)}
+          onBack={reviewAgain}
           onCancel={cancelWorkflow}
         />
       ) : null}
@@ -461,17 +477,17 @@ export function RevisionWorkflow({
         <div className="save-state save-state-failed" role="alert">
           <p ref={alertRef} tabIndex={-1}>{state.message}</p>
           <div className="revision-actions">
-            {state.review && state.status !== "persistence-failed" ? (
+            {state.review && state.retryTransport ? (
               <button className="secondary-action compact-action" type="button" onClick={() => void sendReview(state)}>
                 Retry
               </button>
             ) : null}
-            {state.review && state.pending && state.status === "persistence-failed" ? (
+            {state.review && state.pending && state.retryPersistence ? (
               <button className="secondary-action compact-action" type="button" onClick={() => void retryPersistence(state)}>
                 Retry saving
               </button>
             ) : null}
-            <button className="secondary-action compact-action" type="button" onClick={() => backToEdit(state)}>
+            <button className="secondary-action compact-action" type="button" onClick={reviewAgain}>
               New review
             </button>
             <button className="secondary-action compact-action" type="button" onClick={cancelWorkflow}>
@@ -480,30 +496,100 @@ export function RevisionWorkflow({
           </div>
         </div>
       ) : null}
-      {state.status === "cancelled" || state.status === "stale-ignored" ? (
-        <p className="save-state save-state-saving" role="status">{state.message}</p>
+      {state.status === "cancelled" ? (
+        <div className="save-state save-state-saving" role="status">
+          <p>{state.message}</p>
+          <div className="revision-actions">
+            <button className="secondary-action compact-action" type="button" onClick={reviewAgain}>
+              Review again
+            </button>
+            <button className="secondary-action compact-action" type="button" onClick={closeWorkflow}>
+              Close
+            </button>
+          </div>
+        </div>
       ) : null}
       {state.status === "success" ? (
         <div className="save-state save-state-saved" role="status">
-          <h4 ref={successHeadingRef} tabIndex={-1}>Revision saved</h4>
+          <h4 ref={successHeadingRef} tabIndex={-1}>{modeLabel(state.mode)} saved</h4>
           <p>{state.message} New saved version: {state.savedEntry.value.componentName}</p>
         </div>
       ) : null}
     </section>
   );
 
-  function nextToken() {
+  function acquireOwner(base: WorkflowBase, review?: FrozenComponentRevisionReviewV1): OperationOwner {
+    retireActiveOperation();
     workflowTokenRef.current += 1;
-    return workflowTokenRef.current;
+    const controller = new AbortController();
+    const owner: OperationOwner = {
+      token: workflowTokenRef.current,
+      sourceCaptureId: base.sourceCaptureId,
+      sourceGeneratedVersionId: base.sourceGeneratedVersionId,
+      mode: base.mode,
+      controller,
+      ...(review
+        ? {
+            logicalAttemptId: review.logicalAttemptId,
+            reviewAttemptFingerprint: review.reviewAttemptFingerprint,
+            targetGeneratedVersionId: review.targetGeneratedVersionId
+          }
+        : {})
+    };
+    ownerRef.current = owner;
+    return owner;
   }
 
-  function retireController() {
-    controllerRef.current?.abort();
-    controllerRef.current = null;
+  function retireActiveOperation() {
+    const owner = ownerRef.current;
+    ownerRef.current = null;
+    owner?.controller.abort();
   }
 
-  function isCurrent(token: number, captureId: string, sourceId: string) {
-    return workflowTokenRef.current === token && captureId === savedCapture.record.id && sourceId === sourceEntry.id;
+  function clearOwner(owner: OperationOwner) {
+    if (ownerRef.current === owner) {
+      ownerRef.current = null;
+    }
+  }
+
+  function owns(owner: OperationOwner, review?: FrozenComponentRevisionReviewV1) {
+    const current = ownerRef.current;
+    return (
+      current === owner &&
+      workflowTokenRef.current === owner.token &&
+      !owner.controller.signal.aborted &&
+      owner.sourceCaptureId === savedCapture.record.id &&
+      owner.sourceGeneratedVersionId === sourceEntry.id &&
+      (!review ||
+        (
+          owner.logicalAttemptId === review.logicalAttemptId &&
+          owner.reviewAttemptFingerprint === review.reviewAttemptFingerprint &&
+          owner.targetGeneratedVersionId === review.targetGeneratedVersionId
+        ))
+    );
+  }
+
+  function bindReviewOwner(owner: OperationOwner, review: FrozenComponentRevisionReviewV1) {
+    owner.logicalAttemptId = review.logicalAttemptId;
+    owner.reviewAttemptFingerprint = review.reviewAttemptFingerprint;
+    owner.targetGeneratedVersionId = review.targetGeneratedVersionId;
+  }
+
+  function deliverSuccess(owner: OperationOwner, candidate: RevisionWorkflowState, saved: GeneratedComponentVersionEntry, message: string) {
+    if (!owner.targetGeneratedVersionId || deliveredTargetsRef.current.has(owner.targetGeneratedVersionId)) {
+      clearOwner(owner);
+      return;
+    }
+    deliveredTargetsRef.current.add(owner.targetGeneratedVersionId);
+    clearOwner(owner);
+    setState({
+      ...stateBase(candidate, owner.sourceCaptureId, owner.sourceGeneratedVersionId),
+      token: owner.token,
+      status: "success",
+      savedEntry: saved,
+      message
+    });
+    onSaved(saved.id);
   }
 }
 
@@ -529,7 +615,7 @@ function ReviewPanel({
   onBack,
   onCancel
 }: {
-  state: ReviewState;
+  state: Extract<RevisionWorkflowState, { status: "review" }>;
   consentId: string;
   setConsent: (value: boolean) => void;
   onSend: () => void;
@@ -540,8 +626,11 @@ function ReviewPanel({
   return (
     <section className="revision-review" aria-labelledby="revision-review-heading">
       <h4 id="revision-review-heading">Review outbound request</h4>
+      <ReviewGroup heading="Mode">
+        <p>{modeLabel(review.mode)}</p>
+      </ReviewGroup>
       <ReviewGroup heading="Instruction">
-        <p>{review.mode === "revision" ? review.instruction : "No instruction will be sent for regeneration."}</p>
+        <p>{review.mode === "revision" ? review.instruction : "Regeneration sends no instruction."}</p>
       </ReviewGroup>
       <ReviewGroup heading="Source version">
         <dl className="preview-metadata">
@@ -556,31 +645,27 @@ function ReviewPanel({
       <ReviewGroup heading="Approved capture context">
         <pre className="revision-json"><code>{JSON.stringify(review.captureContext, null, 2)}</code></pre>
       </ReviewGroup>
+      <ReviewGroup heading="Requested output">
+        <pre className="revision-json"><code>{JSON.stringify(review.requestedOutput, null, 2)}</code></pre>
+      </ReviewGroup>
       <ReviewGroup heading="Optional screenshot">
-        {review.screenshot.included ? (
-          <dl className="preview-metadata">
-            <MetadataRow label="State" value="Included. Image data will be sent." />
-            <MetadataRow label="Media type" value={review.screenshot.mediaType} />
-            <MetadataRow label="Dimensions" value={`${review.screenshot.width} x ${review.screenshot.height}`} />
-            <MetadataRow label="Byte length" value={String(review.screenshot.byteLength)} />
-          </dl>
-        ) : (
-          <p>Not included. No screenshot data, digest, or metadata will be sent.</p>
-        )}
+        <ReviewScreenshot review={review} />
       </ReviewGroup>
       <ReviewGroup heading="Excluded data">
         <ul className="revision-excluded-list">
-          <li>Source URL and page title are not shown as provider-visible local identifiers.</li>
+          <li>Source URL and page title are not provider-visible local identifiers in the request body.</li>
           <li>Local capture IDs, local version IDs, screenshot storage keys, notes, cookies, browser storage, prior provider metadata, and local fingerprints are excluded from the request body.</li>
         </ul>
       </ReviewGroup>
-      <label className="generation-consent" htmlFor={consentId}>
-        <input id={consentId} type="checkbox" checked={state.consent} onChange={(event) => setConsent(event.currentTarget.checked)} />
-        <span>{CONSENT_TEXT}</span>
-      </label>
+      <ReviewGroup heading="Consent">
+        <label className="generation-consent" htmlFor={consentId}>
+          <input id={consentId} type="checkbox" checked={state.consent} onChange={(event) => setConsent(event.currentTarget.checked)} />
+          <span>{CONSENT_TEXT}</span>
+        </label>
+      </ReviewGroup>
       <div className="revision-actions">
         <button className="primary-action" type="button" onClick={onSend} disabled={!state.consent}>
-          Send revision
+          Send {modeNoun(review.mode)}
         </button>
         <button className="secondary-action" type="button" onClick={onBack}>
           Back to edit
@@ -593,6 +678,37 @@ function ReviewPanel({
   );
 }
 
+function ReviewScreenshot({ review }: { review: FrozenComponentRevisionReviewV1 }) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!review.screenshot.included || !("screenshot" in review.request) || !review.request.screenshot) {
+      setObjectUrl(null);
+      return;
+    }
+    const blob = dataUrlToBlob(review.request.screenshot.dataUrl, review.request.screenshot.mediaType);
+    const url = URL.createObjectURL(blob);
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [review]);
+
+  if (!review.screenshot.included) {
+    return <p>Not included. No screenshot data, digest, or metadata will be sent.</p>;
+  }
+
+  return (
+    <div className="revision-screenshot-review">
+      {objectUrl ? <img className="generation-review-image" src={objectUrl} alt="Reviewed screenshot to be sent" /> : null}
+      <dl className="preview-metadata">
+        <MetadataRow label="State" value="Included. Image data will be sent." />
+        <MetadataRow label="Media type" value={review.screenshot.mediaType} />
+        <MetadataRow label="Dimensions" value={`${review.screenshot.width} x ${review.screenshot.height}`} />
+        <MetadataRow label="Byte length" value={String(review.screenshot.byteLength)} />
+      </dl>
+    </div>
+  );
+}
+
 function ReviewGroup({ heading, children }: { heading: string; children: ReactNode }) {
   return (
     <section className="revision-review-group" aria-labelledby={`${heading.toLowerCase().replaceAll(" ", "-")}-heading`}>
@@ -602,48 +718,55 @@ function ReviewGroup({ heading, children }: { heading: string; children: ReactNo
   );
 }
 
-function BusyStatus({ state }: { state: RevisionWorkflowState }) {
-  if (state.status === "preparing-review") {
-    return <p className="save-state save-state-saving" role="status">Preparing frozen Review...</p>;
+function BusyStatus({ state, onCancel }: { state: RevisionWorkflowState; onCancel: () => void }) {
+  const label = busyLabel(state);
+  if (!label) {
+    return null;
   }
-  if (state.status === "submitting") {
-    return <p className="save-state save-state-saving" role="status">Submitting revision request...</p>;
-  }
-  if (state.status === "response-received") {
-    return <p className="save-state save-state-saving" role="status">Response received. Preparing local save...</p>;
-  }
-  if (state.status === "saving") {
-    return <p className="save-state save-state-saving" role="status">Saving revision result locally...</p>;
-  }
-  if (state.status === "cancelling") {
-    return <p className="save-state save-state-saving" role="status">Cancelling revision workflow...</p>;
-  }
-  return null;
+  return (
+    <div className="save-state save-state-saving" role="status">
+      <p>{label}</p>
+      <button className="secondary-action compact-action" type="button" onClick={onCancel}>
+        Cancel
+      </button>
+    </div>
+  );
 }
 
-function validateDraft(state: EditingState | InvalidState) {
+function busyLabel(state: RevisionWorkflowState) {
+  switch (state.status) {
+    case "preparing-review":
+      return "Preparing frozen Review...";
+    case "recovering":
+      return "Checking for an already saved result...";
+    case "submitting":
+      return `Submitting ${modeNoun(state.mode)} request...`;
+    case "finalizing":
+      return "Validating response...";
+    case "saving":
+      return `Saving ${modeNoun(state.mode)} result locally...`;
+    default:
+      return undefined;
+  }
+}
+
+function validateDraft(state: WorkflowBase) {
   if (state.mode === "regeneration") {
     return { ok: true as const, rawDraft: "", instruction: undefined };
   }
-  const instruction = normalizeRevisionInstruction(state.draftInstruction);
-  const codePoints = countCodePoints(instruction);
-  if (codePoints < 4) {
-    return { ok: false as const, message: "Instruction must be at least 4 code points." };
+  try {
+    const instruction = normalizeRevisionInstruction(state.draftInstruction);
+    return { ok: true as const, rawDraft: state.draftInstruction, instruction };
+  } catch {
+    return { ok: false as const, message: "Instruction must be 4 to 1000 Unicode code points, 4096 UTF-8 bytes or fewer, and contain no control or bidi characters." };
   }
-  if (codePoints > MAX_REVISION_INSTRUCTION_CODE_POINTS) {
-    return { ok: false as const, message: "Instruction must be 1000 code points or fewer." };
-  }
-  if (new TextEncoder().encode(instruction).byteLength > MAX_REVISION_INSTRUCTION_BYTES) {
-    return { ok: false as const, message: "Instruction is too large in UTF-8 bytes." };
-  }
-  return { ok: true as const, rawDraft: state.draftInstruction, instruction };
 }
 
 async function revalidateFrozenReview(review: FrozenComponentRevisionReviewV1, signal: AbortSignal) {
   const latestCapture = await loadSavedCaptureById(review.sourceCaptureId);
   const latestSource = await getGeneratedComponentVersionUnionById(review.sourceGeneratedVersionId);
   if (!latestSource || latestSource.sourceCaptureId !== latestCapture.record.id) {
-    throw new Error("source generated version changed");
+    throw new GenerationError("capture_changed");
   }
   return revalidateComponentRevisionReview({
     review,
@@ -666,33 +789,67 @@ async function recoverIfCommitted(review: FrozenComponentRevisionReviewV1) {
   });
 }
 
-function classifyFailure(error: unknown): FailureState["status"] {
-  const message = getSafeGenerationMessage(error);
-  if (message.includes("malformed")) {
-    return "invalid-response-failed";
+function classifyRevisionFailure(error: unknown) {
+  if (error instanceof PersistenceError) {
+    return classifyPersistenceFailure(error.code, error.userMessage);
   }
-  return "transport-failed";
+  const generationError = toGenerationError(error, "request_validation_failed");
+  return classifyGenerationFailure(generationError.code, getSafeGenerationMessage(generationError));
 }
 
-function currentBase(state: RevisionWorkflowState, sourceCaptureId: string, sourceGeneratedVersionId: string): WorkflowBase {
+function classifyGenerationFailure(code: GenerationErrorCode, message: string) {
+  const retryTransport = ["network_unavailable", "timeout", "rate_limited", "provider_rejected"].includes(code);
+  return {
+    status: code === "malformed_response" ? "invalid-response-failed" as const : retryTransport ? "transport-failed" as const : "retry-unavailable" as const,
+    message,
+    retryTransport
+  };
+}
+
+function classifyPersistenceFailure(code: PersistenceErrorCode, message: string) {
+  return {
+    status: "persistence-failed" as const,
+    message,
+    retryTransport: false,
+    retryPersistence: code !== "persistence-conflict"
+  };
+}
+
+function resolveRevisionTransportConfig(): TransportConfig {
+  const configured = import.meta.env.VITE_ELEMENT_CATCHER_BACKEND_URL;
+  const testLoopback = window.navigator.webdriver === true && window.__EC_REVISION_WORKFLOW_TEST_LOOPBACK__ === true;
+  if (configured === LOOPBACK_ORIGIN || testLoopback) {
+    return {
+      endpointCategory: "local-development-proxy",
+      endpoint: `${LOOPBACK_ORIGIN}${REVISION_ENDPOINT_PATH}`
+    };
+  }
+  return { endpointCategory: "backend-unconfigured" };
+}
+
+function stateBase(state: RevisionWorkflowState, sourceCaptureId: string, sourceGeneratedVersionId: string): WorkflowBase {
   if ("mode" in state) {
     return {
       token: state.token,
       sourceCaptureId: state.sourceCaptureId,
       sourceGeneratedVersionId: state.sourceGeneratedVersionId,
-      mode: state.mode
+      mode: state.mode,
+      draftInstruction: state.draftInstruction,
+      includeScreenshot: state.includeScreenshot
     };
   }
   return {
     token: 0,
     sourceCaptureId,
     sourceGeneratedVersionId,
-    mode: "revision"
+    mode: "revision",
+    draftInstruction: "",
+    includeScreenshot: false
   };
 }
 
 function isBusy(state: RevisionWorkflowState) {
-  return ["preparing-review", "submitting", "response-received", "saving", "cancelling"].includes(state.status);
+  return ["preparing-review", "recovering", "submitting", "finalizing", "saving"].includes(state.status);
 }
 
 function countCodePoints(value: string) {
@@ -706,6 +863,14 @@ function describeVersionKind(entry: GeneratedComponentVersionEntry) {
   return "initial";
 }
 
+function modeLabel(mode: RevisionReviewMode) {
+  return mode === "revision" ? "Revision" : "Regeneration";
+}
+
+function modeNoun(mode: RevisionReviewMode) {
+  return mode === "revision" ? "revision" : "regeneration";
+}
+
 function MetadataRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -713,4 +878,17 @@ function MetadataRow({ label, value }: { label: string; value: string }) {
       <dd>{value}</dd>
     </div>
   );
+}
+
+function dataUrlToBlob(dataUrl: string, mediaType: string) {
+  const prefix = `data:${mediaType};base64,`;
+  if (!dataUrl.startsWith(prefix)) {
+    return new Blob([], { type: mediaType });
+  }
+  const binary = window.atob(dataUrl.slice(prefix.length));
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new Blob([bytes], { type: mediaType });
 }
