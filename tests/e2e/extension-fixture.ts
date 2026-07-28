@@ -21,7 +21,8 @@ export const test = base.extend<ExtensionFixtures>({
     const userDataDir = await mkdtemp(resolve(tmpdir(), "element-catcher-playwright-"));
     const runtimeErrors: RuntimeError[] = [];
     const context = await chromium.launchPersistentContext(userDataDir, {
-      headless: false,
+      channel: "chromium",
+      headless: process.env.PW_HEADED !== "1",
       args: [
         `--disable-extensions-except=${DIST_DIR}`,
         `--load-extension=${DIST_DIR}`
