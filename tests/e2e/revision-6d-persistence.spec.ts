@@ -98,6 +98,98 @@ test.describe("Milestone 6D Slice 4 atomic revision persistence", () => {
     await expect(recoverV2(sidePanelPage, { targetGeneratedVersionId: pending.id })).resolves.toEqual({ ok: true, value: undefined });
   });
 
+  test("snapshots caller-owned V2 input before async preparation and persists only detached values", async ({ sidePanelPage }) => {
+    const [target, alternate] = await resetAndSeedSavedCaptures(sidePanelPage);
+    const source = sourceV1(target);
+    await putGeneratedVersion(sidePanelPage, source);
+    const alternateSource = {
+      ...source,
+      id: "generated-version-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      sourceCaptureId: alternate.record.id,
+      sourceCaptureSavedAt: alternate.savedAt
+    };
+    const alternateProjection = canonicalJsonStringify({
+      captureContext: buildExactCaptureContextProjection(alternate.record),
+      requestedOutput: REQUESTED_OUTPUT
+    } as CanonicalJsonValue);
+    const cases = [
+      {
+        attempt: "revision-attempt-01010101010101010101010101010101",
+        mutation: { kind: "logicalAttemptId" as const, value: "revision-attempt-02020202020202020202020202020202" },
+        inspect: (entry: GeneratedComponentVersionEntryV2, original: GeneratedComponentVersionEntryV2) => {
+          expect(entry.operation.logicalAttemptId).toBe(original.operation.logicalAttemptId);
+          expect(entry.id).toBe(original.id);
+        }
+      },
+      {
+        attempt: "revision-attempt-03030303030303030303030303030303",
+        mutation: { kind: "sourceGeneratedVersionFingerprint" as const, value: wrongSourceGeneratedVersionFingerprint },
+        inspect: (entry: GeneratedComponentVersionEntryV2, original: GeneratedComponentVersionEntryV2) => {
+          expect(entry.operation.sourceGeneratedVersionFingerprint).toBe(original.operation.sourceGeneratedVersionFingerprint);
+        }
+      },
+      {
+        attempt: "revision-attempt-04040404040404040404040404040404",
+        mutation: { kind: "sourceReviewFingerprint" as const, value: wrongCurrentCaptureProjectionFingerprint },
+        inspect: (entry: GeneratedComponentVersionEntryV2, original: GeneratedComponentVersionEntryV2) => {
+          expect(entry.sourceReviewFingerprint).toBe(original.sourceReviewFingerprint);
+        }
+      },
+      {
+        attempt: "revision-attempt-05050505050505050505050505050505",
+        mutation: {
+          kind: "canonicalSourceGeneratedVersionEntry" as const,
+          value: canonicalJsonStringify(alternateSource as unknown as CanonicalJsonValue)
+        },
+        inspect: (entry: GeneratedComponentVersionEntryV2, original: GeneratedComponentVersionEntryV2) => {
+          expect(entry.operation.sourceGeneratedVersionId).toBe(original.operation.sourceGeneratedVersionId);
+          expect(entry.operation.sourceGeneratedVersionFingerprint).toBe(original.operation.sourceGeneratedVersionFingerprint);
+        }
+      },
+      {
+        attempt: "revision-attempt-06060606060606060606060606060606",
+        mutation: { kind: "canonicalCurrentCaptureProjection" as const, value: alternateProjection },
+        inspect: (entry: GeneratedComponentVersionEntryV2, original: GeneratedComponentVersionEntryV2) => {
+          expect(entry.sourceReviewFingerprint).toBe(original.sourceReviewFingerprint);
+        }
+      },
+      {
+        attempt: "revision-attempt-07070707070707070707070707070707",
+        mutation: { kind: "pendingSummary" as const, value: "Mutated caller response" },
+        inspect: (entry: GeneratedComponentVersionEntryV2, original: GeneratedComponentVersionEntryV2) => {
+          expect(entry.value.summary).toBe(original.value.summary);
+          expect(entry.value.summary).not.toBe("Mutated caller response");
+        }
+      }
+    ];
+
+    for (const item of cases) {
+      const pending = await pendingRevision(target, source, item.attempt);
+      const input = await persistenceInput(target, source, pending, false);
+      await expect(mutateDuringDigestPersistV2(sidePanelPage, input, item.mutation)).resolves.toMatchObject({ ok: true, value: pending });
+      const stored = (await readGeneratedVersions(sidePanelPage, target.record.id)).find((entry) => (entry as { id?: string }).id === pending.id) as GeneratedComponentVersionEntryV2 | undefined;
+      expect(stored).toEqual(pending);
+      item.inspect(stored!, pending);
+    }
+
+    const returnedPending = await pendingRevision(target, source, "revision-attempt-08080808080808080808080808080808");
+    const returnedInput = await persistenceInput(target, source, returnedPending, false);
+    await expect(probeReturnedMutationPersistV2(sidePanelPage, returnedInput)).resolves.toMatchObject({
+      ok: true,
+      value: {
+        value: returnedPending,
+        summaryAfterMutation: returnedPending.value.summary,
+        mutationThrew: true
+      }
+    });
+    const storedReturned = (await readGeneratedVersions(sidePanelPage, target.record.id)).find((entry) => (entry as { id?: string }).id === returnedPending.id);
+    expect(storedReturned).toEqual(returnedPending);
+
+    const accessorPending = await pendingRevision(target, source, "revision-attempt-09090909090909090909090909090909");
+    const accessorInput = await persistenceInput(target, source, accessorPending, false);
+    await expect(accessorInputWithoutIndexedDb(sidePanelPage, accessorInput)).resolves.toEqual({ ok: false, opens: 0 });
+  });
+
   test("accepts a V2 source, equal target idempotency, and conflicting target rejection", async ({ sidePanelPage }) => {
     const [target] = await resetAndSeedSavedCaptures(sidePanelPage);
     const source = await sourceV2(target);
@@ -332,11 +424,12 @@ test.describe("Milestone 6D Slice 4 atomic revision persistence", () => {
     await expect(readBackMismatchPersistV2(sidePanelPage, input)).resolves.toMatchObject({ ok: false });
     await expect(recoverV2(sidePanelPage, { targetGeneratedVersionId: pending.id })).resolves.toEqual({ ok: true, value: undefined });
 
-    const lateAbortPending = await pendingRevision(target, source, secondAttemptId);
-    const lateAbortInput = await persistenceInput(target, source, lateAbortPending, false);
-    await expect(lateAbortPersistV2(sidePanelPage, lateAbortInput)).resolves.toMatchObject({ ok: true, value: lateAbortPending });
-    await expect(recoverV2(sidePanelPage, { targetGeneratedVersionId: lateAbortPending.id })).resolves.toEqual({ ok: true, value: lateAbortPending });
-    expect((await readGeneratedVersions(sidePanelPage, target.record.id)).filter((entry) => (entry as { id?: string }).id === lateAbortPending.id)).toHaveLength(1);
+    const boundaryAbortPending = await pendingRevision(target, source, secondAttemptId);
+    const boundaryAbortInput = await persistenceInput(target, source, boundaryAbortPending, false);
+    await expect(abortAtCommitBoundaryPersistV2(sidePanelPage, boundaryAbortInput)).resolves.toMatchObject({ ok: true, value: boundaryAbortPending });
+    await expect(recoverV2(sidePanelPage, { targetGeneratedVersionId: boundaryAbortPending.id })).resolves.toEqual({ ok: true, value: boundaryAbortPending });
+    await expect(persistV2(sidePanelPage, boundaryAbortInput)).resolves.toMatchObject({ ok: true, value: boundaryAbortPending });
+    expect((await readGeneratedVersions(sidePanelPage, target.record.id)).filter((entry) => (entry as { id?: string }).id === boundaryAbortPending.id)).toHaveLength(1);
 
     await putGeneratedVersion(sidePanelPage, { ...pending, operation: { ...pending.operation, logicalAttemptId: "bad" } });
     await expect(persistV2(sidePanelPage, input)).resolves.toMatchObject({ ok: false });
@@ -353,6 +446,21 @@ test.describe("Milestone 6D Slice 4 atomic revision persistence", () => {
     expect(await readGeneratedVersions(sidePanelPage)).toContainEqual(pending);
     await putGeneratedVersion(sidePanelPage, { ...pending, contractVersion: 2, operation: { ...pending.operation, kind: "revision", instruction: "" } });
     await expect(v1Read(sidePanelPage, pending.id)).resolves.toEqual({ ok: true, value: undefined });
+  });
+
+  test("validates union and recovery reader ids before IndexedDB access", async ({ sidePanelPage }) => {
+    const [target] = await resetAndSeedSavedCaptures(sidePanelPage);
+    await expect(unionList(sidePanelPage, target.record.id)).resolves.toEqual({ ok: true, value: [] });
+    await expect(unionList(sidePanelPage, "capture-11111111111111111111111111111111")).resolves.toEqual({ ok: true, value: [] });
+
+    await expect(invalidReaderCallWithoutIndexedDb(sidePanelPage, "unionList", "not-a-capture-id")).resolves.toEqual({ ok: false, opens: 0 });
+    await expect(invalidReaderCallWithoutIndexedDb(sidePanelPage, "unionById", "not-a-generated-version-id")).resolves.toEqual({ ok: false, opens: 0 });
+    await expect(invalidReaderCallWithoutIndexedDb(sidePanelPage, "recover", {
+      targetGeneratedVersionId: "generated-version-11111111111111111111111111111111",
+      expectedSourceCaptureId: "not-a-capture-id"
+    })).resolves.toEqual({ ok: false, opens: 0 });
+    await expect(invalidReaderCallWithoutIndexedDb(sidePanelPage, "v1Read", "not-a-generated-version-id")).resolves.toEqual({ ok: false, opens: 0 });
+    await expect(invalidReaderCallWithoutIndexedDb(sidePanelPage, "v1List", "not-a-capture-id")).resolves.toEqual({ ok: false, opens: 0 });
   });
 
   test("keeps Slice 4 storage persistence unreachable from product boundaries", () => {
@@ -500,12 +608,49 @@ async function abortBeforeAddPersistV2(page: Parameters<typeof resetAndSeedSaved
   return page.evaluate(async (value) => window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2AbortBeforeAdd(value as never), input);
 }
 
-async function lateAbortPersistV2(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown) {
-  return page.evaluate(async (value) => window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2LateAbort(value as never), input);
+async function abortAtCommitBoundaryPersistV2(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown) {
+  return page.evaluate(async (value) => window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2AbortAtCommitBoundary(value as never), input);
 }
 
 async function readBackMismatchPersistV2(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown) {
   return page.evaluate(async (value) => window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2ReadBackMismatch(value as never), input);
+}
+
+async function mutateDuringDigestPersistV2(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown, mutation: unknown) {
+  return page.evaluate(
+    async ({ input, mutation }) =>
+      window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2MutateDuringDigest(input as never, mutation as never),
+    { input, mutation }
+  );
+}
+
+async function probeReturnedMutationPersistV2(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown) {
+  return page.evaluate(async (value) => window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2ProbeReturnedMutation(value as never), input);
+}
+
+async function accessorInputWithoutIndexedDb(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown) {
+  return page.evaluate(async (value) => {
+    const originalOpen = indexedDB.open.bind(indexedDB);
+    let opens = 0;
+    indexedDB.open = ((...args: Parameters<IDBFactory["open"]>) => {
+      opens += 1;
+      return originalOpen(...args);
+    }) as IDBFactory["open"];
+    const mutableInput = value as Record<string, unknown>;
+    const pendingEntry = mutableInput.pendingEntry as { value: Record<string, unknown> };
+    Object.defineProperty(pendingEntry.value, "summary", {
+      get() {
+        return "Accessor summary";
+      },
+      enumerable: true
+    });
+    try {
+      const result = await window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.persistPendingGeneratedComponentVersionV2(mutableInput as never);
+      return { ok: result.ok, opens };
+    } finally {
+      indexedDB.open = originalOpen;
+    }
+  }, input);
 }
 
 async function recoverV2(page: Parameters<typeof resetAndSeedSavedCaptures>[0], input: unknown) {
@@ -526,6 +671,38 @@ async function v1Read(page: Parameters<typeof resetAndSeedSavedCaptures>[0], id:
 
 async function v1List(page: Parameters<typeof resetAndSeedSavedCaptures>[0], sourceCaptureId: string) {
   return page.evaluate(async (value) => window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.listGeneratedComponentVersionsBySourceCaptureId(value), sourceCaptureId);
+}
+
+async function invalidReaderCallWithoutIndexedDb(
+  page: Parameters<typeof resetAndSeedSavedCaptures>[0],
+  kind: "unionList" | "unionById" | "recover" | "v1Read" | "v1List",
+  value: unknown
+) {
+  return page.evaluate(async ({ kind, value }) => {
+    const originalOpen = indexedDB.open.bind(indexedDB);
+    let opens = 0;
+    indexedDB.open = ((...args: Parameters<IDBFactory["open"]>) => {
+      opens += 1;
+      return originalOpen(...args);
+    }) as IDBFactory["open"];
+    try {
+      let result: { ok: boolean };
+      if (kind === "unionList") {
+        result = await window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.listGeneratedComponentVersionUnionBySourceCaptureId(value as string);
+      } else if (kind === "unionById") {
+        result = await window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.getGeneratedComponentVersionUnionById(value as string);
+      } else if (kind === "recover") {
+        result = await window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.recoverGeneratedComponentVersionV2(value as never);
+      } else if (kind === "v1Read") {
+        result = await window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.getGeneratedComponentVersionById(value as string);
+      } else {
+        result = await window.__EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__!.listGeneratedComponentVersionsBySourceCaptureId(value as string);
+      }
+      return { ok: result.ok, opens };
+    } finally {
+      indexedDB.open = originalOpen;
+    }
+  }, { kind, value });
 }
 
 async function instrumentNoTransactionAsyncWork(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {

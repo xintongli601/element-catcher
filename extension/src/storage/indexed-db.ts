@@ -3,6 +3,7 @@ import { validateCaptureRecordV1 } from "../capture/capture-record-v1";
 import {
   GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
+  isValidCaptureId,
   isValidGeneratedComponentVersionId,
   isValidLogicalAttemptId,
   isValidSha256Hex,
@@ -36,6 +37,7 @@ declare global {
         componentName: string;
       }>;
     };
+    __EC_GENERATED_VERSION_V2_TRANSACTION_COMPLETE_HOOK__?: () => void;
     __EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE_ENABLED__?: true;
     __EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__?: {
       addGeneratedComponentVersion(input: {
@@ -47,8 +49,10 @@ declare global {
       persistPendingGeneratedComponentVersionV2(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
       persistPendingGeneratedComponentVersionV2PreAborted(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
       persistPendingGeneratedComponentVersionV2AbortBeforeAdd(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
-      persistPendingGeneratedComponentVersionV2LateAbort(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2AbortAtCommitBoundary(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
       persistPendingGeneratedComponentVersionV2ReadBackMismatch(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2MutateDuringDigest(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">, mutation: GeneratedVersionV2DigestMutation): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2ProbeReturnedMutation(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<{ value: GeneratedVersionEntryV2; summaryAfterMutation: string; mutationThrew: boolean }>>;
       recoverGeneratedComponentVersionV2(input: RecoverGeneratedComponentVersionV2Input): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2 | undefined>>;
       getGeneratedComponentVersionUnionById(id: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntry | undefined>>;
       listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntry[]>>;
@@ -63,6 +67,16 @@ type GeneratedVersionStorageBridgeResult<T> =
   | { ok: false; code: string; name: string; message: string };
 
 type GeneratedVersionEntryV2 = Extract<GeneratedComponentVersionEntry, { contractVersion: 2 }>;
+type PersistPendingGeneratedComponentVersionV2Data = Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">;
+type PreparedPendingGeneratedComponentVersionV2Input = PersistPendingGeneratedComponentVersionV2Data & { signal: AbortSignal };
+
+type GeneratedVersionV2DigestMutation =
+  | { kind: "logicalAttemptId"; value: string }
+  | { kind: "sourceGeneratedVersionFingerprint"; value: string }
+  | { kind: "sourceReviewFingerprint"; value: string }
+  | { kind: "canonicalSourceGeneratedVersionEntry"; value: string }
+  | { kind: "canonicalCurrentCaptureProjection"; value: string }
+  | { kind: "pendingSummary"; value: string };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
 export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
@@ -679,14 +693,13 @@ export async function addGeneratedComponentVersion({
 }
 
 export async function persistPendingGeneratedComponentVersionV2(input: PersistPendingGeneratedComponentVersionV2Input) {
-  throwIfAborted(input.signal);
   const prepared = await preparePendingGeneratedComponentVersionV2Input(input);
-  throwIfAborted(input.signal);
+  throwIfAborted(prepared.signal);
 
   return withDatabase(
     (database) =>
       new Promise<GeneratedVersionEntryV2>((resolve, reject) => {
-        throwIfAborted(input.signal);
+        throwIfAborted(prepared.signal);
         const transaction = database.transaction([CAPTURE_RECORD_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME], "readwrite");
         const recordStore = transaction.objectStore(CAPTURE_RECORD_STORE_NAME);
         const assetStore = transaction.objectStore(SCREENSHOT_ASSET_STORE_NAME);
@@ -703,7 +716,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
         let abortError: DOMException | null = null;
         let settled = false;
 
-        const cleanupAbortListener = () => input.signal.removeEventListener("abort", abortTransaction);
+        const cleanupAbortListener = () => prepared.signal.removeEventListener("abort", abortTransaction);
         const abortTransaction = () => {
           abortError = createAbortError();
           try {
@@ -712,7 +725,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
             // The transaction may already be inactive after completion or abort.
           }
         };
-        input.signal.addEventListener("abort", abortTransaction, { once: true });
+        prepared.signal.addEventListener("abort", abortTransaction, { once: true });
 
         const failAndAbort = (error: PersistenceError) => {
           settled = true;
@@ -730,7 +743,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
           if (completedReads !== 3) {
             return;
           }
-          if (input.signal.aborted) {
+          if (prepared.signal.aborted) {
             abortTransaction();
             return;
           }
@@ -749,7 +762,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
           const screenshotKey = getScreenshotStorageKeyFromRecordValue(currentRecord!.value);
           const assetRequest = assetStore.get(screenshotKey!);
           assetRequest.onsuccess = () => {
-            if (input.signal.aborted) {
+            if (prepared.signal.aborted) {
               abortTransaction();
               return;
             }
@@ -789,7 +802,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
 
           const addRequest = versionStore.add(prepared.pendingEntry);
           addRequest.onsuccess = () => {
-            if (input.signal.aborted) {
+            if (prepared.signal.aborted) {
               abortTransaction();
               return;
             }
@@ -806,7 +819,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
         };
 
         const confirmReadBack = (value: unknown) => {
-          if (input.signal.aborted) {
+          if (prepared.signal.aborted) {
             abortTransaction();
             return;
           }
@@ -856,6 +869,7 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
           }
         };
         transaction.oncomplete = () => {
+          runGeneratedVersionV2TransactionCompleteHook();
           cleanupAbortListener();
           if (settled) {
             return;
@@ -948,7 +962,7 @@ export async function getGeneratedComponentVersionUnionById(id: string) {
 }
 
 export async function listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId: string) {
-  if (!sourceCaptureId) {
+  if (!isValidCaptureId(sourceCaptureId)) {
     throw new PersistenceError("validation", "Source capture id was invalid.");
   }
   return withDatabase(
@@ -992,6 +1006,9 @@ export async function listGeneratedComponentVersionUnionBySourceCaptureId(source
 }
 
 export async function getGeneratedComponentVersionById(id: string) {
+  if (!isValidGeneratedComponentVersionId(id)) {
+    throw new PersistenceError("validation", "Generated version id was invalid.");
+  }
   return withDatabase(
     (database) =>
       new Promise<GeneratedComponentVersionEntryV1 | undefined>((resolve, reject) => {
@@ -1044,6 +1061,9 @@ export async function getGeneratedComponentVersionById(id: string) {
 }
 
 export async function listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId: string) {
+  if (!isValidCaptureId(sourceCaptureId)) {
+    throw new PersistenceError("validation", "Source capture id was invalid.");
+  }
   return withDatabase(
     (database) =>
       new Promise<GeneratedComponentVersionEntryV1[]>((resolve, reject) => {
@@ -1260,6 +1280,8 @@ function requestResult<T>(request: IDBRequest<T>) {
 }
 
 async function preparePendingGeneratedComponentVersionV2Input(input: PersistPendingGeneratedComponentVersionV2Input) {
+  const signal = captureAbortSignal(input);
+  const screenshotIncluded = captureScreenshotIncluded(input);
   assertExactKeys(input, [
     "pendingEntry",
     "sourceCaptureId",
@@ -1269,60 +1291,188 @@ async function preparePendingGeneratedComponentVersionV2Input(input: PersistPend
     "canonicalCurrentCaptureProjection",
     "screenshotIncluded",
     "expectedScreenshotStorageKey",
-    ...(input.screenshotIncluded ? ["screenshot"] : []),
+    ...(screenshotIncluded ? ["screenshot"] : []),
     "targetGeneratedVersionId",
     "signal"
   ]);
-  if (!input.signal || typeof input.signal.aborted !== "boolean") {
-    throw new PersistenceError("validation", "AbortSignal was invalid.");
-  }
-  throwIfAborted(input.signal);
-  if (!isValidGeneratedComponentVersionId(input.targetGeneratedVersionId) || !isValidGeneratedComponentVersionId(input.sourceGeneratedVersionId)) {
+  throwIfAborted(signal);
+  const data = deepFreeze(strictJsonSnapshotWithoutSignal(input, screenshotIncluded));
+  if (!isValidGeneratedComponentVersionId(data.targetGeneratedVersionId) || !isValidGeneratedComponentVersionId(data.sourceGeneratedVersionId)) {
     throw new PersistenceError("validation", "Generated version id was invalid.");
   }
-  validateGeneratedVersionEntryV2(input.pendingEntry);
-  const derivedTargetGeneratedVersionId = await deriveRevisionGeneratedVersionId(input.pendingEntry.operation.logicalAttemptId);
-  throwIfAborted(input.signal);
-  if (derivedTargetGeneratedVersionId !== input.pendingEntry.id || derivedTargetGeneratedVersionId !== input.targetGeneratedVersionId) {
+  validateGeneratedVersionEntryV2(data.pendingEntry);
+  throwIfAborted(signal);
+  const derivedTargetGeneratedVersionId = await deriveRevisionGeneratedVersionId(data.pendingEntry.operation.logicalAttemptId);
+  throwIfAborted(signal);
+  if (derivedTargetGeneratedVersionId !== data.pendingEntry.id || derivedTargetGeneratedVersionId !== data.targetGeneratedVersionId) {
     throw new PersistenceError("validation", "Generated version V2 deterministic target id was invalid.");
   }
-  const sourceEntry = parseCanonicalGeneratedVersionEntry(input.canonicalSourceGeneratedVersionEntry);
+  const sourceEntry = parseCanonicalGeneratedVersionEntry(data.canonicalSourceGeneratedVersionEntry);
+  throwIfAborted(signal);
   const sourceGeneratedVersionFingerprint = await computeSourceGeneratedVersionFingerprint(sourceEntry);
-  throwIfAborted(input.signal);
-  if (sourceGeneratedVersionFingerprint !== input.pendingEntry.operation.sourceGeneratedVersionFingerprint) {
+  throwIfAborted(signal);
+  if (sourceGeneratedVersionFingerprint !== data.pendingEntry.operation.sourceGeneratedVersionFingerprint) {
     throw new PersistenceError("validation", "Generated version V2 source fingerprint was invalid.");
   }
-  const currentCaptureProjection = parseCanonicalCurrentCaptureProjection(input.canonicalCurrentCaptureProjection);
+  const currentCaptureProjection = parseCanonicalCurrentCaptureProjection(data.canonicalCurrentCaptureProjection);
+  throwIfAborted(signal);
   const currentCaptureProjectionFingerprint = await computeCurrentCaptureProjectionFingerprint(currentCaptureProjection);
-  throwIfAborted(input.signal);
-  if (currentCaptureProjectionFingerprint !== input.pendingEntry.sourceReviewFingerprint) {
+  throwIfAborted(signal);
+  if (currentCaptureProjectionFingerprint !== data.pendingEntry.sourceReviewFingerprint) {
     throw new PersistenceError("validation", "Generated version V2 capture projection fingerprint was invalid.");
   }
   if (
-    input.pendingEntry.id !== input.targetGeneratedVersionId ||
-    input.pendingEntry.sourceCaptureId !== input.sourceCaptureId ||
-    input.pendingEntry.sourceCaptureSavedAt !== input.sourceCaptureSavedAt ||
-    input.pendingEntry.operation.sourceGeneratedVersionId !== input.sourceGeneratedVersionId ||
-    input.pendingEntry.operation.screenshotIncluded !== input.screenshotIncluded ||
-    sourceEntry.id !== input.sourceGeneratedVersionId ||
-    sourceEntry.sourceCaptureId !== input.sourceCaptureId
+    data.pendingEntry.id !== data.targetGeneratedVersionId ||
+    data.pendingEntry.sourceCaptureId !== data.sourceCaptureId ||
+    data.pendingEntry.sourceCaptureSavedAt !== data.sourceCaptureSavedAt ||
+    data.pendingEntry.operation.sourceGeneratedVersionId !== data.sourceGeneratedVersionId ||
+    data.pendingEntry.operation.screenshotIncluded !== data.screenshotIncluded ||
+    sourceEntry.id !== data.sourceGeneratedVersionId ||
+    sourceEntry.sourceCaptureId !== data.sourceCaptureId
   ) {
     throw new PersistenceError("validation", "Generated version V2 persistence input linkage was invalid.");
   }
-  if (!input.expectedScreenshotStorageKey || !input.expectedScreenshotStorageKey.startsWith("screenshots/") || !input.expectedScreenshotStorageKey.endsWith(".png")) {
+  if (!data.expectedScreenshotStorageKey || !data.expectedScreenshotStorageKey.startsWith("screenshots/") || !data.expectedScreenshotStorageKey.endsWith(".png")) {
     throw new PersistenceError("validation", "Expected screenshot storage key was invalid.");
   }
-  if (input.screenshotIncluded) {
-    validateExpectedScreenshotPrecondition(input.screenshot);
-  } else if ("screenshot" in input) {
+  if (data.screenshotIncluded) {
+    validateExpectedScreenshotPrecondition(data.screenshot);
+  } else if ("screenshot" in data) {
     throw new PersistenceError("validation", "Unexpected screenshot metadata for screenshot-excluded persistence.");
   }
+  throwIfAborted(signal);
   return {
-    ...cloneJson(input),
-    pendingEntry: deepFreeze(cloneJson(input.pendingEntry)),
-    canonicalSourceGeneratedVersionEntry: input.canonicalSourceGeneratedVersionEntry,
-    canonicalCurrentCaptureProjection: input.canonicalCurrentCaptureProjection
+    ...data,
+    signal
   };
+}
+
+function captureAbortSignal(input: PersistPendingGeneratedComponentVersionV2Input) {
+  const descriptor = getDataPropertyDescriptor(input, "signal");
+  const signal = descriptor.value as AbortSignal | undefined;
+  if (!signal || typeof signal.aborted !== "boolean" || typeof signal.addEventListener !== "function" || typeof signal.removeEventListener !== "function") {
+    throw new PersistenceError("validation", "AbortSignal was invalid.");
+  }
+  return signal;
+}
+
+function captureScreenshotIncluded(input: PersistPendingGeneratedComponentVersionV2Input) {
+  const descriptor = getDataPropertyDescriptor(input, "screenshotIncluded");
+  if (typeof descriptor.value !== "boolean") {
+    throw new PersistenceError("validation", "Screenshot inclusion state was invalid.");
+  }
+  return descriptor.value;
+}
+
+function strictJsonSnapshotWithoutSignal(
+  input: PersistPendingGeneratedComponentVersionV2Input,
+  screenshotIncluded: boolean
+): PersistPendingGeneratedComponentVersionV2Data {
+  const keys = [
+    "pendingEntry",
+    "sourceCaptureId",
+    "sourceCaptureSavedAt",
+    "sourceGeneratedVersionId",
+    "canonicalSourceGeneratedVersionEntry",
+    "canonicalCurrentCaptureProjection",
+    "screenshotIncluded",
+    "expectedScreenshotStorageKey",
+    ...(screenshotIncluded ? ["screenshot"] : []),
+    "targetGeneratedVersionId"
+  ] as const;
+  const snapshot: Partial<PersistPendingGeneratedComponentVersionV2Data> = {};
+  const seen = new WeakSet<object>();
+  for (const key of keys) {
+    const descriptor = getDataPropertyDescriptor(input, key);
+    (snapshot as Record<string, unknown>)[key] = strictJsonCloneValue(descriptor.value, seen);
+  }
+  try {
+    JSON.stringify(snapshot);
+  } catch (error) {
+    throw new PersistenceError("validation", "Generated version V2 persistence input was not JSON serializable.", error);
+  }
+  return snapshot as PersistPendingGeneratedComponentVersionV2Data;
+}
+
+function getDataPropertyDescriptor(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new PersistenceError("validation", "Object shape was invalid.");
+  }
+  const descriptor = Object.getOwnPropertyDescriptor(value, key);
+  if (!descriptor || !("value" in descriptor)) {
+    throw new PersistenceError("validation", "Object shape was invalid.");
+  }
+  return descriptor;
+}
+
+function strictJsonCloneValue(value: unknown, seen: WeakSet<object>): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) {
+      throw new PersistenceError("validation", "JSON number was invalid.");
+    }
+    return value;
+  }
+  if (value === undefined || typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+    throw new PersistenceError("validation", "JSON value was invalid.");
+  }
+  if (!value || typeof value !== "object") {
+    throw new PersistenceError("validation", "JSON value was invalid.");
+  }
+  if (seen.has(value)) {
+    throw new PersistenceError("validation", "JSON value was cyclic.");
+  }
+  seen.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return cloneJsonArray(value, seen);
+    }
+    return cloneJsonObject(value, seen);
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function cloneJsonArray(value: unknown[], seen: WeakSet<object>) {
+  if (Object.getPrototypeOf(value) !== Array.prototype) {
+    throw new PersistenceError("validation", "JSON array prototype was invalid.");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const clone: unknown[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = descriptors[index];
+    if (!descriptor || !("value" in descriptor)) {
+      throw new PersistenceError("validation", "JSON array value was invalid.");
+    }
+    clone.push(strictJsonCloneValue(descriptor.value, seen));
+  }
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== "string" || (!/^(0|[1-9]\d*)$/.test(key) && key !== "length")) {
+      throw new PersistenceError("validation", "JSON array shape was invalid.");
+    }
+  }
+  return clone;
+}
+
+function cloneJsonObject(value: object, seen: WeakSet<object>) {
+  if (Object.getPrototypeOf(value) !== Object.prototype) {
+    throw new PersistenceError("validation", "JSON object prototype was invalid.");
+  }
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const clone: Record<string, unknown> = {};
+  for (const key of Reflect.ownKeys(descriptors)) {
+    if (typeof key !== "string") {
+      throw new PersistenceError("validation", "JSON object symbol key was invalid.");
+    }
+    const descriptor = descriptors[key];
+    if (!descriptor || !("value" in descriptor)) {
+      throw new PersistenceError("validation", "JSON object accessor was invalid.");
+    }
+    clone[key] = strictJsonCloneValue(descriptor.value, seen);
+  }
+  return clone;
 }
 
 function validateStoredV2Preconditions({
@@ -1330,7 +1480,7 @@ function validateStoredV2Preconditions({
   currentRecord,
   currentSource
 }: {
-  prepared: Awaited<ReturnType<typeof preparePendingGeneratedComponentVersionV2Input>>;
+  prepared: PreparedPendingGeneratedComponentVersionV2Input;
   currentRecord: StoredRecordEntry | undefined;
   currentSource: GeneratedComponentVersionEntry | undefined;
 }) {
@@ -1359,7 +1509,7 @@ function validateStoredV2ScreenshotPreconditions({
   currentRecord,
   currentAsset
 }: {
-  prepared: Awaited<ReturnType<typeof preparePendingGeneratedComponentVersionV2Input>>;
+  prepared: PreparedPendingGeneratedComponentVersionV2Input;
   currentRecord: StoredRecordEntry;
   currentAsset: StoredScreenshotAsset | undefined;
 }) {
@@ -1470,6 +1620,7 @@ function validateRecoveryInput(input: RecoverGeneratedComponentVersionV2Input) {
   ]);
   if (
     !isValidGeneratedComponentVersionId(input.targetGeneratedVersionId) ||
+    (input.expectedSourceCaptureId !== undefined && !isValidCaptureId(input.expectedSourceCaptureId)) ||
     (input.expectedSourceGeneratedVersionId !== undefined && !isValidGeneratedComponentVersionId(input.expectedSourceGeneratedVersionId)) ||
     (input.expectedLogicalAttemptId !== undefined && !isValidLogicalAttemptId(input.expectedLogicalAttemptId)) ||
     (input.expectedReviewAttemptFingerprint !== undefined && !isValidSha256Hex(input.expectedReviewAttemptFingerprint))
@@ -1487,6 +1638,13 @@ function assertRecoveryLineage(entry: GeneratedVersionEntryV2, input: RecoverGen
   ) {
     throw new PersistenceError("persistence-conflict", "Recovered generated version lineage did not match.");
   }
+}
+
+function runGeneratedVersionV2TransactionCompleteHook() {
+  if (typeof window === "undefined") {
+    return;
+  }
+  window.__EC_GENERATED_VERSION_V2_TRANSACTION_COMPLETE_HOOK__?.();
 }
 
 function generatedComponentVersionEntriesCanonicalEqual(left: GeneratedComponentVersionEntry, right: GeneratedComponentVersionEntry) {
@@ -1821,15 +1979,18 @@ function installGeneratedVersionStorageTestBridge() {
         }
       });
     },
-    async persistPendingGeneratedComponentVersionV2LateAbort(input) {
+    async persistPendingGeneratedComponentVersionV2AbortAtCommitBoundary(input) {
       return bridgeResult(async () => {
         const controller = new AbortController();
-        const result = await persistPendingGeneratedComponentVersionV2({
-          ...input,
-          signal: controller.signal
-        });
-        controller.abort();
-        return result;
+        window.__EC_GENERATED_VERSION_V2_TRANSACTION_COMPLETE_HOOK__ = () => controller.abort();
+        try {
+          return await persistPendingGeneratedComponentVersionV2({
+            ...input,
+            signal: controller.signal
+          });
+        } finally {
+          delete window.__EC_GENERATED_VERSION_V2_TRANSACTION_COMPLETE_HOOK__;
+        }
       });
     },
     async persistPendingGeneratedComponentVersionV2ReadBackMismatch(input) {
@@ -1861,6 +2022,47 @@ function installGeneratedVersionStorageTestBridge() {
           IDBObjectStore.prototype.get = originalGet;
           IDBObjectStore.prototype.put = originalPut;
         }
+      });
+    },
+    async persistPendingGeneratedComponentVersionV2MutateDuringDigest(input, mutation) {
+      return bridgeResult(async () => {
+        const originalDigest = crypto.subtle.digest.bind(crypto.subtle);
+        let mutated = false;
+        crypto.subtle.digest = (async (...args: Parameters<SubtleCrypto["digest"]>) => {
+          if (!mutated) {
+            mutated = true;
+            applyGeneratedVersionV2DigestMutation(input, mutation);
+          }
+          return originalDigest(...args);
+        }) as SubtleCrypto["digest"];
+        try {
+          return await persistPendingGeneratedComponentVersionV2({
+            ...input,
+            signal: new AbortController().signal
+          });
+        } finally {
+          crypto.subtle.digest = originalDigest;
+        }
+      });
+    },
+    async persistPendingGeneratedComponentVersionV2ProbeReturnedMutation(input) {
+      return bridgeResult(async () => {
+        const value = await persistPendingGeneratedComponentVersionV2({
+          ...input,
+          signal: new AbortController().signal
+        });
+        let mutationThrew = false;
+        try {
+          value.value.summary = "Mutated returned result";
+        } catch {
+          mutationThrew = true;
+        }
+        input.pendingEntry.value.summary = "Mutated caller after successful persistence";
+        return {
+          value,
+          summaryAfterMutation: value.value.summary,
+          mutationThrew
+        };
       });
     },
     async recoverGeneratedComponentVersionV2(input) {
@@ -1895,6 +2097,29 @@ async function bridgeResult<T>(operation: () => Promise<T>): Promise<GeneratedVe
       name: normalized.name,
       message: normalized.message
     };
+  }
+}
+
+function applyGeneratedVersionV2DigestMutation(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">, mutation: GeneratedVersionV2DigestMutation) {
+  switch (mutation.kind) {
+    case "logicalAttemptId":
+      input.pendingEntry.operation.logicalAttemptId = mutation.value;
+      return;
+    case "sourceGeneratedVersionFingerprint":
+      input.pendingEntry.operation.sourceGeneratedVersionFingerprint = mutation.value;
+      return;
+    case "sourceReviewFingerprint":
+      input.pendingEntry.sourceReviewFingerprint = mutation.value;
+      return;
+    case "canonicalSourceGeneratedVersionEntry":
+      input.canonicalSourceGeneratedVersionEntry = mutation.value;
+      return;
+    case "canonicalCurrentCaptureProjection":
+      input.canonicalCurrentCaptureProjection = mutation.value;
+      return;
+    case "pendingSummary":
+      input.pendingEntry.value.summary = mutation.value;
+      return;
   }
 }
 
