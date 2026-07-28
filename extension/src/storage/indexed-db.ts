@@ -16,6 +16,11 @@ import { assertJsonCompatible } from "../shared/json";
 import { createScreenshotStorageKey } from "../shared/screenshot-storage";
 import { canonicalJsonStringify, type CanonicalJsonValue } from "../generation/canonical-json";
 import { buildExactCaptureContextProjection } from "../generation/projection";
+import {
+  computeCurrentCaptureProjectionFingerprint,
+  computeSourceGeneratedVersionFingerprint,
+  deriveRevisionGeneratedVersionId
+} from "../generation/revision-contract";
 import { PersistenceError, toPersistenceError } from "./persistence-errors";
 
 declare global {
@@ -42,8 +47,11 @@ declare global {
       persistPendingGeneratedComponentVersionV2(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
       persistPendingGeneratedComponentVersionV2PreAborted(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
       persistPendingGeneratedComponentVersionV2AbortBeforeAdd(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2LateAbort(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
+      persistPendingGeneratedComponentVersionV2ReadBackMismatch(input: Omit<PersistPendingGeneratedComponentVersionV2Input, "signal">): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2>>;
       recoverGeneratedComponentVersionV2(input: RecoverGeneratedComponentVersionV2Input): Promise<GeneratedVersionStorageBridgeResult<GeneratedVersionEntryV2 | undefined>>;
       getGeneratedComponentVersionUnionById(id: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntry | undefined>>;
+      listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntry[]>>;
       getGeneratedComponentVersionById(id: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1 | undefined>>;
       listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId: string): Promise<GeneratedVersionStorageBridgeResult<GeneratedComponentVersionEntryV1[]>>;
     };
@@ -672,7 +680,8 @@ export async function addGeneratedComponentVersion({
 
 export async function persistPendingGeneratedComponentVersionV2(input: PersistPendingGeneratedComponentVersionV2Input) {
   throwIfAborted(input.signal);
-  const prepared = validatePendingGeneratedComponentVersionV2Input(input);
+  const prepared = await preparePendingGeneratedComponentVersionV2Input(input);
+  throwIfAborted(input.signal);
 
   return withDatabase(
     (database) =>
@@ -932,6 +941,50 @@ export async function getGeneratedComponentVersionUnionById(id: string) {
         transaction.onabort = () => {
           if (requestError) {
             reject(toPersistenceError(requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
+export async function listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId: string) {
+  if (!sourceCaptureId) {
+    throw new PersistenceError("validation", "Source capture id was invalid.");
+  }
+  return withDatabase(
+    (database) =>
+      new Promise<GeneratedComponentVersionEntry[]>((resolve, reject) => {
+        const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
+        const request = transaction
+          .objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME)
+          .index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME)
+          .getAll(sourceCaptureId);
+        let entries: GeneratedComponentVersionEntry[] = [];
+        let requestError: DOMException | null = null;
+        let settled = false;
+
+        request.onsuccess = () => {
+          entries = (request.result as unknown[]).flatMap((candidate) => {
+            try {
+              validateGeneratedComponentVersionEntry(candidate);
+              return candidate.sourceCaptureId === sourceCaptureId ? [deepFreeze(cloneJson(candidate))] : [];
+            } catch {
+              return [];
+            }
+          });
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => {
+          if (!settled) {
+            resolve(entries.sort(compareGeneratedVersionsNewestFirst));
+          }
+        };
+        transaction.onabort = () => {
+          if (!settled) {
+            settled = true;
+            reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
           }
         };
       })
@@ -1206,7 +1259,7 @@ function requestResult<T>(request: IDBRequest<T>) {
   });
 }
 
-function validatePendingGeneratedComponentVersionV2Input(input: PersistPendingGeneratedComponentVersionV2Input) {
+async function preparePendingGeneratedComponentVersionV2Input(input: PersistPendingGeneratedComponentVersionV2Input) {
   assertExactKeys(input, [
     "pendingEntry",
     "sourceCaptureId",
@@ -1223,11 +1276,28 @@ function validatePendingGeneratedComponentVersionV2Input(input: PersistPendingGe
   if (!input.signal || typeof input.signal.aborted !== "boolean") {
     throw new PersistenceError("validation", "AbortSignal was invalid.");
   }
+  throwIfAborted(input.signal);
   if (!isValidGeneratedComponentVersionId(input.targetGeneratedVersionId) || !isValidGeneratedComponentVersionId(input.sourceGeneratedVersionId)) {
     throw new PersistenceError("validation", "Generated version id was invalid.");
   }
   validateGeneratedVersionEntryV2(input.pendingEntry);
+  const derivedTargetGeneratedVersionId = await deriveRevisionGeneratedVersionId(input.pendingEntry.operation.logicalAttemptId);
+  throwIfAborted(input.signal);
+  if (derivedTargetGeneratedVersionId !== input.pendingEntry.id || derivedTargetGeneratedVersionId !== input.targetGeneratedVersionId) {
+    throw new PersistenceError("validation", "Generated version V2 deterministic target id was invalid.");
+  }
   const sourceEntry = parseCanonicalGeneratedVersionEntry(input.canonicalSourceGeneratedVersionEntry);
+  const sourceGeneratedVersionFingerprint = await computeSourceGeneratedVersionFingerprint(sourceEntry);
+  throwIfAborted(input.signal);
+  if (sourceGeneratedVersionFingerprint !== input.pendingEntry.operation.sourceGeneratedVersionFingerprint) {
+    throw new PersistenceError("validation", "Generated version V2 source fingerprint was invalid.");
+  }
+  const currentCaptureProjection = parseCanonicalCurrentCaptureProjection(input.canonicalCurrentCaptureProjection);
+  const currentCaptureProjectionFingerprint = await computeCurrentCaptureProjectionFingerprint(currentCaptureProjection);
+  throwIfAborted(input.signal);
+  if (currentCaptureProjectionFingerprint !== input.pendingEntry.sourceReviewFingerprint) {
+    throw new PersistenceError("validation", "Generated version V2 capture projection fingerprint was invalid.");
+  }
   if (
     input.pendingEntry.id !== input.targetGeneratedVersionId ||
     input.pendingEntry.sourceCaptureId !== input.sourceCaptureId ||
@@ -1239,7 +1309,9 @@ function validatePendingGeneratedComponentVersionV2Input(input: PersistPendingGe
   ) {
     throw new PersistenceError("validation", "Generated version V2 persistence input linkage was invalid.");
   }
-  parseCanonicalJson(input.canonicalCurrentCaptureProjection);
+  if (!input.expectedScreenshotStorageKey || !input.expectedScreenshotStorageKey.startsWith("screenshots/") || !input.expectedScreenshotStorageKey.endsWith(".png")) {
+    throw new PersistenceError("validation", "Expected screenshot storage key was invalid.");
+  }
   if (input.screenshotIncluded) {
     validateExpectedScreenshotPrecondition(input.screenshot);
   } else if ("screenshot" in input) {
@@ -1258,7 +1330,7 @@ function validateStoredV2Preconditions({
   currentRecord,
   currentSource
 }: {
-  prepared: ReturnType<typeof validatePendingGeneratedComponentVersionV2Input>;
+  prepared: Awaited<ReturnType<typeof preparePendingGeneratedComponentVersionV2Input>>;
   currentRecord: StoredRecordEntry | undefined;
   currentSource: GeneratedComponentVersionEntry | undefined;
 }) {
@@ -1287,13 +1359,23 @@ function validateStoredV2ScreenshotPreconditions({
   currentRecord,
   currentAsset
 }: {
-  prepared: ReturnType<typeof validatePendingGeneratedComponentVersionV2Input>;
+  prepared: Awaited<ReturnType<typeof preparePendingGeneratedComponentVersionV2Input>>;
   currentRecord: StoredRecordEntry;
   currentAsset: StoredScreenshotAsset | undefined;
 }) {
   validateScreenshotAsset(currentAsset);
   const screenshotReference = getScreenshotReferenceFromRecordValue(currentRecord.value);
-  if (!screenshotReference || screenshotReference.storageKey !== currentAsset.storageKey || currentAsset.storageKey !== prepared.expectedScreenshotStorageKey) {
+  if (
+    !screenshotReference ||
+    !screenshotReference.crop ||
+    screenshotReference.storageKey !== currentAsset.storageKey ||
+    screenshotReference.storageKey !== prepared.expectedScreenshotStorageKey ||
+    screenshotReference.mediaType !== currentAsset.mediaType ||
+    screenshotReference.width !== currentAsset.width ||
+    screenshotReference.height !== currentAsset.height ||
+    (screenshotReference.byteLength !== undefined && screenshotReference.byteLength !== currentAsset.byteLength) ||
+    !rectsEqual(screenshotReference.crop, currentAsset.crop)
+  ) {
     throw new PersistenceError("reference-mismatch", "Revision source screenshot reference changed before V2 persistence.");
   }
   if (screenshotReference.mediaType !== "image/png" || currentAsset.mediaType !== "image/png") {
@@ -1306,6 +1388,11 @@ function validateStoredV2ScreenshotPreconditions({
     throw new PersistenceError("validation", "Expected screenshot metadata was missing.");
   }
   if (
+    screenshotReference.storageKey !== prepared.expectedScreenshotStorageKey ||
+    screenshotReference.mediaType !== prepared.screenshot.mediaType ||
+    screenshotReference.width !== prepared.screenshot.width ||
+    screenshotReference.height !== prepared.screenshot.height ||
+    screenshotReference.byteLength !== prepared.screenshot.byteLength ||
     currentAsset.mediaType !== prepared.screenshot.mediaType ||
     currentAsset.width !== prepared.screenshot.width ||
     currentAsset.height !== prepared.screenshot.height ||
@@ -1322,6 +1409,19 @@ function parseCanonicalGeneratedVersionEntry(value: string): GeneratedComponentV
     throw new PersistenceError("validation", "Generated version source entry was not canonical.");
   }
   return parsed;
+}
+
+function parseCanonicalCurrentCaptureProjection(value: string): Parameters<typeof computeCurrentCaptureProjectionFingerprint>[0] {
+  const parsed = parseCanonicalJson(value);
+  assertExactKeys(parsed, ["captureContext", "requestedOutput"]);
+  if (canonicalJsonStringify(parsed as CanonicalJsonValue) !== value) {
+    throw new PersistenceError("validation", "Current capture projection was not canonical.");
+  }
+  const projection = parsed as Parameters<typeof computeCurrentCaptureProjectionFingerprint>[0];
+  return {
+    captureContext: projection.captureContext,
+    requestedOutput: projection.requestedOutput
+  };
 }
 
 function validateGeneratedVersionEntryV2(value: unknown): asserts value is GeneratedVersionEntryV2 {
@@ -1527,7 +1627,7 @@ function validateScreenshotAsset(asset: StoredScreenshotAsset | undefined): asse
   }
 }
 
-function compareGeneratedVersionsNewestFirst(left: GeneratedComponentVersionEntryV1, right: GeneratedComponentVersionEntryV1) {
+function compareGeneratedVersionsNewestFirst(left: GeneratedComponentVersionEntry, right: GeneratedComponentVersionEntry) {
   if (left.createdAt !== right.createdAt) {
     return right.createdAt.localeCompare(left.createdAt);
   }
@@ -1631,7 +1731,11 @@ function getScreenshotReferenceFromRecordValue(value: JsonObject) {
 
   return {
     storageKey: typeof screenshot.storageKey === "string" ? screenshot.storageKey : undefined,
-    mediaType: typeof screenshot.mediaType === "string" ? screenshot.mediaType : undefined
+    mediaType: typeof screenshot.mediaType === "string" ? screenshot.mediaType : undefined,
+    width: typeof screenshot.width === "number" ? screenshot.width : undefined,
+    height: typeof screenshot.height === "number" ? screenshot.height : undefined,
+    byteLength: typeof screenshot.byteLength === "number" ? screenshot.byteLength : undefined,
+    crop: screenshot.crop && typeof screenshot.crop === "object" && !Array.isArray(screenshot.crop) ? (screenshot.crop as SerializableRect) : undefined
   };
 }
 
@@ -1717,11 +1821,56 @@ function installGeneratedVersionStorageTestBridge() {
         }
       });
     },
+    async persistPendingGeneratedComponentVersionV2LateAbort(input) {
+      return bridgeResult(async () => {
+        const controller = new AbortController();
+        const result = await persistPendingGeneratedComponentVersionV2({
+          ...input,
+          signal: controller.signal
+        });
+        controller.abort();
+        return result;
+      });
+    },
+    async persistPendingGeneratedComponentVersionV2ReadBackMismatch(input) {
+      return bridgeResult(async () => {
+        const originalGet = IDBObjectStore.prototype.get;
+        const originalPut = IDBObjectStore.prototype.put;
+        let targetGetCount = 0;
+        IDBObjectStore.prototype.get = function patchedGet(this: IDBObjectStore, query: IDBValidKey | IDBKeyRange) {
+          if (this.name === GENERATED_COMPONENT_VERSION_STORE_NAME && query === input.targetGeneratedVersionId) {
+            targetGetCount += 1;
+            if (targetGetCount === 2) {
+              originalPut.call(this, {
+                ...input.pendingEntry,
+                value: {
+                  ...input.pendingEntry.value,
+                  summary: "Injected read-back mismatch"
+                }
+              });
+            }
+          }
+          return originalGet.call(this, query);
+        };
+        try {
+          return await persistPendingGeneratedComponentVersionV2({
+            ...input,
+            signal: new AbortController().signal
+          });
+        } finally {
+          IDBObjectStore.prototype.get = originalGet;
+          IDBObjectStore.prototype.put = originalPut;
+        }
+      });
+    },
     async recoverGeneratedComponentVersionV2(input) {
       return bridgeResult(() => recoverGeneratedComponentVersionV2(input));
     },
     async getGeneratedComponentVersionUnionById(id) {
       return bridgeResult(() => getGeneratedComponentVersionUnionById(id));
+    },
+    async listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId) {
+      return bridgeResult(() => listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId));
     },
     async getGeneratedComponentVersionById(id) {
       return bridgeResult(() => getGeneratedComponentVersionById(id));
