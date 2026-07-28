@@ -205,6 +205,72 @@ h2 {
   background: #f8fbff;
 }
 
+.revision-panel {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+  padding: 14px;
+  background: #f7fffd;
+}
+
+.revision-header,
+.revision-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.revision-header h3,
+.revision-source-summary h4,
+.revision-review h4,
+.revision-review-group h5,
+.save-state h4 {
+  margin: 0;
+}
+
+.revision-header p,
+.revision-review p,
+.revision-source-summary p {
+  margin: 4px 0 0;
+  color: #42506a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.revision-editor,
+.revision-review,
+.revision-review-group,
+.revision-source-summary {
+  display: grid;
+  gap: 12px;
+}
+
+.revision-json {
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+  color: #172033;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+.revision-excluded-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 20px;
+  color: #25324a;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .generation-header,
 .generation-actions,
 .generation-status {

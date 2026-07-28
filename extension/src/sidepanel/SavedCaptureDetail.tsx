@@ -8,12 +8,13 @@ import {
   type LibraryMetadataInput
 } from "../library/library-metadata";
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
-import { listGeneratedComponentVersionsBySourceCaptureId } from "../storage/indexed-db";
-import type { GeneratedComponentVersionEntryV1 } from "../shared/generated-version-contract";
+import { listGeneratedComponentVersionUnionBySourceCaptureId } from "../storage/indexed-db";
+import type { GeneratedComponentVersionEntry } from "../shared/generated-version-contract";
 import { boundText, getCaptureDisplayTitle, normalizedOptionalText } from "./display-format";
 import { CapturePreview } from "./CapturePreview";
 import { GenerationWorkflow } from "./GenerationWorkflow";
 import { PreviewSandbox } from "./PreviewSandbox";
+import { RevisionWorkflow } from "./RevisionWorkflow";
 
 export type SavedCaptureDetailState =
   | {
@@ -298,7 +299,12 @@ function SavedCaptureDetailContent({
             savedCapture={savedCapture}
             onGeneratedVersionSaved={() => setVersionsRefreshKey((current) => current + 1)}
           />
-          <GeneratedVersionsSection sourceCaptureId={savedCapture.record.id} refreshKey={versionsRefreshKey} />
+          <GeneratedVersionsSection
+            savedCapture={savedCapture}
+            sourceCaptureId={savedCapture.record.id}
+            refreshKey={versionsRefreshKey}
+            onGeneratedVersionSaved={() => setVersionsRefreshKey((current) => current + 1)}
+          />
           <DeleteCapturePanel onDelete={startDeletion} deleteButtonRef={deleteButtonRef} />
         </>
       )}
@@ -306,19 +312,30 @@ function SavedCaptureDetailContent({
   );
 }
 
-function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptureId: string; refreshKey: number }) {
+function GeneratedVersionsSection({
+  savedCapture,
+  sourceCaptureId,
+  refreshKey,
+  onGeneratedVersionSaved
+}: {
+  savedCapture: SavedCaptureReadModel;
+  sourceCaptureId: string;
+  refreshKey: number;
+  onGeneratedVersionSaved: () => void;
+}) {
   const [state, setState] = useState<
     | { status: "loading" }
-    | { status: "loaded"; versions: GeneratedComponentVersionEntryV1[] }
+    | { status: "loaded"; versions: GeneratedComponentVersionEntry[] }
     | { status: "failed"; message: string }
   >({ status: "loading" });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [previewOpenId, setPreviewOpenId] = useState<string | null>(null);
+  const [revisionSourceId, setRevisionSourceId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setState({ status: "loading" });
-    listGeneratedComponentVersionsBySourceCaptureId(sourceCaptureId)
+    setState((current) => (current.status === "loaded" ? current : { status: "loading" }));
+    listGeneratedComponentVersionUnionBySourceCaptureId(sourceCaptureId)
       .then((versions) => {
         if (!cancelled) {
           setState({ status: "loaded", versions });
@@ -349,6 +366,7 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
           {state.versions.length === 0 ? <p className="empty-note">No generated versions saved yet.</p> : null}
           {state.versions.map((entry) => {
             const expanded = expandedId === entry.id;
+            const revisionOpen = revisionSourceId === entry.id;
             return (
               <article className="generated-version-item" key={entry.id}>
                 <button
@@ -364,8 +382,14 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
                 {expanded ? (
                   <div className="generated-version-details">
                     <dl className="preview-metadata">
+                      <MetadataItem label="Version kind" value={describeGeneratedVersionKind(entry)} />
+                      <MetadataItem label="Source generated version" value={getSourceGeneratedVersionLabel(entry, state.versions)} />
+                      <MetadataItem label="Screenshot state" value={getGeneratedVersionScreenshotState(entry)} />
                       <MetadataItem label="Summary" value={entry.value.summary} multiline />
                       <MetadataItem label="Approximation notes" value={entry.value.approximationNotes || "No notes"} multiline />
+                      {getRevisionInstruction(entry) ? (
+                        <MetadataItem label="Revision instruction" value={getRevisionInstruction(entry) ?? ""} multiline />
+                      ) : null}
                     </dl>
                     <pre className="generated-code"><code>{entry.value.code}</code></pre>
                     <button
@@ -376,14 +400,64 @@ function GeneratedVersionsSection({ sourceCaptureId, refreshKey }: { sourceCaptu
                       {previewOpenId === entry.id ? "Close preview" : "Preview"}
                     </button>
                     {previewOpenId === entry.id ? <PreviewSandbox entry={entry} onClose={() => setPreviewOpenId(null)} /> : null}
+                    <button
+                      className="secondary-action compact-action"
+                      type="button"
+                      onClick={() => {
+                        setPreviewOpenId(null);
+                        setRevisionSourceId(revisionOpen ? null : entry.id);
+                      }}
+                    >
+                      {revisionOpen ? "Close revision tools" : "Revise or regenerate"}
+                    </button>
                   </div>
                 ) : null}
               </article>
             );
           })}
+          {revisionSourceId ? (
+            <SelectedRevisionWorkflow
+              savedCapture={savedCapture}
+              versions={state.versions}
+              revisionSourceId={revisionSourceId}
+              onSaved={onGeneratedVersionSaved}
+              onCancelSelection={() => setRevisionSourceId(null)}
+            />
+          ) : null}
         </>
       ) : null}
     </section>
+  );
+}
+
+function SelectedRevisionWorkflow({
+  savedCapture,
+  versions,
+  revisionSourceId,
+  onSaved,
+  onCancelSelection
+}: {
+  savedCapture: SavedCaptureReadModel;
+  versions: GeneratedComponentVersionEntry[];
+  revisionSourceId: string;
+  onSaved: () => void;
+  onCancelSelection: () => void;
+}) {
+  const sourceEntry = versions.find((entry) => entry.id === revisionSourceId);
+  if (!sourceEntry) {
+    return (
+      <p className="save-state save-state-failed" role="alert">
+        Selected source generated version is no longer available. Choose another saved version.
+      </p>
+    );
+  }
+  return (
+    <RevisionWorkflow
+      savedCapture={savedCapture}
+      sourceEntry={sourceEntry}
+      onSaved={onSaved}
+      onCancelSelection={onCancelSelection}
+    />
   );
 }
 
@@ -395,6 +469,35 @@ function DetailHeader({ onBack }: { onBack: () => void }) {
       </button>
     </div>
   );
+}
+
+function describeGeneratedVersionKind(entry: GeneratedComponentVersionEntry) {
+  if ("contractVersion" in entry && entry.contractVersion === 2) {
+    return entry.operation.kind === "revision" ? "Revision" : "Regeneration";
+  }
+  return "Initial generation";
+}
+
+function getSourceGeneratedVersionLabel(entry: GeneratedComponentVersionEntry, versions: GeneratedComponentVersionEntry[]) {
+  if (!("contractVersion" in entry) || entry.contractVersion !== 2) {
+    return "None";
+  }
+  const ancestor = versions.find((candidate) => candidate.id === entry.operation.sourceGeneratedVersionId);
+  return ancestor ? `${ancestor.value.componentName} - ${ancestor.createdAt}` : `${entry.operation.sourceGeneratedVersionId} (missing ancestor)`;
+}
+
+function getGeneratedVersionScreenshotState(entry: GeneratedComponentVersionEntry) {
+  if ("contractVersion" in entry && entry.contractVersion === 2) {
+    return entry.operation.screenshotIncluded ? "Included in revision request" : "Not included in revision request";
+  }
+  return "Initial generation screenshot policy";
+}
+
+function getRevisionInstruction(entry: GeneratedComponentVersionEntry) {
+  if ("contractVersion" in entry && entry.contractVersion === 2 && entry.operation.kind === "revision") {
+    return entry.operation.instruction;
+  }
+  return undefined;
 }
 
 type DetailObjectUrlState =
