@@ -2,7 +2,7 @@
 
 ## Implementation Status and Supersession Note
 
-Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Completed with the accepted production safe generated-component preview for Previewable Subset V1. Milestone 6D is Current for regeneration and natural-language revision. Milestone 6E remains Planned.
+Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Completed with the accepted production safe generated-component preview for Previewable Subset V1. Milestone 6D is Completed for regeneration and natural-language revision. Milestone 6E is Current for version comparison and final Milestone 6 regression.
 
 This document began as the Milestone 6A architecture draft. Its original nested packaged architecture was a 6A proposal, not the accepted current implementation. Real Chromium feasibility testing showed that a topology where the Side Panel loads a packaged sandbox host, and that host then navigates a second packaged sandbox page, fails unless the second page is exposed through `web_accessible_resources`. That exposure was not approved for Milestone 6B. `srcdoc` was also not selected.
 
@@ -15,6 +15,30 @@ Side Panel trusted extension page
 ```
 
 The Side Panel performs a narrow trusted relay between the packaged sandbox host and packaged sandbox render realm. Any section below that describes the sandbox host as creating or owning a nested packaged render realm is superseded for current implementation planning by this accepted sibling architecture. Milestone 6C builds on the accepted 6B sibling foundation, not on a host-owned nested packaged render realm, `srcdoc` render realm, or `web_accessible_resources`-based nested render realm.
+
+## Milestone 6D Accepted Implementation
+
+Accepted remote baseline:
+
+```text
+661970e210e0a44d456b4ff7f72cb28fdd283307 - fix: close milestone 6d regression gaps
+```
+
+Milestone 6D adds trusted Revision and Regeneration from an existing persisted generated version without changing the accepted Preview sandbox boundary. A user can select a persisted V1 or V2 generated version, choose bounded natural-language Revision or instruction-free Regeneration, review the exact approved outbound user-derived data, and explicitly consent before transport. Screenshot transmission is optional and off by default for revision/regeneration. The dedicated backend route is `POST /v1/revise-component`, and the idempotency header is bound to the frozen `logicalAttemptId`.
+
+Successful responses reuse the provider-neutral backend boundary and must preserve the source `componentName`. Accepted results create immutable V2 generated-version entries with deterministic target IDs and lineage to the exact selected source version. Existing `CaptureRecord` data, screenshot assets, V1 versions, V2 source versions, and earlier versions remain immutable. V1 and V2 entries are listed through the union reader, missing ancestors display safely, Retry saving does not call the provider again, transport Retry reuses the same frozen Review identity, conflicting recovery targets fail safely without overwrite, and cancellation or stale continuations cannot expose stale success. Commit-after-cancel results may remain stored and are discoverable through later explicit refresh.
+
+Major trust boundaries:
+
+- Revision/regeneration rereads current local source state before freezing Review.
+- Review displays the exact approved outbound user-derived request data before consent.
+- Backend prompt construction excludes local IDs, source URL, page title, notes, storage keys, browser storage, cookies, raw idempotency, provider response IDs, raw provider errors, stacks, and secrets.
+- Revised or regenerated source remains inert until the user separately chooses Preview.
+- Preview continues through the accepted Milestone 6C packaged sandbox host and data-only render realm.
+- No automatic Preview or automatic generated-source execution was introduced.
+- Automated acceptance made no real OpenAI request and no real provider request.
+
+Reported local validation for the accepted 6D implementation: `npm run build` passed; combined 6D focused suites reported 54 passed; Slice 6 closeout suite reported 4 passed and 4 passed again on focused stability rerun; Milestone 5 persistence regression reported 24 passed; initial-generation focused regression reported 19 passed and 1 documented existing skip; Milestone 6C Preview regression reported 38 passed; backend tests reported 13 passed; full Playwright regression reported 200 passed and 1 documented existing skip; `npm audit --omit=dev` reported 0 vulnerabilities. These were local reported results, not GitHub Actions results, and they are not a general security proof.
 
 ## Milestone 6C Accepted Implementation
 
@@ -107,9 +131,9 @@ Residual risks:
 - Iframe disposal cannot guarantee forced termination of an already-hung browser renderer.
 - Milestone 6C does not implement natural-language revision, regeneration, version comparison, export, storage migrations, backend contract changes, or provider calls.
 
-## Milestone 6D Current Scope
+## Milestone 6D Completed Scope
 
-Milestone 6D is regeneration and natural-language revision. It is current but not implemented in this documentation-only closeout.
+Milestone 6D is the completed regeneration and natural-language revision stage. The intended scope below is superseded by the accepted implementation summary near the top of this document.
 
 Intended scope:
 
@@ -138,12 +162,12 @@ Explicitly excluded from Milestone 6D:
 - Automatic execution of revised source.
 - Storage migration unless separately reviewed and approved.
 
-Milestone 6E remains responsible for version comparison and final Milestone 6 regression.
+Milestone 6E is Current and remains responsible for version comparison and final Milestone 6 regression.
 
 Milestone 6D architecture closure:
 
 - `docs/MILESTONE_6D_REVISION_ARCHITECTURE.md` is the authoritative 6D design for revision and regeneration semantics, Review privacy projection, backend route selection, generated-version lineage, idempotency, Retry, cancellation, persistence ordering, component-name policy, accessibility, acceptance testing, and implementation slices.
-- Milestone 6D remains Current and unimplemented until that document receives independent approval and implementation slices land.
+- Milestone 6D is Completed by the accepted implementation at `661970e210e0a44d456b4ff7f72cb28fdd283307`; that document now serves as the accepted design record and implementation supersession note.
 
 ## Milestone 6B Accepted Foundation
 
@@ -583,7 +607,7 @@ Retry recreates a completely new preview realm.
 - Failed preview does not invalidate persisted source text.
 - Version selection uses existing `GeneratedComponentVersionEntryV1` records.
 - Source CaptureRecord remains unchanged.
-- Regeneration and natural-language revision are later Milestone 6 stages.
+- Regeneration and natural-language revision are completed in Milestone 6D.
 - Comparison is a later Milestone 6 stage.
 - Export remains Milestone 7.
 
@@ -593,8 +617,8 @@ Current sequence:
 6A - Completed - Architecture and threat model
 6B - Completed - Sandbox runtime foundation with trusted packaged fixtures
 6C - Completed - Safe generated-component preview for Previewable Subset V1
-6D - Current - Regeneration and natural-language revision
-6E - Planned - Version comparison and final Milestone 6 regression
+6D - Completed - Regeneration and natural-language revision
+6E - Current - Version comparison and final Milestone 6 regression
 ```
 
 Each stage needs independent security review before expanding the amount of generated code that can run.

@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Milestone 6A, Milestone 6B, and Milestone 6C are completed; Milestone 6D is current for regeneration and natural-language revision planning; Milestone 6E remains planned. Generated code is still displayed as source text, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Milestone 6A, Milestone 6B, Milestone 6C, and Milestone 6D are completed; Milestone 6E is current for version comparison and final Milestone 6 regression. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -27,12 +27,17 @@ Milestones 1 through 5 are completed. Milestone 6 is the current milestone and i
 - Preview a strict subset of generated React + Tailwind source through an explicit Preview action, an AST-based previewable-source gate, a data-only render plan, and two isolated sibling packaged sandbox frames.
 - Keep generated source out of the sandbox render realm; the render realm receives only a validated `PreviewRenderPlanV1`.
 - Render approved class tokens through a source-controlled bounded utility stylesheet whose selectors are kept in exact parity with the preview class-token registry.
+- Select an existing persisted V1 or V2 generated version and request either bounded natural-language Revision or instruction-free Regeneration.
+- Review the exact approved revision/regeneration outbound request data and provide explicit consent before transport.
+- Persist successful revision/regeneration results as new immutable V2 generated-version entries with deterministic target IDs and lineage to the exact selected source version.
+- Keep existing `CaptureRecord` data, screenshot assets, V1 versions, V2 source versions, and earlier versions immutable during revision/regeneration.
+- Keep revised and regenerated source inert until the user separately chooses Preview through the accepted Milestone 6C sandbox boundary.
 
 ## Local-First and AI Boundary
 
 Captures remain local by default. Saved `CaptureRecord` metadata and screenshot assets are stored under the extension origin in IndexedDB. Generated versions are stored separately from the original capture, and generation does not mutate the original `CaptureRecord`.
 
-AI generation uses the configured local backend/proxy path. The extension does not contain provider API keys, and provider secrets must remain server-side. Before any generation request is sent, Element Catcher shows the exact approved outbound projection and requires explicit consent. The outbound contract excludes source URL, page title, local persistence identifiers, screenshot storage keys, browser storage, cookies, and raw wrappers.
+AI generation, revision, and regeneration use the configured local backend/proxy path. The extension does not contain provider API keys, and provider secrets must remain server-side. Before any generation, revision, or regeneration request is sent, Element Catcher shows the exact approved outbound projection and requires explicit consent. The outbound contract excludes source URL, page title, local persistence identifiers, screenshot storage keys, browser storage, cookies, notes, raw idempotency keys, and raw wrappers.
 
 The local proxy is a development/demo topology. It is not a production multi-user backend, and it does not add authentication, quotas, budgets, abuse monitoring, or hosted operations.
 
@@ -74,6 +79,16 @@ Preview the built side panel UI:
 npm run preview
 ```
 
+## Testing
+
+Run the extension E2E suite headlessly by default:
+
+```bash
+npm run test:e2e
+```
+
+The Playwright extension fixture uses Playwright's bundled Chromium with an isolated temporary browser profile for each test context. Visible browser execution is an explicit diagnostic mode only: set `PW_HEADED=1` or run `npm run test:e2e:headed` when a visible run has been deliberately requested. Automated tests should not open the user's ordinary Chrome profile.
+
 ## Loading the Extension in Chrome
 
 1. Run `npm run build`.
@@ -98,8 +113,8 @@ Current milestone:
   - Milestone 6A: Completed. Architecture and threat model.
   - Milestone 6B: Completed. Sandbox runtime foundation with trusted packaged fixtures.
   - Milestone 6C: Completed. Production safe generated-component preview for the approved Previewable Subset V1.
-  - Milestone 6D: Current. Regeneration and natural-language revision.
-  - Milestone 6E: Planned. Version comparison and final Milestone 6 regression.
+  - Milestone 6D: Completed. Regeneration and natural-language revision.
+  - Milestone 6E: Current. Version comparison and final Milestone 6 regression.
 
 See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
@@ -115,7 +130,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 ## Current Roadmap
 
 - Milestones 1-5: Completed.
-- Milestone 6: Current. Milestone 6A, 6B, and 6C are Completed. Milestone 6D is Current for regeneration and natural-language revision. Milestone 6E is Planned. Natural-language revision, regeneration management, version comparison, and export remain unimplemented until their later implementation milestones land.
+- Milestone 6: Current. Milestone 6A, 6B, 6C, and 6D are Completed. Milestone 6E is Current for version comparison and final Milestone 6 regression. Version comparison and export remain unimplemented until their later implementation milestones land.
 - Milestone 7: Planned. Export and future expansion remain unimplemented.
 
 ## Intentionally Unimplemented
@@ -123,8 +138,6 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Full arbitrary generated-code execution.
 - Full React, TypeScript, JavaScript, CSS, or Tailwind runtime compatibility.
 - Dynamic Tailwind class evaluation, generated CSS, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
-- Natural-language revision implementation.
-- Regeneration management implementation.
 - Version comparison.
 - Export.
 - Figma export.

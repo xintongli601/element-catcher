@@ -1,8 +1,88 @@
 # Milestone 6D Revision Architecture
 
-## 1. Status and Scope
+## 1. Status, Acceptance, and Supersession
 
-Milestone 6D is Current. Milestone 6 remains Current. Milestone 6E remains Planned. This document closes the architecture for natural-language revision and regeneration planning only; it does not approve or implement production behavior, does not mark Milestone 6D Completed, and does not mark Milestone 6 Completed.
+Milestone 6D is Completed. Milestone 6 remains Current. Milestone 6E is Current for version comparison and final Milestone 6 regression. This document remains the accepted design record for natural-language revision and regeneration, and this top section supersedes the original documentation-only/current disclaimer with the accepted implementation state.
+
+Accepted remote baseline:
+
+```text
+661970e210e0a44d456b4ff7f72cb28fdd283307 - fix: close milestone 6d regression gaps
+```
+
+Actual implemented chain:
+
+```text
+Persisted GeneratedComponentVersionEntry V1 or V2
+  -> user chooses Revise or Regenerate
+  -> current CaptureRecord and selected source version reread
+  -> frozen Review with exact approved outbound request data
+  -> explicit consent
+  -> POST /v1/revise-component with idempotency bound to logicalAttemptId
+  -> provider-neutral backend revision boundary
+  -> response componentName preservation check
+  -> deterministic immutable V2 generated-version target
+  -> recovery-aware IndexedDB persistence
+  -> inert source until explicit Preview
+```
+
+Accepted implemented capabilities:
+
+- A user can select an existing persisted V1 or V2 generated version.
+- The user can choose natural-language Revision or instruction-free Regeneration.
+- Revision instructions use the accepted bounded normalization contract.
+- The workflow rereads the current `CaptureRecord` and selected generated source before freezing Review.
+- Review visibly displays the exact approved outbound user-derived request data.
+- Explicit consent is required before transport.
+- Optional screenshot transmission is off by default.
+- The dedicated route is `POST /v1/revise-component`.
+- The idempotency header is bound to the frozen `logicalAttemptId`.
+- Revision and regeneration reuse the provider-neutral backend boundary.
+- Source `componentName` must remain unchanged in accepted responses.
+- Successful results create new immutable V2 generated-version entries.
+- Existing `CaptureRecord`, screenshot asset, V1 versions, V2 source versions, and earlier versions remain immutable.
+- V2 lineage records the exact selected source version.
+- Deterministic target IDs support idempotent persistence and recovery.
+- Retry saving does not call the provider again.
+- Transport Retry reuses the same frozen Review identity.
+- Conflicting recovery targets fail safely without overwrite.
+- Cancellation and stale continuations cannot expose stale success.
+- Commit-after-cancel results may remain stored and are discoverable through a later explicit refresh.
+- V1 and V2 versions are read through the union reader.
+- Missing ancestors display safely.
+- Revised or regenerated source remains inert until the user separately chooses Preview.
+- Preview continues through the accepted Milestone 6C sandbox boundary.
+- No automatic Preview or automatic generated-source execution was introduced.
+- Automated acceptance made no real OpenAI request.
+
+Accepted local validation record:
+
+- `npm run build`: passed.
+- Combined Milestone 6D focused suites: 54 passed.
+- Slice 6 closeout suite: 4 passed and passed again on the focused stability rerun.
+- Milestone 5 persistence regression: 24 passed.
+- Initial-generation focused regression: 19 passed, 1 documented existing skip.
+- Milestone 6C Preview regression: 38 passed.
+- Backend tests: 13 passed.
+- Full Playwright regression: 200 passed, 1 documented existing skip.
+- `npm audit --omit=dev`: 0 vulnerabilities.
+- No real OpenAI request.
+- No real provider request.
+- No unapproved remote origin contacted.
+- No database version, store, index, `CaptureRecord` schema, Manifest, CSP, or Preview protocol change.
+
+These were reported local validation results associated with the accepted implementation. They were not GitHub Actions results and are not a general security proof.
+
+Residual risks:
+
+- The local backend/proxy remains a development/demo topology, not a production multi-user hosted service.
+- Server-side provider-call deduplication remains outside the local deterministic persistence guarantee; an ambiguous transport may still have provider billing risk.
+- Generated Preview supports only the accepted bounded Previewable Subset V1.
+- Valid but unsupported generated source remains source-only.
+- Local storage can still be deleted or altered outside ordinary application behavior.
+- Automated acceptance is not a general security proof.
+
+Milestone 6D does not include version comparison UI, final Milestone 6 regression closure, export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, or automatic execution of revised source. Milestone 6E is responsible for version comparison, final Milestone 6 integrated regression, and final Milestone 6 documentation closure after implementation and independent acceptance.
 
 Milestone 6D preserves the accepted Milestone 6C execution boundary:
 
@@ -14,11 +94,9 @@ Milestone 6D preserves the accepted Milestone 6C execution boundary:
 - the render realm receives only `PreviewRenderPlanV1`;
 - the sibling packaged sandbox topology, Protocol V2, Previewable Subset V1, preview CSP, and execution prohibitions remain unchanged;
 - no Tailwind runtime, CDN, generated CSS, eval, `Function`, WebAssembly, worker execution, `srcdoc`, Blob execution, or data URL execution is introduced;
-- no real OpenAI request is made by this documentation task.
+- no real OpenAI request was made by the accepted automated validation.
 
-Allowed change scope for this follow-up is documentation only. Runtime extension code, backend implementation, tests, package files, lockfiles, Manifest, CSP, IndexedDB implementation, existing production contracts, preview protocol, preview policy, and build configuration are out of scope.
-
-Production approval gate: implementation may start only after independent review approves this corrected architecture and the relevant implementation slice. No production implementation exists from this document alone.
+The sections below preserve original architecture decisions and contract details. Where they discuss planned implementation sequencing, the accepted implementation state above supersedes that planning language.
 
 ## 2. Current Contract Inventory
 
@@ -825,7 +903,7 @@ Incomplete backend or transport helpers must remain unreachable from production 
 
 ## 21. Final Decisions Table
 
-| Topic | Selected design | Rejected alternatives | Reason | Implementation impact | Approval still required |
+| Topic | Selected design | Rejected alternatives | Reason | Implementation impact | Accepted in 6D |
 | --- | --- | --- | --- | --- | --- |
 | Revision semantics | Selected persisted version plus one bounded instruction creates new immutable V2 version | Overwrite source; chat transcript | Simpler and lineage-safe | V2 revision operation | Yes |
 | Regeneration semantics | Same workflow, explicit mode, no instruction | Deferred; separate model | Shares privacy/idempotency semantics | V2 regeneration operation | Yes |
@@ -847,7 +925,7 @@ Incomplete backend or transport helpers must remain unreachable from production 
 | ComponentName | Preserve source name | Provider rename | Deterministic preview/list | Equality check | Yes |
 | Preview | Separate explicit Preview after persistence | Auto-preview | Preserve 6C | No protocol changes | Yes |
 | Slice safety | First reachable UI includes stale/cancel guards | Add guards later | Avoid unsafe partial workflow | Reordered slices | Yes |
-| 6D/6E boundary | No comparison/export | Start 6E | Keep scope tight | 6E remains Planned | Yes |
+| 6D/6E boundary | No comparison/export | Start 6E | Keep scope tight | 6E is Current after 6D acceptance | Yes |
 
 ## 22. Residual Risks
 
