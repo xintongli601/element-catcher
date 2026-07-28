@@ -37,6 +37,23 @@ declare global {
         componentName: string;
       }>;
     };
+    __EC_GENERATED_VERSION_V2_PERSISTENCE_TEST_HARNESS__?: {
+      enabled: true;
+      failBeforeAddCount?: number;
+      pauseBeforeAdd?: boolean;
+      releaseBeforeAdd?: boolean;
+      failAfterCommitCount?: number;
+      pauseAfterCommit?: boolean;
+      releaseAfterCommit?: boolean;
+      beforeAddCalls: number;
+      afterCommitCalls: number;
+      attempts: Array<{
+        id: string;
+        logicalAttemptId: string;
+        sourceGeneratedVersionId: string;
+        componentName: string;
+      }>;
+    };
     __EC_GENERATED_VERSION_V2_TRANSACTION_COMPLETE_HOOK__?: () => void;
     __EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE_ENABLED__?: true;
     __EC_GENERATED_VERSION_STORAGE_TEST_BRIDGE__?: {
@@ -800,22 +817,43 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
             return;
           }
 
-          const addRequest = versionStore.add(prepared.pendingEntry);
-          addRequest.onsuccess = () => {
-            if (prepared.signal.aborted) {
-              abortTransaction();
-              return;
-            }
-            const readbackRequest = versionStore.get(prepared.targetGeneratedVersionId);
-            readbackRequest.onsuccess = () => confirmReadBack(readbackRequest.result);
-            readbackRequest.onerror = () => {
-              requestError = readbackRequest.error;
+          const addEntry = () => {
+            const addRequest = versionStore.add(prepared.pendingEntry);
+            addRequest.onsuccess = () => {
+              if (prepared.signal.aborted) {
+                abortTransaction();
+                return;
+              }
+              const readbackRequest = versionStore.get(prepared.targetGeneratedVersionId);
+              readbackRequest.onsuccess = () => confirmReadBack(readbackRequest.result);
+              readbackRequest.onerror = () => {
+                requestError = readbackRequest.error;
+              };
+            };
+            addRequest.onerror = (event) => {
+              event.preventDefault();
+              failAndAbort(new PersistenceError("persistence-conflict", "Generated version id conflicted."));
             };
           };
-          addRequest.onerror = (event) => {
-            event.preventDefault();
-            failAndAbort(new PersistenceError("persistence-conflict", "Generated version id conflicted."));
-          };
+
+          try {
+            if (
+              applyGeneratedVersionV2PersistenceTestHarness({
+                prepared,
+                recordStore,
+                onContinue: addEntry,
+                onError: (error) => failAndAbort(toPersistenceError(error, "persistence-failed")),
+                signal: prepared.signal,
+                abortTransaction
+              })
+            ) {
+              return;
+            }
+          } catch (error) {
+            failAndAbort(toPersistenceError(error, "persistence-failed"));
+            return;
+          }
+          addEntry();
         };
 
         const confirmReadBack = (value: unknown) => {
@@ -878,8 +916,17 @@ export async function persistPendingGeneratedComponentVersionV2(input: PersistPe
             reject(new PersistenceError("readback", "Generated version persistence completed without a validated read-back."));
             return;
           }
-          settled = true;
-          resolve(deepFreeze(cloneJson(confirmedEntry)));
+          applyGeneratedVersionV2PostCommitTestHarness({
+            confirmedEntry,
+            resolve: (entry) => {
+              settled = true;
+              resolve(entry);
+            },
+            reject: (error) => {
+              settled = true;
+              reject(error);
+            }
+          });
         };
       })
   );
@@ -1719,6 +1766,113 @@ function applyGeneratedVersionPersistenceTestHarness({
   };
   pump();
   return true;
+}
+
+function getGeneratedVersionV2PersistenceTestHarness() {
+  if (typeof window === "undefined" || window.navigator.webdriver !== true) {
+    return undefined;
+  }
+  const harness = window.__EC_GENERATED_VERSION_V2_PERSISTENCE_TEST_HARNESS__;
+  return harness?.enabled === true ? harness : undefined;
+}
+
+function applyGeneratedVersionV2PersistenceTestHarness({
+  prepared,
+  recordStore,
+  onContinue,
+  onError,
+  signal,
+  abortTransaction
+}: {
+  prepared: PreparedPendingGeneratedComponentVersionV2Input;
+  recordStore: IDBObjectStore;
+  onContinue: () => void;
+  onError: (error: unknown) => void;
+  signal: AbortSignal;
+  abortTransaction: () => void;
+}) {
+  const harness = getGeneratedVersionV2PersistenceTestHarness();
+  if (!harness) {
+    return false;
+  }
+  harness.beforeAddCalls += 1;
+  harness.attempts.push({
+    id: prepared.pendingEntry.id,
+    logicalAttemptId: prepared.pendingEntry.operation.logicalAttemptId,
+    sourceGeneratedVersionId: prepared.pendingEntry.operation.sourceGeneratedVersionId,
+    componentName: prepared.pendingEntry.value.componentName
+  });
+  if ((harness.failBeforeAddCount ?? 0) > 0) {
+    harness.failBeforeAddCount = (harness.failBeforeAddCount ?? 0) - 1;
+    throw new PersistenceError("persistence-failed", "Injected generated-version V2 persistence failure.");
+  }
+  if (!harness.pauseBeforeAdd) {
+    return false;
+  }
+
+  const pump = () => {
+    if (signal.aborted) {
+      abortTransaction();
+      return;
+    }
+    if (harness.releaseBeforeAdd) {
+      harness.pauseBeforeAdd = false;
+      onContinue();
+      return;
+    }
+    try {
+      const keepAliveRequest = recordStore.get(prepared.sourceCaptureId);
+      keepAliveRequest.onsuccess = pump;
+      keepAliveRequest.onerror = () => onError(keepAliveRequest.error);
+    } catch (error) {
+      onError(error);
+    }
+  };
+
+  pump();
+  return true;
+}
+
+function applyGeneratedVersionV2PostCommitTestHarness({
+  confirmedEntry,
+  resolve,
+  reject
+}: {
+  confirmedEntry: GeneratedVersionEntryV2;
+  resolve: (entry: GeneratedVersionEntryV2) => void;
+  reject: (error: unknown) => void;
+}) {
+  const complete = () => resolve(deepFreeze(cloneJson(confirmedEntry)));
+  const harness = getGeneratedVersionV2PersistenceTestHarness();
+  if (!harness) {
+    complete();
+    return;
+  }
+  harness.afterCommitCalls += 1;
+
+  const completeAfterHarness = () => {
+    if ((harness.failAfterCommitCount ?? 0) > 0) {
+      harness.failAfterCommitCount = (harness.failAfterCommitCount ?? 0) - 1;
+      reject(new PersistenceError("persistence-failed", "Injected generated-version V2 post-commit confirmation failure."));
+      return;
+    }
+    complete();
+  };
+
+  if (!harness.pauseAfterCommit) {
+    completeAfterHarness();
+    return;
+  }
+
+  const pump = () => {
+    if (harness.releaseAfterCommit) {
+      harness.pauseAfterCommit = false;
+      completeAfterHarness();
+      return;
+    }
+    window.setTimeout(pump, 25);
+  };
+  pump();
 }
 
 function throwIfAborted(signal: AbortSignal) {
