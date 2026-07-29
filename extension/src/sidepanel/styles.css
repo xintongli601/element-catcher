@@ -354,6 +354,169 @@ h2 {
   white-space: pre;
 }
 
+.version-comparison {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.version-comparison-panel,
+.version-comparison-result {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 12px;
+  background: #ffffff;
+}
+
+.version-comparison-header,
+.version-comparison-result-header,
+.version-comparison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.version-comparison-header h4,
+.version-comparison-result h4,
+.version-comparison-result h5 {
+  margin: 0;
+  color: #172033;
+}
+
+.version-comparison-result h5 {
+  font-size: 13px;
+}
+
+.version-comparison-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+}
+
+.version-comparison-controls label {
+  display: grid;
+  gap: 6px;
+  color: #25324a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.version-comparison-controls select {
+  min-width: 0;
+  border: 1px solid #c6d0df;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+}
+
+.version-comparison-controls select:focus-visible,
+.version-comparison-result h4:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.version-comparison-relationship {
+  margin: 6px 0 0;
+  color: #25324a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.version-comparison-table-scroll {
+  overflow-x: auto;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+}
+
+.version-comparison-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+  color: #25324a;
+  font-size: 12px;
+}
+
+.version-comparison-table th,
+.version-comparison-table td {
+  border-bottom: 1px solid #e5eaf2;
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.version-comparison-table tbody tr:last-child th,
+.version-comparison-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.version-code-diff {
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #0f172a;
+  color: #e5edf7;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.version-code-diff-row {
+  display: grid;
+  grid-template-columns: 48px 48px 24px max-content;
+  min-width: max-content;
+}
+
+.version-code-diff-line,
+.version-code-diff-marker,
+.version-code-diff-text {
+  padding: 1px 8px;
+}
+
+.version-code-diff-line {
+  color: #94a3b8;
+  text-align: right;
+  user-select: none;
+}
+
+.version-code-diff-marker {
+  color: #cbd5e1;
+  text-align: center;
+  user-select: none;
+}
+
+.version-code-diff-text {
+  white-space: pre;
+}
+
+.version-code-diff-row-added {
+  background: #06351f;
+}
+
+.version-code-diff-row-removed {
+  background: #451a1a;
+}
+
+.comparison-complete-code {
+  max-height: 420px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .preview-sandbox-panel {
   display: grid;
   gap: 10px;

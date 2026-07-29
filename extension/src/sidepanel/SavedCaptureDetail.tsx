@@ -15,6 +15,7 @@ import { CapturePreview } from "./CapturePreview";
 import { GenerationWorkflow } from "./GenerationWorkflow";
 import { PreviewSandbox } from "./PreviewSandbox";
 import { RevisionWorkflow } from "./RevisionWorkflow";
+import { VersionComparison } from "./VersionComparison";
 
 export type SavedCaptureDetailState =
   | {
@@ -374,6 +375,9 @@ function GeneratedVersionsSection({
         <>
           <p className="empty-note">{state.versions.length} generated version{state.versions.length === 1 ? "" : "s"} saved locally.</p>
           {state.versions.length === 0 ? <p className="empty-note">No generated versions saved yet.</p> : null}
+          {state.versions.length > 0 ? (
+            <VersionComparison key={sourceCaptureId} versions={state.versions} sourceCaptureId={sourceCaptureId} />
+          ) : null}
           {state.versions.map((entry) => {
             const expanded = expandedId === entry.id;
             const revisionOpen = revisionSourceId === entry.id;
