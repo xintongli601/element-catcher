@@ -941,6 +941,8 @@ Residual risks: the local backend/proxy remains a development/demo topology, not
 
 Milestone 6D explicitly excludes version comparison UI, final Milestone 6 regression closure, export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, automatic execution of revised source, and storage migration. Milestone 6E is now Current and is responsible for version comparison plus final Milestone 6 integrated regression and documentation closure after implementation and independent acceptance.
 
+Milestone 6E architecture: `docs/MILESTONE_6E_COMPARISON_ARCHITECTURE.md`.
+
 ## Milestone 7 - Export and Future Expansion
 
 Status: Planned
