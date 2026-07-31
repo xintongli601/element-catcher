@@ -63,16 +63,7 @@ test.describe("Milestone 6E Slice 3 version comparison hardening", () => {
 
   test("drops a previous-capture late revision completion after Detail unmount and capture switch", async ({ sidePanelPage }) => {
     const { target, otherTarget, base, child } = await seedComparisonVersions(sidePanelPage);
-    const otherBase = createV1(otherTarget, "10000000000000000000000000000001", "OtherBaselineCard", {
-      summary: "Other capture baseline source.",
-      createdAt: "2026-07-18T13:00:00.000Z"
-    });
-    const otherChild = createV2(otherTarget, "10000000000000000000000000000002", "OtherCandidateCard", otherBase.id, {
-      summary: "Other capture candidate source.",
-      createdAt: "2026-07-18T13:01:00.000Z"
-    });
-    await putGeneratedVersion(sidePanelPage, otherBase);
-    await putGeneratedVersion(sidePanelPage, otherChild);
+    const { otherBase, otherChild } = await seedOtherComparisonVersions(sidePanelPage, otherTarget);
     await enableRevisionLoopback(sidePanelPage);
     const route = await installDeferredRevisionRoute(sidePanelPage);
 
@@ -101,6 +92,83 @@ test.describe("Milestone 6E Slice 3 version comparison hardening", () => {
     await sidePanelPage.getByRole("button", { name: "Back to Library" }).click();
     await openCapture(sidePanelPage, target);
     await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
+    await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
+  });
+
+  test("ignores a pending Capture A generated-version refresh after switching to Capture B", async ({ sidePanelPage }) => {
+    const { target, otherTarget, base, child, refreshSource } = await seedComparisonVersions(sidePanelPage);
+    const { otherBase, otherChild } = await seedOtherComparisonVersions(sidePanelPage, otherTarget);
+    await enableRevisionLoopback(sidePanelPage);
+    await fulfillRevisionRequests(sidePanelPage);
+
+    await openCapture(sidePanelPage, target);
+    await compare(sidePanelPage, base, child);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveValue(base.id);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue(child.id);
+
+    await installGeneratedListCompletionGate(sidePanelPage, target.record.id, 1);
+    await saveRevisionFromVersion(sidePanelPage, refreshSource, "Start pending Capture A refresh before switching captures");
+    await expectGeneratedListGateCount(sidePanelPage, 1);
+
+    await sidePanelPage.getByRole("button", { name: "Back to Library" }).click();
+    await openCapture(sidePanelPage, otherTarget);
+    await expect(sidePanelPage.getByRole("heading", { name: otherTarget.title })).toBeVisible();
+    await expect(sidePanelPage.getByText("2 generated versions saved locally.")).toBeVisible();
+    await releaseGeneratedListCompletion(sidePanelPage, 0);
+
+    await expect(sidePanelPage.getByRole("heading", { name: otherTarget.title })).toBeVisible();
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveCount(0);
+    await expect(sidePanelPage.getByText(target.title)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(base.id)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(child.id)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(child.value.summary)).toHaveCount(0);
+    await expect(sidePanelPage.getByText("Newest accepted child summary.")).toHaveCount(0);
+    await expect(sidePanelPage.getByText("Revision saved")).toHaveCount(0);
+    await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
+
+    await compare(sidePanelPage, otherBase, otherChild);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveValue(otherBase.id);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue(otherChild.id);
+    await expect(sidePanelPage.getByText(otherChild.value.summary)).toBeVisible();
+    await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
+  });
+
+  test("does not reopen detail or comparison after a pending generated-version refresh resolves on Library", async ({ sidePanelPage }) => {
+    const { target, base, child, refreshSource } = await seedComparisonVersions(sidePanelPage);
+    await enableRevisionLoopback(sidePanelPage);
+    await fulfillRevisionRequests(sidePanelPage);
+
+    await openCapture(sidePanelPage, target);
+    await compare(sidePanelPage, base, child);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveValue(base.id);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue(child.id);
+
+    await installGeneratedListCompletionGate(sidePanelPage, target.record.id, 1);
+    await saveRevisionFromVersion(sidePanelPage, refreshSource, "Start pending refresh before returning to Library");
+    await expectGeneratedListGateCount(sidePanelPage, 1);
+
+    await sidePanelPage.getByRole("button", { name: "Back to Library" }).click();
+    await expect(sidePanelPage.getByRole("button", { name: `Open saved capture: ${target.title}` })).toBeVisible();
+    await releaseGeneratedListCompletion(sidePanelPage, 0);
+
+    await expect(sidePanelPage.getByRole("button", { name: `Open saved capture: ${target.title}` })).toBeVisible();
+    await expect(sidePanelPage.getByRole("heading", { name: "Generated versions" })).toHaveCount(0);
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveCount(0);
+    await expect(sidePanelPage.getByText(base.id)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(child.id)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(child.value.summary)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(child.value.code)).toHaveCount(0);
+    await expect(sidePanelPage.getByText("Revision saved")).toHaveCount(0);
+    await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
+
+    await openCapture(sidePanelPage, target);
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveCount(0);
     await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
   });
 
@@ -430,6 +498,20 @@ async function seedComparisonVersions(page: Page, options: SeedOptions = {}) {
   }
 
   return { target, otherTarget, base, child, sibling, refreshSource, missingAncestor, cycleA, finalNewlineOnly, oversized };
+}
+
+async function seedOtherComparisonVersions(page: Page, otherTarget: SeededCapture) {
+  const otherBase = createV1(otherTarget, "10000000000000000000000000000001", "OtherBaselineCard", {
+    summary: "Other capture baseline source.",
+    createdAt: "2026-07-18T13:00:00.000Z"
+  });
+  const otherChild = createV2(otherTarget, "10000000000000000000000000000002", "OtherCandidateCard", otherBase.id, {
+    summary: "Other capture candidate source.",
+    createdAt: "2026-07-18T13:01:00.000Z"
+  });
+  await putGeneratedVersion(page, otherBase);
+  await putGeneratedVersion(page, otherChild);
+  return { otherBase, otherChild };
 }
 
 async function openCapture(page: Page, target: SeededCapture) {
