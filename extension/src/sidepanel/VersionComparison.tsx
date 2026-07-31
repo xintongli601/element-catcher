@@ -64,6 +64,12 @@ export function VersionComparison({ versions, sourceCaptureId }: VersionComparis
     }
   }, [state.status]);
 
+  useEffect(() => {
+    if (state.status === "selecting" && hasEnoughVersions) {
+      requestAnimationFrame(() => baselineSelectRef.current?.focus());
+    }
+  }, [hasEnoughVersions, state.status]);
+
   const openComparison = () => {
     setState(
       hasEnoughVersions
@@ -257,7 +263,7 @@ function ComparisonResult({
 
       <section aria-labelledby="version-comparison-relationship-heading">
         <h5 id="version-comparison-relationship-heading">Relationship</h5>
-        <p className="version-comparison-relationship">{model.relationship}</p>
+        <p className="version-comparison-relationship">{describeLineageRelationship(model.relationship)}</p>
       </section>
 
       <section aria-labelledby="version-comparison-metadata-heading">
@@ -278,7 +284,7 @@ function ComparisonResult({
                   <th scope="row">{row.label}</th>
                   <td>{row.baselineValue ?? "Not present"}</td>
                   <td>{row.candidateValue ?? "Not present"}</td>
-                  <td>{row.status}</td>
+                  <td>{describeMetadataStatus(row.status)}</td>
                 </tr>
               ))}
             </tbody>
@@ -311,6 +317,20 @@ function CodeDiffView({ codeDiff }: { codeDiff: VersionComparisonModel["codeDiff
 
   return (
     <div className="version-code-diff" role="table" aria-label="Code changes">
+      <div className="version-code-diff-row version-code-diff-header" role="row">
+        <span className="version-code-diff-line" role="columnheader">
+          Baseline line
+        </span>
+        <span className="version-code-diff-line" role="columnheader">
+          Candidate line
+        </span>
+        <span className="version-code-diff-change" role="columnheader">
+          Change
+        </span>
+        <span className="version-code-diff-code" role="columnheader">
+          Code
+        </span>
+      </div>
       {codeDiff.rows.map((row, index) => (
         <DiffRow row={row} index={index} key={`${row.kind}:${row.baselineLineNumber ?? "-"}:${row.candidateLineNumber ?? "-"}:${index}`} />
       ))}
@@ -319,6 +339,9 @@ function CodeDiffView({ codeDiff }: { codeDiff: VersionComparisonModel["codeDiff
 }
 
 function DiffRow({ row, index }: { row: VersionCodeDiffRow; index: number }) {
+  const status = describeDiffRowKind(row.kind);
+  const codeText = row.text === "" ? "(blank line)" : row.text;
+
   return (
     <div className={`version-code-diff-row version-code-diff-row-${row.kind}`} role="row">
       <span className="version-code-diff-line" role="cell" aria-label={`Baseline line ${row.baselineLineNumber ?? "none"}`}>
@@ -327,15 +350,57 @@ function DiffRow({ row, index }: { row: VersionCodeDiffRow; index: number }) {
       <span className="version-code-diff-line" role="cell" aria-label={`Candidate line ${row.candidateLineNumber ?? "none"}`}>
         {row.candidateLineNumber ?? ""}
       </span>
-      <span className="version-code-diff-marker" role="cell" aria-hidden="true">
-        {row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " "}
+      <span className="version-code-diff-change" role="cell">
+        <span className="version-code-diff-status">{status}</span>
+        <span className="version-code-diff-marker" aria-hidden="true">
+          {row.kind === "added" ? "+" : row.kind === "removed" ? "-" : " "}
+        </span>
       </span>
-      <code className="version-code-diff-text" role="cell">
-        {row.text || " "}
+      <code className="version-code-diff-text" role="cell" aria-label={row.text === "" ? `${status} blank line` : undefined}>
+        {codeText}
       </code>
       <span className="sr-only">Diff row {index + 1}</span>
     </div>
   );
+}
+
+function describeDiffRowKind(kind: VersionCodeDiffRow["kind"]) {
+  if (kind === "added") {
+    return "Added";
+  }
+  if (kind === "removed") {
+    return "Removed";
+  }
+  return "Unchanged";
+}
+
+function describeMetadataStatus(status: VersionComparisonModel["metadataRows"][number]["status"]) {
+  if (status === "baseline-only") {
+    return "Baseline only";
+  }
+  if (status === "candidate-only") {
+    return "Candidate only";
+  }
+  return status === "changed" ? "Changed" : "Unchanged";
+}
+
+function describeLineageRelationship(relationship: VersionComparisonModel["relationship"]) {
+  switch (relationship) {
+    case "direct-child":
+      return "Candidate is a direct child of Baseline.";
+    case "direct-parent":
+      return "Candidate is the direct parent of Baseline.";
+    case "descendant":
+      return "Candidate descends from Baseline.";
+    case "ancestor":
+      return "Candidate is an ancestor of Baseline.";
+    case "sibling":
+      return "Baseline and Candidate share the same loaded parent.";
+    case "unrelated-lineage":
+      return "No loaded lineage relationship was found.";
+    case "incomplete-lineage":
+      return "The relationship cannot be fully determined because lineage is missing or invalid.";
+  }
 }
 
 function MetadataItem({ label, value }: { label: string; value: string }) {

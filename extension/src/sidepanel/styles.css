@@ -468,14 +468,22 @@ h2 {
 
 .version-code-diff-row {
   display: grid;
-  grid-template-columns: 48px 48px 24px max-content;
+  grid-template-columns: 72px 82px 112px max-content;
   min-width: max-content;
 }
 
 .version-code-diff-line,
-.version-code-diff-marker,
+.version-code-diff-change,
 .version-code-diff-text {
   padding: 1px 8px;
+}
+
+.version-code-diff-header {
+  position: sticky;
+  top: 0;
+  background: #172033;
+  color: #ffffff;
+  font-weight: 700;
 }
 
 .version-code-diff-line {
@@ -484,10 +492,20 @@ h2 {
   user-select: none;
 }
 
+.version-code-diff-change {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: #e5edf7;
+  user-select: none;
+}
+
+.version-code-diff-status {
+  min-width: 68px;
+}
+
 .version-code-diff-marker {
   color: #cbd5e1;
-  text-align: center;
-  user-select: none;
 }
 
 .version-code-diff-text {

@@ -1,4 +1,5 @@
 import { expect, test } from "./extension-fixture";
+import type { Locator } from "@playwright/test";
 import {
   putGeneratedVersion,
   readGeneratedVersions,
@@ -10,6 +11,9 @@ import type {
   GeneratedComponentVersionEntryV1,
   GeneratedComponentVersionEntryV2
 } from "../../extension/src/shared/generated-version-contract";
+import type { ComponentGenerationResponseV1 } from "../../extension/src/shared/generation-contract";
+
+const revisionEndpoint = "http://127.0.0.1:8787/v1/revise-component";
 
 test.describe("Milestone 6E Slice 2 version comparison workflow", () => {
   test("shows an unavailable comparison state when fewer than two versions are loaded", async ({ sidePanelPage }) => {
@@ -45,9 +49,18 @@ test.describe("Milestone 6E Slice 2 version comparison workflow", () => {
     await sidePanelPage.getByRole("button", { name: "Compare", exact: true }).click();
     await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toBeFocused();
     await expect(sidePanelPage.getByRole("heading", { name: "Relationship" })).toBeVisible();
-    await expect(sidePanelPage.getByText("direct-child")).toBeVisible();
+    await expect(sidePanelPage.getByText("Candidate is a direct child of Baseline.")).toBeVisible();
     await expect(sidePanelPage.getByRole("heading", { name: "Metadata changes" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("cell", { name: "Changed" }).first()).toBeVisible();
+    await expect(sidePanelPage.getByRole("cell", { name: "Candidate only" }).first()).toBeVisible();
     await expect(sidePanelPage.getByRole("heading", { name: "Code changes" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("columnheader", { name: "Baseline line" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("columnheader", { name: "Candidate line" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("columnheader", { name: "Change" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("columnheader", { name: "Code" })).toBeVisible();
+    await expect(sidePanelPage.getByRole("cell", { name: "Added" }).first()).toBeVisible();
+    await expect(sidePanelPage.getByRole("cell", { name: "Removed" }).first()).toBeVisible();
+    await expect(sidePanelPage.getByRole("cell", { name: "Unchanged" }).first()).toBeVisible();
     await expect(sidePanelPage.getByRole("heading", { name: "Complete Baseline code" })).toBeVisible();
     await expect(sidePanelPage.getByRole("heading", { name: "Complete Candidate code" })).toBeVisible();
     await expect(sidePanelPage.getByText("Revision instruction")).toBeVisible();
@@ -57,7 +70,7 @@ test.describe("Milestone 6E Slice 2 version comparison workflow", () => {
 
     await sidePanelPage.getByRole("button", { name: "Swap" }).click();
     await expect(sidePanelPage.getByRole("button", { name: "Swap" })).toBeFocused();
-    await expect(sidePanelPage.getByText("direct-parent")).toBeVisible();
+    await expect(sidePanelPage.getByText("Candidate is the direct parent of Baseline.")).toBeVisible();
 
     await sidePanelPage.getByRole("button", { name: "Change selections" }).click();
     await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
@@ -65,7 +78,7 @@ test.describe("Milestone 6E Slice 2 version comparison workflow", () => {
     await sidePanelPage.getByLabel("Candidate version").selectOption({ label: versionLabel(sibling) });
     await expect(sidePanelPage.locator(".version-comparison-relationship")).toHaveCount(0);
     await sidePanelPage.getByRole("button", { name: "Compare", exact: true }).click();
-    await expect(sidePanelPage.locator(".version-comparison-relationship")).toHaveText("sibling");
+    await expect(sidePanelPage.locator(".version-comparison-relationship")).toHaveText("Baseline and Candidate share the same loaded parent.");
 
     await sidePanelPage.getByRole("button", { name: "Close comparison" }).last().click();
     await expect(sidePanelPage.getByRole("button", { name: "Compare versions" })).toBeFocused();
@@ -93,7 +106,87 @@ test.describe("Milestone 6E Slice 2 version comparison workflow", () => {
     await sidePanelPage.getByRole("button", { name: "Change selections" }).click();
 
     await compare(sidePanelPage, equalBase, missingAncestor, { alreadyOpen: true });
-    await expect(sidePanelPage.getByText("incomplete-lineage")).toBeVisible();
+    await expect(sidePanelPage.getByText("The relationship cannot be fully determined because lineage is missing or invalid.")).toBeVisible();
+  });
+
+  test("preserves and recomputes an open comparison after a legitimate generated-version refresh", async ({ sidePanelPage }) => {
+    const { target, base, child, sibling } = await seedComparisonVersions(sidePanelPage);
+    await enableRevisionLoopback(sidePanelPage);
+    await fulfillRevisionRequests(sidePanelPage, { componentName: "SiblingCard", summary: "Refresh trigger revision saved." });
+    await openCapture(sidePanelPage, target);
+    await compare(sidePanelPage, base, child);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue(child.id);
+
+    const refreshedChild = {
+      ...child,
+      value: {
+        ...child.value,
+        code: "export function CandidateCard() {\n  return <button>Refreshed candidate</button>;\n}",
+        summary: "Candidate refreshed through accepted list."
+      }
+    };
+    await putGeneratedVersion(sidePanelPage, refreshedChild);
+    await saveRevisionFromVersion(sidePanelPage, sibling, "Trigger refresh preservation");
+
+    await expect(sidePanelPage.getByText("4 generated versions saved locally.")).toBeVisible();
+    const refreshedVersions = await readGeneratedVersions(sidePanelPage, target.record.id);
+    expect(refreshedVersions.map((entry) => (entry as { id?: string }).id)).toEqual(expect.arrayContaining([base.id, child.id]));
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toBeVisible();
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveValue(base.id);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue(child.id);
+    await expect(sidePanelPage.getByText("Candidate refreshed through accepted list.")).toBeVisible();
+    await expect(sidePanelPage.getByLabel("Complete Candidate code").getByText("Refreshed candidate")).toBeVisible();
+    await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
+  });
+
+  test("retires a stale selected version after refresh while keeping the surviving role selected", async ({ sidePanelPage }) => {
+    const { target, base, child, sibling } = await seedComparisonVersions(sidePanelPage);
+    await enableRevisionLoopback(sidePanelPage);
+    await fulfillRevisionRequests(sidePanelPage, { componentName: "SiblingCard", summary: "Retirement trigger revision saved." });
+    await openCapture(sidePanelPage, target);
+    await compare(sidePanelPage, base, child);
+    await expect(sidePanelPage.getByText(child.value.summary)).toBeVisible();
+
+    await deleteGeneratedVersionForWorkflow(sidePanelPage, child.id);
+    await saveRevisionFromVersion(sidePanelPage, sibling, "Trigger selected retirement");
+
+    await expect(sidePanelPage.getByRole("alert")).toContainText("The selected version is no longer available. Choose two versions again.");
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveValue(base.id);
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue("");
+    await expect(sidePanelPage.getByText(child.value.summary)).toHaveCount(0);
+    await expect(sidePanelPage.getByText(child.value.code)).toHaveCount(0);
+    await sidePanelPage.waitForTimeout(300);
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toHaveCount(0);
+  });
+
+  test("supports a keyboard-only comparison, swap, and close loop", async ({ sidePanelPage }) => {
+    const { target, child, sibling } = await seedComparisonVersions(sidePanelPage);
+    await openCapture(sidePanelPage, target);
+
+    await sidePanelPage.getByRole("button", { name: "Compare versions" }).focus();
+    await sidePanelPage.keyboard.press("Enter");
+    await expect(sidePanelPage.getByLabel("Baseline version")).toBeVisible();
+    await tabTo(sidePanelPage, sidePanelPage.getByLabel("Baseline version"));
+    await sidePanelPage.keyboard.press("KeyS");
+    await expect(sidePanelPage.getByLabel("Baseline version")).toHaveValue(sibling.id);
+    await sidePanelPage.keyboard.press("Tab");
+    await expect(sidePanelPage.getByLabel("Candidate version")).toBeFocused();
+    await sidePanelPage.keyboard.press("KeyC");
+    await expect(sidePanelPage.getByLabel("Candidate version")).toHaveValue(child.id);
+    await sidePanelPage.keyboard.press("Tab");
+    await expect(sidePanelPage.getByRole("button", { name: "Compare", exact: true })).toBeFocused();
+    await sidePanelPage.keyboard.press("Enter");
+    await expect(sidePanelPage.getByRole("heading", { name: "Comparison overview" })).toBeFocused();
+    await sidePanelPage.keyboard.press("Tab");
+    await expect(sidePanelPage.getByRole("button", { name: "Swap" })).toBeFocused();
+    await sidePanelPage.keyboard.press("Enter");
+    await expect(sidePanelPage.getByRole("button", { name: "Swap" })).toBeFocused();
+    await sidePanelPage.keyboard.press("Tab");
+    await sidePanelPage.keyboard.press("Tab");
+    await expect(sidePanelPage.getByRole("button", { name: "Close comparison" }).last()).toBeFocused();
+    await sidePanelPage.keyboard.press("Enter");
+    await expect(sidePanelPage.getByRole("button", { name: "Compare versions" })).toBeFocused();
   });
 
   test("keeps comparison separate from expanded details and revision tools, and clears on capture switch", async ({ sidePanelPage }) => {
@@ -208,6 +301,91 @@ function trackRemoteRequests(page: Parameters<typeof resetAndSeedSavedCaptures>[
     }
   });
   return () => requests;
+}
+
+async function enableRevisionLoopback(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {
+  await page.evaluate(() => {
+    window.__EC_REVISION_WORKFLOW_TEST_LOOPBACK__ = true;
+  });
+}
+
+async function fulfillRevisionRequests(
+  page: Parameters<typeof resetAndSeedSavedCaptures>[0],
+  options: Partial<ComponentGenerationResponseV1> = {}
+) {
+  const requests: Array<{ headers: Record<string, string>; body: unknown }> = [];
+  await page.route(revisionEndpoint, async (route, request) => {
+    requests.push({ headers: request.headers(), body: request.postDataJSON() });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        contractVersion: 1,
+        componentName: options.componentName ?? "RefreshCard",
+        framework: "react",
+        styling: "tailwind",
+        code: options.code ?? "export function RefreshCard() { return <button>Refresh</button>; }",
+        summary: options.summary ?? "Refresh workflow response.",
+        approximationNotes: options.approximationNotes ?? "Refresh workflow e2e response."
+      } satisfies ComponentGenerationResponseV1)
+    });
+  });
+  return () => requests;
+}
+
+async function saveRevisionFromVersion(
+  page: Parameters<typeof resetAndSeedSavedCaptures>[0],
+  source: GeneratedComponentVersionEntry,
+  instruction: string
+) {
+  const item = page.locator(".generated-version-item").filter({
+    has: page.getByRole("button", { name: versionLabel(source) })
+  });
+  await item.getByRole("button", { name: versionLabel(source) }).click();
+  await item.getByRole("button", { name: "Revise or regenerate" }).click();
+  await expect(page.getByRole("heading", { name: "Trusted revision workflow" })).toBeVisible();
+  await page.getByRole("button", { name: "Revise" }).click();
+  await page.getByLabel("Instruction").fill(instruction);
+  await page.getByRole("button", { name: "Review data" }).click();
+  await page.getByLabel("I understand this displayed data will leave my device and may use paid AI capacity.").check();
+  await page.getByRole("button", { name: "Send revision" }).click();
+  await expect(page.getByRole("heading", { name: "Revision saved" })).toBeVisible();
+}
+
+async function deleteGeneratedVersionForWorkflow(page: Parameters<typeof resetAndSeedSavedCaptures>[0], id: string) {
+  await page.evaluate(
+    async ({ id: generatedVersionId }) => {
+      const request = indexedDB.open("element-catcher-local-persistence", 2);
+      const database = await new Promise<IDBDatabase>((resolve, reject) => {
+        request.onerror = () => reject(request.error);
+        request.onupgradeneeded = () => reject(new Error("Unexpected database upgrade during generated version deletion."));
+        request.onsuccess = () => resolve(request.result);
+      });
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const transaction = database.transaction("generatedComponentVersions", "readwrite");
+          transaction.objectStore("generatedComponentVersions").delete(generatedVersionId);
+          transaction.oncomplete = () => resolve();
+          transaction.onerror = () => reject(transaction.error);
+          transaction.onabort = () => reject(transaction.error);
+        });
+      } finally {
+        database.close();
+      }
+    },
+    { id }
+  );
+}
+
+async function tabTo(page: Parameters<typeof resetAndSeedSavedCaptures>[0], locator: Locator) {
+  for (let index = 0; index < 20; index += 1) {
+    await page.keyboard.press("Tab");
+    if (await locator.evaluate((element) => element === document.activeElement).catch(() => false)) {
+      return;
+    }
+  }
+  await expect(locator).toBeFocused();
 }
 
 function versionLabel(entry: GeneratedComponentVersionEntry) {
