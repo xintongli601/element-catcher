@@ -2,7 +2,7 @@
 
 ## 1. Status and Scope
 
-Milestone 6E is Completed. Milestone 6D is Completed. Milestone 6 is Completed. Milestone 7 remains Planned.
+Milestone 6E is Completed. Milestone 6D is Completed. Milestone 6 is Completed. Milestone 7 is Current, beginning with Milestone 7A local generated-source export architecture.
 
 This document records the accepted architecture and closeout state for local comparison of two persisted generated component versions. Milestone 6E delivered production behavior and tests without storage schema changes, backend routes, Preview protocol changes, package dependencies, Manifest changes, CSP changes, generated-version contract changes, or production security relaxation. Final integrated Milestone 6 regression and documentation closure are complete.
 

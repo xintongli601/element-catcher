@@ -947,25 +947,29 @@ Accepted 6E hardening confirmed that stale and out-of-order refreshes cannot ove
 
 Accepted local validation reported for the Milestone 6E closure: `npm run build` passed; focused Milestone 6E suite reported 25 passed; focused stability rerun reported 25 passed; backend tests reported 13 passed; full E2E reported 225 passed and 1 skipped; `npm audit --omit=dev` reported 0 vulnerabilities. The documented skip was: `Milestone 5C loopback E2E requires an extension build with the loopback endpoint.` These were local reported validation results associated with the accepted implementation, not GitHub Actions results. Final hardening made no production security relaxation and no database, Manifest, CSP, Preview protocol, or generated-version contract change.
 
-Milestone 6 explicitly excludes export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, automatic execution of generated or revised source, storage migration, screenshot-pixel comparison, rendered-output comparison, scoring, winner selection, merge, edit, cross-capture comparison, three-way comparison, and multi-version comparison. Export remains planned for Milestone 7.
+Milestone 6 explicitly excludes export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, automatic execution of generated or revised source, storage migration, screenshot-pixel comparison, rendered-output comparison, scoring, winner selection, merge, edit, cross-capture comparison, three-way comparison, and multi-version comparison. Export begins in Milestone 7A as a narrow local generated-source export architecture and implementation track.
 
 Milestone 6E architecture: `docs/MILESTONE_6E_COMPARISON_ARCHITECTURE.md`.
 
 ## Milestone 7 - Export and Future Expansion
 
-Status: Planned
+Status: Current
 
 Objective: Define and implement export and expansion paths without turning the MVP into a full publishing, enterprise, or multi-framework platform.
 
+Substage status:
+
+- Milestone 7A - Local generated source export: Current.
+- GitHub workflow: Planned or explicitly out of scope until separately scoped.
+- Figma integration: Planned or explicitly out of scope until separately scoped.
+- Cloud sync: Planned or explicitly out of scope until separately scoped.
+- Collaboration: Planned or explicitly out of scope until separately scoped.
+- Additional framework targets: Planned or explicitly out of scope until separately scoped.
+
 Included scope:
 
-- Code file export.
-- Potential GitHub workflow.
-- Potential Figma integration.
-- Potential additional framework targets.
-- Potential cloud sync.
-- Potential team collaboration.
-- Export metadata and future expansion hooks.
+- Narrow local generated source export.
+- Future export and expansion hooks only after explicit scoping.
 
 Explicitly excluded scope:
 
@@ -973,6 +977,7 @@ Explicitly excluded scope:
 - Full-site cloning as a product direction.
 - Website publishing as a primary product direction.
 - Enterprise suite requirements as MVP requirements.
+- GitHub, Figma, cloud sync, collaboration, publishing, additional frameworks, archive export, package scaffolding, and multi-file export are not part of Milestone 7A.
 
 Acceptance criteria:
 
@@ -980,3 +985,43 @@ Acceptance criteria:
 - Future integrations do not replace the core CaptureRecord-centered architecture.
 - Any added sync, collaboration, framework, GitHub, or Figma capability is explicitly scoped before implementation.
 - The product remains focused on reusable UI inspiration capture rather than full-site cloning or publishing.
+
+### Milestone 7A - Local Generated Source Export
+
+Status: Current
+
+Objective: Define and implement one narrow local generated-source export path from Saved Capture Detail without changing the database, Manifest permissions, CSP, Preview protocol, generated-version contracts, package dependencies, backend, GitHub workflows, or production security boundaries.
+
+Included scope:
+
+- Export exactly one explicitly selected persisted generated version.
+- Support validated V1 entries and validated V2 Revision/Regeneration entries.
+- Operate from an expanded generated-version row in Saved Capture Detail.
+- Reread the selected version from IndexedDB at export time and require it to still exist, remain valid, retain the expected ID, retain the expected `sourceCaptureId`, and exactly equal the displayed immutable entry.
+- Export the exact persisted `entry.value.code` as one UTF-8 `.tsx` file without CRLF normalization, trimming, formatting, injected comments, metadata headers, transpilation, parsing, transformation, or automatic final newline.
+- Derive one deterministic safe `.tsx` filename from the validated persisted `componentName`; fail closed for unexpectedly unsafe names; leave duplicate filename handling to the browser.
+- Use one explicit user-initiated trusted Side Panel download with a Blob, temporary object URL, and temporary anchor.
+- Revoke object URLs deterministically after initiation and on cleanup.
+- Prove the download mechanism in real Chromium with Playwright download events, expected suggested filename, and exact downloaded-byte inspection.
+
+Explicitly excluded scope:
+
+- New `downloads` permission, optional permission, Manifest change, host-permission change, File System Access API, native messaging, arbitrary filesystem access, or automatic clipboard write.
+- Backend, provider, OpenAI, source-page, content-script, service-worker, analytics, GitHub, Figma, or remote-origin requests.
+- Generated-code execution, automatic Preview, Preview iframe creation, IndexedDB writes, `CaptureRecord` mutation, screenshot mutation, generated-version mutation, export UI persistence, metadata sidecars, screenshots, ZIP archives, npm packages, README generation, Tailwind config generation, package file generation, CSS bundle generation, multi-file export, GitHub export, Figma export, cloud sync, collaboration, publishing, and additional frameworks.
+
+Acceptance criteria:
+
+- V1, V2 Revision, and V2 Regeneration exact-byte `.tsx` export pass.
+- Deterministic filename behavior passes, including unsafe-name fail-closed cases.
+- Empty, newline-sensitive, CRLF-sensitive, Unicode, JSX, Tailwind, and final-newline-sensitive code pass exact-byte validation.
+- Preview-rejected but contract-valid source remains exportable.
+- Active Comparison, Preview, Revision, and Regeneration state remain independently controlled.
+- Missing, replaced, externally altered, or wrong-`sourceCaptureId` selected versions fail with a stale-state message and require refresh.
+- Repeated export, rapid double activation, Detail unmount during preparation, and capture switch during preparation are deterministic.
+- Object URL cleanup is verified.
+- Zero IndexedDB writes, zero HTTP/HTTPS requests, zero runtime or tab messages, and zero automatic iframe creation are verified.
+- `CaptureRecord`, screenshot asset, and every pre-existing V1/V2 entry remain byte-for-byte unchanged.
+- Default E2E remains headless.
+
+Architecture: `docs/MILESTONE_7A_LOCAL_EXPORT_ARCHITECTURE.md`.

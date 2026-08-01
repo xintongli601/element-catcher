@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 6 are completed. Milestone 7 remains planned.
+Milestones 1 through 6 are completed. Milestone 7 is Current, beginning with Milestone 7A local generated-source export architecture.
 
 Implemented:
 
@@ -38,7 +38,7 @@ Implemented:
 
 Current next product stage:
 
-- Milestone 7 export and future expansion planning.
+- Milestone 7A local generated-source export implementation after architecture acceptance.
 
 ## 3. Problem Statement
 
@@ -140,7 +140,7 @@ Current/future:
 Reuse/Export
 ```
 
-Reuse workflow polish and export remain future.
+Milestone 7A defines the first narrow export path: one explicit local `.tsx` export of one selected persisted generated version's exact stored source. Broader reuse workflow polish remains future.
 
 ## 9. Structured Capture Concept
 
@@ -221,6 +221,8 @@ Generated-version persistence validates the complete source `CaptureRecord`, sou
 
 Version comparison is local, deterministic, read-only, ephemeral, and limited to exactly two distinct persisted generated versions with the same `sourceCaptureId`. It supports explicit Baseline and Candidate selection, Swap, V1/V2 entries, full original code retention, and bounded internal LCS source diff. It does not persist comparison state, automatically Preview, execute generated code, call backend/provider/OpenAI/source pages/content scripts/service workers/remote origins, compare screenshot pixels or rendered output, score, select winners, merge, edit, compare across captures, or compare three or more versions.
 
+Milestone 7A local export is Current. The planned implementation exports exactly one explicitly selected persisted V1 or V2 generated version from Saved Capture Detail as one UTF-8 `.tsx` file containing only the exact persisted `entry.value.code`. Export must reread the selected entry from IndexedDB at export time, fail stale if the entry is missing or differs from the displayed immutable entry, remain independent from Preview eligibility, require explicit user action, avoid automatic export, avoid source transformation, avoid metadata sidecars, and avoid new `downloads` permission or Manifest changes.
+
 ## 13. Roadmap
 
 - Milestone 1: Completed - extension scaffold.
@@ -230,7 +232,7 @@ Version comparison is local, deterministic, read-only, ephemeral, and limited to
 - Milestone 4: Completed - personal Capture Library.
 - Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Planned - export and future expansion.
+- Milestone 7: Current - local generated-source export starts with Milestone 7A. Milestone 7A is Current; broader GitHub, Figma, cloud sync, collaboration, publishing, additional frameworks, and packaging remain Planned or explicitly out of scope.
 
 ## 14. Success Criteria
 
@@ -263,7 +265,7 @@ Element Catcher v0.1 does not include:
 - Automatic generated-source execution.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
-- Export before Milestone 7.
+- Export beyond the narrow current Milestone 7A local `.tsx` source-export path.
 - Figma export.
 - GitHub export.
 - Team collaboration.

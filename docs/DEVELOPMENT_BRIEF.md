@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 6, including the accepted Milestone 6C Preview, Milestone 6D revision/regeneration, and Milestone 6E generated-version comparison work.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 6 and the start of Milestone 7A local generated-source export architecture.
 
 Current implementation order:
 
@@ -14,10 +14,11 @@ Milestone 6B: Completed
 Milestone 6C: Completed
 Milestone 6D: Completed
 Milestone 6E: Completed
-Milestone 7: Planned
+Milestone 7: Current
+Milestone 7A: Current
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Export remains planned for Milestone 7.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7A is current for architecture and upcoming implementation of one narrow local `.tsx` export path.
 
 ## 2. Current Architecture
 
@@ -37,6 +38,7 @@ Supported webpage
   -> revision/regeneration Review
   -> immutable V2 generated-version persistence
   -> local generated-version comparison
+  -> local generated-source export architecture
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -45,6 +47,7 @@ The `CaptureRecord` remains the immutable source capture. Generated versions hav
 
 - Keep the MVP focused on Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate.
 - Keep generated-version comparison local, read-only, deterministic, and ephemeral.
+- Keep local generated-source export explicit, source-only, deterministic, and independent from Preview.
 - Preserve local-first behavior by default.
 - Treat raw extraction data as intermediate input, not the persisted product.
 - Normalize persisted capture data into `CaptureRecord v1`.
@@ -76,6 +79,7 @@ The Side Panel owns the user workflow:
 - Show exact frozen revision/regeneration Review data and require consent before transport.
 - Persist successful revision/regeneration results as immutable V2 generated-version entries.
 - Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection.
+- In Milestone 7A implementation, export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
 
 ### 4.2 Background Service Worker
 
@@ -320,6 +324,22 @@ Milestone 6E comparison is implemented from the Generated Versions section:
 
 Comparison does not automatically Preview, execute generated code, write IndexedDB, call backend/provider/OpenAI/source pages/content scripts/service workers/remote origins, compare screenshot pixels or rendered output, score versions, choose winners, merge, edit, compare across captures, or compare three or more versions.
 
+### 4.14 Local Generated Source Export
+
+Milestone 7A starts local export with a narrow architecture and no runtime export implementation in Slice 1:
+
+- Export is initiated only from an expanded generated-version row in Saved Capture Detail.
+- The first target exports exactly one selected persisted V1 or V2 generated-version entry.
+- Export rereads the selected generated-version ID from IndexedDB at initiation time.
+- The reread entry must exist, validate, retain the expected ID, retain the expected `sourceCaptureId`, and exactly equal the displayed immutable entry.
+- The exported bytes are the exact persisted `entry.value.code` encoded as UTF-8.
+- Export performs no CRLF normalization, trimming, formatting, comment injection, metadata header insertion, transpilation, parsing, transformation, or automatic final newline insertion.
+- Filename construction uses the validated persisted `componentName` and produces one deterministic safe `.tsx` filename with no IDs, URLs, page titles, timestamps, path separators, traversal, query characters, or random suffixes.
+- Export remains independent from Preview eligibility and does not claim the source is safe, correct, production-ready, previewable, or dependency-complete.
+- The target mechanism is a user-initiated Side Panel download using a Blob, temporary object URL, and temporary anchor, with deterministic object URL revocation and real Chromium Playwright download validation.
+
+Export does not automatically run after generation, revision, regeneration, comparison, Preview, reopen, refresh, or capture navigation. Export state is separate from expanded row state, Preview state, revision/regeneration state, and Comparison state.
+
 ## 5. Security and Privacy Boundaries
 
 - Captures remain local by default.
@@ -330,6 +350,7 @@ Comparison does not automatically Preview, execute generated code, write Indexed
 - Preview execution is limited to accepted data-only render plans in the Milestone 6C sandbox; no full arbitrary generated-code execution, `eval`, `Function` constructor, `dangerouslySetInnerHTML`, browser APIs, storage, navigation, network, workers, or generated CSS runtime is allowed.
 - Revision/regeneration never automatically previews or executes revised source.
 - Comparison never automatically previews or executes generated source, never persists comparison state, and never calls backend/provider/OpenAI/source pages/content scripts/service workers or remote origins.
+- Local export never executes generated source, never opens Preview, never creates Preview iframes, never writes IndexedDB, never mutates `CaptureRecord`, screenshots, V1 entries, or V2 entries, never persists export UI state, and never calls backend/provider/OpenAI/source pages/content scripts/service workers, analytics, GitHub, Figma, or remote origins.
 
 ## 6. Completed Milestone 6 Handoff
 
@@ -347,7 +368,7 @@ Milestone 6 preserves the local-first capture model, provider-secret boundary, s
 
 The current implementation does not include:
 
-- Export.
+- Completed export implementation beyond the current Milestone 7A architecture start.
 - Website publishing.
 - Figma export.
 - GitHub export.
