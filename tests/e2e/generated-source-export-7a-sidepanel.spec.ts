@@ -102,6 +102,7 @@ test.describe("Milestone 7A Slice 2 generated source export Side Panel workflow"
     await sidePanelPage.getByRole("button", { name: exportLabel(v1) }).click({ force: true });
     expect(await readExportDownloads(sidePanelPage)).toEqual([]);
 
+    await expectDeferredExportCount(sidePanelPage, 1);
     await releaseDeferredExport(sidePanelPage);
     await expectDownload(sidePanelPage, 1, {
       filename: "ExportBaseCard.tsx",
@@ -162,6 +163,7 @@ test.describe("Milestone 7A Slice 2 generated source export Side Panel workflow"
     await expect(sidePanelPage.getByRole("button", { name: exportLabel(v1) })).toBeDisabled();
     await sidePanelPage.getByRole("button", { name: "Back to Library" }).click();
     await openCapture(sidePanelPage, otherTarget);
+    await expectDeferredExportCount(sidePanelPage, 1);
     await releaseDeferredExport(sidePanelPage);
 
     expect(await readExportDownloads(sidePanelPage)).toEqual([]);
@@ -297,18 +299,35 @@ async function expectDownload(page: Page, count: number, expected: { filename: s
 
 async function installDeferredBeforeInitiate(page: Page) {
   await page.evaluate(() => {
-    let releaseCurrent: (() => void) | null = null;
+    const releases: Array<() => void> = [];
+    Object.defineProperty(window, "__ecGeneratedSourceExportReleaseCount", {
+      configurable: true,
+      get() {
+        return releases.length;
+      }
+    });
     (window as unknown as { __ecReleaseGeneratedSourceExport?: () => void }).__ecReleaseGeneratedSourceExport = () => {
-      releaseCurrent?.();
-      releaseCurrent = null;
+      for (const release of releases.splice(0)) {
+        release();
+      }
     };
     window.__EC_GENERATED_SOURCE_EXPORT_TEST_HARNESS__ = {
       beforeInitiate: () =>
         new Promise<void>((resolve) => {
-          releaseCurrent = resolve;
+          releases.push(resolve);
         })
     };
   });
+}
+
+async function expectDeferredExportCount(page: Page, count: number) {
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        return (window as unknown as { __ecGeneratedSourceExportReleaseCount?: number }).__ecGeneratedSourceExportReleaseCount ?? 0;
+      })
+    )
+    .toBe(count);
 }
 
 async function releaseDeferredExport(page: Page) {

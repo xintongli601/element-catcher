@@ -32,6 +32,7 @@ export function GeneratedVersionExport({
 }) {
   const [state, setState] = useState<ExportState>({ status: "idle" });
   const attemptTokenRef = useRef(0);
+  const preparingRef = useRef(false);
   const objectUrlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
   const isPreparing = state.status === "preparing";
@@ -41,17 +42,19 @@ export function GeneratedVersionExport({
     return () => {
       mountedRef.current = false;
       attemptTokenRef.current += 1;
+      preparingRef.current = false;
       revokeOwnedObjectUrl(objectUrlRef);
     };
   }, []);
 
   const startExport = async () => {
-    if (isPreparing) {
+    if (isPreparing || preparingRef.current) {
       return;
     }
 
     const attemptToken = attemptTokenRef.current + 1;
     attemptTokenRef.current = attemptToken;
+    preparingRef.current = true;
     revokeOwnedObjectUrl(objectUrlRef);
     setState({ status: "preparing" });
 
@@ -75,12 +78,14 @@ export function GeneratedVersionExport({
         reread.sourceCaptureId !== snapshot.sourceCaptureId ||
         !generatedSourceExportEntriesEqual(reread, snapshot)
       ) {
+        preparingRef.current = false;
         setState({ status: "stale" });
         return;
       }
 
       const prepared = prepareGeneratedSourceExport(reread);
       if (!prepared.ok) {
+        preparingRef.current = false;
         setState({ status: "failed" });
         return;
       }
@@ -96,11 +101,13 @@ export function GeneratedVersionExport({
         return;
       }
 
+      preparingRef.current = false;
       setState({ status: "initiated", filename: prepared.value.filename });
       scheduleOwnedObjectUrlRevocation(objectUrlRef);
     } catch {
       if (isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
         revokeOwnedObjectUrl(objectUrlRef);
+        preparingRef.current = false;
         setState({ status: "failed" });
       }
     }
@@ -147,12 +154,19 @@ function initiateDownload(payload: GeneratedSourceExportPayload, objectUrlRef: M
   objectUrlRef.current = objectUrl;
 
   const anchor = document.createElement("a");
-  anchor.href = objectUrl;
-  anchor.download = payload.filename;
-  anchor.style.display = "none";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
+  let appended = false;
+  try {
+    anchor.href = objectUrl;
+    anchor.download = payload.filename;
+    anchor.style.display = "none";
+    document.body.append(anchor);
+    appended = true;
+    anchor.click();
+  } finally {
+    if (appended) {
+      anchor.remove();
+    }
+  }
 }
 
 function scheduleOwnedObjectUrlRevocation(objectUrlRef: MutableRefObject<string | null>) {
