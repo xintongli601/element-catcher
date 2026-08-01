@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is current, starting with Milestone 7A architecture for narrow local generated-source export. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is current. Milestone 7A is completed for narrow local generated-source export. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -34,7 +34,12 @@ Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and
 - Keep revised and regenerated source inert until the user separately chooses Preview through the accepted Milestone 6C sandbox boundary.
 - Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection, Swap, metadata comparison, bounded internal LCS source diff, and complete original source display.
 - Keep comparison local, deterministic, read-only, ephemeral, and separate from Preview, revision, regeneration, persistence, backend/provider/OpenAI calls, source pages, content scripts, service workers, and remote origins.
-- Milestone 7A is current for local `.tsx` export architecture. The planned first implementation target is one explicit user-initiated export of one selected persisted generated version's exact `entry.value.code`, with no Preview dependency, no automatic export, no source transformation, no metadata sidecar, and no new `downloads` permission.
+- Export one explicitly selected persisted generated version from an expanded Saved Capture Detail row through `Export .tsx`.
+- Save exactly the persisted `entry.value.code` as one UTF-8 `.tsx` browser download with no line-ending normalization, trimming, formatting, parsing, transpilation, injected comments, metadata header/footer, or automatic final newline.
+- Use a deterministic suggested filename derived only from the validated persisted `componentName`, with no capture ID, generated-version ID, source URL, page title, timestamp, or random suffix.
+- Reread the authoritative IndexedDB generated-version entry at export time, require exact displayed-entry equality and `sourceCaptureId` ownership, and fail closed for missing, altered, invalid, unsafe, or wrong-capture entries.
+- Keep export Preview-independent, explicit, local, read-only, source-only, and separate from Comparison, Revision, Regeneration, backend/provider/OpenAI calls, runtime/tab messages, source pages, iframes, clipboard, File System Access API, and IndexedDB writes.
+- Use a trusted Side Panel UTF-8 Blob, temporary object URL, and temporary anchor download path. Milestone 7A added no `chrome.downloads`, no `downloads` permission, no optional permission, no Manifest change, no host-permission change, and no dependency.
 
 ## Local-First and AI Boundary
 
@@ -134,7 +139,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
 - Milestones 1-5: Completed.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Current. Milestone 7A is Current for local generated-source export architecture. Export implementation remains uncompleted until later accepted slices.
+- Milestone 7: Current. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. No later Milestone 7 substage has been started.
 
 ## Intentionally Unimplemented
 
@@ -143,6 +148,8 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Dynamic Tailwind class evaluation, generated CSS, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
-- Export implementation beyond the current Milestone 7A architecture slice.
+- Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path.
+- ZIP/package export.
+- Multi-file export.
 - Figma export.
 - Authentication, hosted production multi-user backend operations, cloud sync, team collaboration, payments, quotas, and account management.

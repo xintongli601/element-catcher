@@ -2,9 +2,9 @@
 
 ## 1. Status and Scope
 
-Status: Current architecture slice for Milestone 7A. Milestone 7 is Current. Milestone 7A is Current. No Milestone 7A implementation is completed by this document.
+Status: Completed. Milestone 7 is Current. Milestone 7A is Completed. Milestone 7 is not Completed, and no new Milestone 7 substage is started by this closeout.
 
-Milestone 7A defines a narrow local generated-source export capability. The first implementation target exports exactly one explicitly selected persisted generated version as one UTF-8 `.tsx` file from Saved Capture Detail. It supports both validated V1 generated-version entries and validated V2 Revision or Regeneration entries.
+Milestone 7A delivered a narrow local generated-source export capability. The accepted implementation exports exactly one explicitly selected persisted generated version as one UTF-8 `.tsx` file from Saved Capture Detail. It supports both validated V1 generated-version entries and validated V2 Revision or Regeneration entries.
 
 Milestone 7A does not add GitHub export, Figma export, cloud sync, collaboration, publishing, additional frameworks, archive generation, package scaffolding, or multi-file export.
 
@@ -21,7 +21,7 @@ The accepted repository baseline already provides:
 - `extension/manifest.json`: Manifest V3 with `activeTab` and `sidePanel` permissions, `http://127.0.0.1/*` host permission for the local backend, and no `downloads` permission.
 - `package.json`: no export-specific dependency.
 
-Milestone 7A must preserve the current database version, stores, indexes, generated-version contracts, Preview protocol, Manifest permissions, CSP, sandbox pages, package dependencies, backend boundary, and test fixture structure unless a later implementation review proves a real defect.
+Milestone 7A preserved the current database version, stores, indexes, generated-version contracts, Preview protocol, Manifest permissions, CSP, sandbox pages, package dependencies, and backend boundary. The only production fix accepted during hardening was local to `GeneratedVersionExport.tsx`: a synchronous same-row in-flight guard and safer temporary-anchor cleanup.
 
 ## 3. Product Definition
 
@@ -33,7 +33,7 @@ Every export requires an explicit user action. Export never starts automatically
 
 ## 4. Exact Export Data Flow
 
-The implementation slice must use this flow:
+The accepted implementation uses this flow:
 
 ```text
 Expanded generated-version row
@@ -115,7 +115,7 @@ The exported file contents are exactly the persisted generated source encoded as
 - no parsing or transformation;
 - no automatic final newline.
 
-Empty source, Unicode source, JSX source, Tailwind class strings, final-newline-sensitive source, and CRLF-sensitive source must be covered by future tests.
+Unicode source, JSX source, Tailwind class strings, final-newline-sensitive source, and CRLF-sensitive source are covered by accepted tests. Empty generated code is not supported because the existing generation contract rejects empty `code`; Milestone 7A did not weaken that validator.
 
 The downloaded bytes must exactly equal `new TextEncoder().encode(entry.value.code)` for the reread entry selected for export.
 
@@ -149,11 +149,11 @@ The natural happy path is `ComponentName.tsx` for a valid component name that sa
 
 Milestone 7A targets a user-initiated web-platform download from the trusted Side Panel using a UTF-8 Blob, temporary object URL, and temporary anchor with `download`.
 
-The implementation must not use `chrome.downloads`. Chrome's official extension documentation states that the `chrome.downloads` API is for programmatically initiating, monitoring, manipulating, and searching downloads, and that using it requires declaring the `"downloads"` permission in the extension manifest. Chrome's official permissions list describes `"downloads"` as access to the `chrome.downloads` API. Therefore 7A must not add `downloads`, optional permissions, host permissions, or any Manifest change to satisfy the first local export target.
+The implementation does not use `chrome.downloads`. Chrome's official extension documentation states that the `chrome.downloads` API is for programmatically initiating, monitoring, manipulating, and searching downloads, and that using it requires declaring the `"downloads"` permission in the extension manifest. Chrome's official permissions list describes `"downloads"` as access to the `chrome.downloads` API. Therefore 7A added no `downloads` permission, optional permission, host permission, or Manifest change for the first local export target.
 
 The export button supplies the explicit user activation. The implementation must encode the exact persisted code into a Blob, create one temporary object URL, attach it to one temporary anchor with the deterministic `download` filename, initiate the download from the trusted Side Panel, and move the attempt to `download initiated` only after browser download initiation has been observed by the implementation path.
 
-Object URLs must be revoked deterministically after initiation at a safe lifecycle point, when an attempt is replaced, when the row or Detail unmounts, and when preparation fails before initiation. The implementation must prove the chosen mechanism in real Chromium through Playwright download events, expected suggested filename, and exact downloaded-byte inspection. Unit tests alone cannot establish browser download behavior.
+Object URLs are revoked deterministically after initiation at a safe lifecycle point, when an attempt is replaced, when the row or Detail unmounts, and when preparation fails before initiation. The accepted implementation proved the chosen mechanism in real Chromium through Playwright download events, expected suggested filename, and exact downloaded-byte inspection. Unit tests alone were not treated as sufficient proof of browser download behavior.
 
 Official Chrome Extension references used for this decision:
 
@@ -161,7 +161,7 @@ Official Chrome Extension references used for this decision:
 - `https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions`
 - `https://developer.chrome.com/docs/extensions/reference/permissions-list`
 
-If future implementation inspection or official Chrome documentation proves the Blob/object-URL/anchor mechanism cannot satisfy these requirements in the Side Panel, the implementation must stop and document the blocking evidence instead of silently approving `chrome.downloads` or a new permission.
+If future browser behavior or official Chrome documentation changes this mechanism, a later milestone must document the blocking evidence instead of silently approving `chrome.downloads` or a new permission.
 
 ## 10. Object URL Ownership and Cleanup
 
@@ -222,17 +222,17 @@ Threats and required responses:
 - Preview rejection: do not block export solely because Previewable Subset V1 rejects rendering.
 - Generated-code execution risk: never execute, parse, transform, Preview, or iframe generated source as part of export.
 - Privacy leakage: export source only; exclude capture metadata, storage identifiers, screenshots, provider metadata, and backend data.
-- Browser mechanism uncertainty: prove in real Chromium during Slice 3 or stop and document blocking evidence.
+- Browser mechanism uncertainty: real Chromium validation passed for the accepted Side Panel Blob/object URL/anchor mechanism; future browser or Chrome documentation changes remain a later-milestone risk.
 
 ## 14. Test Matrix
 
-Future implementation acceptance must include deterministic tests for:
+Accepted implementation validation included deterministic tests for:
 
 - V1 exact-byte `.tsx` export.
 - V2 Revision exact-byte export.
 - V2 Regeneration exact-byte export.
 - Deterministic suggested filename.
-- Empty code.
+- Empty code rejected by the existing generation contract; Milestone 7A did not weaken the validator.
 - Code with no final newline.
 - Code with a final newline.
 - CRLF-sensitive code.
@@ -265,18 +265,24 @@ Future implementation acceptance must include deterministic tests for:
 - Downloaded bytes exactly equal UTF-8 encoding of the persisted code.
 - Default E2E remains headless.
 
-## 15. Implementation Slices
+## 15. Accepted Implementation History and Slices
 
-Milestone 7A implementation uses exactly four slices:
+Milestone 7A completed exactly four slices:
 
-Slice 1:
+Accepted implementation history:
+
+- `b4cc9384edef40c4829d62b3d2e635c1b1c185b3` - Milestone 7A architecture and Milestone 7 start.
+- `f0f37cc8655edd4747315d6ef190f1ecba8f2bd3` - local exact-source export implementation and focused tests.
+- `ec89ccb46a2621d8fc0509ac493a85ca65743481` - real Chromium download validation, lifecycle/security hardening, and final regression.
+
+Slice 1 completed:
 
 - architecture;
 - milestone status update;
 - browser mechanism decision;
 - no runtime changes.
 
-Slice 2:
+Slice 2 completed:
 
 - pure filename helper;
 - exact export-payload helper;
@@ -284,7 +290,7 @@ Slice 2:
 - Side Panel row integration;
 - focused deterministic tests.
 
-Slice 3:
+Slice 3 completed:
 
 - real Chromium download validation;
 - exact filename and byte verification;
@@ -293,17 +299,17 @@ Slice 3:
 - full regression and audit;
 - only minimal fixes exposed by tests.
 
-Slice 4:
+Slice 4 completed:
 
 - documentation closeout after independent acceptance;
-- mark Milestone 7A Completed only after implementation and hardening are independently accepted;
-- decide the next Milestone 7 substage without starting it prematurely.
+- mark Milestone 7A Completed after implementation and hardening acceptance;
+- keep Milestone 7 Current without starting another substage prematurely.
 
 Milestone 7A must not split GitHub, Figma, cloud, ZIP bundles, package scaffolding, or multi-file export into implementation slices.
 
-## 16. Acceptance Gates
+## 16. Accepted Validation and Closeout
 
-Milestone 7A cannot be marked Completed until later implementation and hardening acceptance demonstrate:
+Milestone 7A is marked Completed because accepted local validation demonstrated:
 
 - exact-byte export for V1, V2 Revision, and V2 Regeneration entries;
 - deterministic filename behavior and fail-closed unsafe-name handling;
@@ -313,6 +319,39 @@ Milestone 7A cannot be marked Completed until later implementation and hardening
 - active Comparison, Preview, and Revision/Regeneration state independence;
 - real Chromium Playwright download event and exact byte validation;
 - full regression and audit as specified by the implementation slice.
+
+Accepted exact-source cases:
+
+- V1 CRLF source.
+- V2 Revision Unicode source.
+- V2 Regeneration JSX/Tailwind source.
+- Code with no final newline.
+- Code with exactly one final newline.
+- Preview-rejected but generated-contract-valid source.
+- Maximum valid persisted component name.
+
+Accepted local validation reported for Milestone 7A:
+
+- Slice 2 contract tests: `3 passed`.
+- Slice 2 Side Panel tests: `6 passed`.
+- Slice 3 hardening tests: `11 passed`.
+- Combined Milestone 7A focused suite run 1: `20 passed`.
+- Combined Milestone 7A focused suite run 2: `20 passed`.
+- Relevant generated-version/Comparison/Preview/Revision regressions: `93 passed`.
+- Backend tests: `13 passed`.
+- Full Playwright E2E: `245 passed, 1 skipped`.
+- `npm run build`: passed.
+- `npm audit --omit=dev`: `0 vulnerabilities`.
+
+Existing skip:
+
+`generation-5c-loopback.spec.ts › browser generation flow sends one loopback request and preserves persistence`
+
+Reason:
+
+`Milestone 5C loopback E2E requires an extension build with the loopback endpoint.`
+
+These are local reported validation results associated with the accepted implementation. They are not GitHub Actions results, an independent ChatGPT rerun, or a general security proof.
 
 ## 17. Explicit Exclusions
 
@@ -336,13 +375,13 @@ Milestone 7A does not include:
 
 ## 18. Residual Risks
 
-Residual risks after Slice 1:
+Residual risks after Milestone 7A:
 
-- The Blob/object-URL/anchor mechanism is selected architecturally but must still be proven in the extension Side Panel through real Chromium Playwright download events.
+- Download initiation does not prove the file was successfully written to disk, because the browser and user settings own the final download outcome and location.
 - Browser duplicate filename behavior remains browser-owned and may vary by user settings.
-- Download initiation does not prove the file was successfully written to disk.
 - Exported generated source may not compile, may be unsafe to run elsewhere, may lack dependencies, or may be rejected by Preview.
 - Local IndexedDB contents can still be externally altered by browser/devtools behavior outside ordinary application control; the export path must fail stale when it detects mismatch.
+- Milestone 7A exports only one selected generated version as one `.tsx` file; ZIP/package export, multi-file export, GitHub, Figma, cloud sync, publishing, collaboration, and additional frameworks remain unstarted.
 
 ## 19. Frozen Decisions
 

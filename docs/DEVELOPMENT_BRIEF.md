@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 6 and the start of Milestone 7A local generated-source export architecture.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 6 and completed Milestone 7A local generated-source export.
 
 Current implementation order:
 
@@ -15,10 +15,10 @@ Milestone 6C: Completed
 Milestone 6D: Completed
 Milestone 6E: Completed
 Milestone 7: Current
-Milestone 7A: Current
+Milestone 7A: Completed
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7A is current for architecture and upcoming implementation of one narrow local `.tsx` export path.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7A completed one narrow local `.tsx` export path. Milestone 7 remains Current, but no later Milestone 7 substage has been started.
 
 ## 2. Current Architecture
 
@@ -38,7 +38,7 @@ Supported webpage
   -> revision/regeneration Review
   -> immutable V2 generated-version persistence
   -> local generated-version comparison
-  -> local generated-source export architecture
+  -> local generated-source export
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -79,7 +79,7 @@ The Side Panel owns the user workflow:
 - Show exact frozen revision/regeneration Review data and require consent before transport.
 - Persist successful revision/regeneration results as immutable V2 generated-version entries.
 - Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection.
-- In Milestone 7A implementation, export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
+- Export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
 
 ### 4.2 Background Service Worker
 
@@ -326,7 +326,7 @@ Comparison does not automatically Preview, execute generated code, write Indexed
 
 ### 4.14 Local Generated Source Export
 
-Milestone 7A starts local export with a narrow architecture and no runtime export implementation in Slice 1:
+Milestone 7A implements local export as one narrow, explicit, source-only path:
 
 - Export is initiated only from an expanded generated-version row in Saved Capture Detail.
 - The first target exports exactly one selected persisted V1 or V2 generated-version entry.
@@ -336,9 +336,25 @@ Milestone 7A starts local export with a narrow architecture and no runtime expor
 - Export performs no CRLF normalization, trimming, formatting, comment injection, metadata header insertion, transpilation, parsing, transformation, or automatic final newline insertion.
 - Filename construction uses the validated persisted `componentName` and produces one deterministic safe `.tsx` filename with no IDs, URLs, page titles, timestamps, path separators, traversal, query characters, or random suffixes.
 - Export remains independent from Preview eligibility and does not claim the source is safe, correct, production-ready, previewable, or dependency-complete.
-- The target mechanism is a user-initiated Side Panel download using a Blob, temporary object URL, and temporary anchor, with deterministic object URL revocation and real Chromium Playwright download validation.
+- The target mechanism is a user-initiated Side Panel download using a UTF-8 Blob, temporary object URL, and temporary anchor, with deterministic object URL revocation and real Chromium Playwright download validation.
 
 Export does not automatically run after generation, revision, regeneration, comparison, Preview, reopen, refresh, or capture navigation. Export state is separate from expanded row state, Preview state, revision/regeneration state, and Comparison state.
+
+Implementation responsibilities:
+
+- `extension/src/export/generated-source-export.ts` owns the pure deterministic filename helper and exact minimal export payload helper.
+- `extension/src/sidepanel/GeneratedVersionExport.tsx` owns row-local UI state, authoritative generated-version reread, exact displayed-entry equality, `sourceCaptureId` ownership, stale-state handling, Blob/object URL/anchor initiation, same-row in-flight suppression, and cleanup.
+- `SavedCaptureDetail` only mounts the row-specific `Export .tsx` control inside expanded generated-version details.
+
+Hardening boundaries:
+
+- Missing, altered, invalid, unsafe, and wrong-capture rereads do not download.
+- Same-row rapid activation produces at most one real download.
+- Repeated exports remain explicit and use the same suggested filename; duplicate-name handling is browser-owned.
+- Leaving Detail, capture switching, and stale async completions cannot initiate old downloads or restore old success state.
+- Object URLs are revoked on success, replacement, failure, unmount, and capture switch, and stale older attempts cannot affect newer attempts or unrelated object URLs.
+- Temporary anchors are removed even when initiation fails, and failure remains retryable.
+- Export adds no `chrome.downloads`, no `downloads` permission, no optional permission, no Manifest change, no host-permission change, no File System Access API, no native messaging, no clipboard write, and no dependency.
 
 ## 5. Security and Privacy Boundaries
 
@@ -350,7 +366,8 @@ Export does not automatically run after generation, revision, regeneration, comp
 - Preview execution is limited to accepted data-only render plans in the Milestone 6C sandbox; no full arbitrary generated-code execution, `eval`, `Function` constructor, `dangerouslySetInnerHTML`, browser APIs, storage, navigation, network, workers, or generated CSS runtime is allowed.
 - Revision/regeneration never automatically previews or executes revised source.
 - Comparison never automatically previews or executes generated source, never persists comparison state, and never calls backend/provider/OpenAI/source pages/content scripts/service workers or remote origins.
-- Local export never executes generated source, never opens Preview, never creates Preview iframes, never writes IndexedDB, never mutates `CaptureRecord`, screenshots, V1 entries, or V2 entries, never persists export UI state, and never calls backend/provider/OpenAI/source pages/content scripts/service workers, analytics, GitHub, Figma, or remote origins.
+- Local export never executes, parses, compiles, evaluates, or transforms generated source; never opens Preview; never creates Preview iframes; never writes IndexedDB; never mutates `CaptureRecord`, screenshots, V1 entries, or V2 entries; never persists export UI state; and never calls backend/provider/OpenAI/source pages/content scripts/service workers, analytics, GitHub, Figma, or remote origins.
+- Exported files contain generated source only and exclude capture IDs, generated-version IDs, `sourceCaptureId`, source URL, page title, notes, tags, screenshots, storage keys, fingerprints, logical attempt IDs, lineage fields, provider metadata, and backend metadata.
 
 ## 6. Completed Milestone 6 Handoff
 
@@ -368,7 +385,9 @@ Milestone 6 preserves the local-first capture model, provider-secret boundary, s
 
 The current implementation does not include:
 
-- Completed export implementation beyond the current Milestone 7A architecture start.
+- Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path.
+- ZIP/package export.
+- Multi-file export.
 - Website publishing.
 - Figma export.
 - GitHub export.

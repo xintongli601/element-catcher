@@ -947,7 +947,7 @@ Accepted 6E hardening confirmed that stale and out-of-order refreshes cannot ove
 
 Accepted local validation reported for the Milestone 6E closure: `npm run build` passed; focused Milestone 6E suite reported 25 passed; focused stability rerun reported 25 passed; backend tests reported 13 passed; full E2E reported 225 passed and 1 skipped; `npm audit --omit=dev` reported 0 vulnerabilities. The documented skip was: `Milestone 5C loopback E2E requires an extension build with the loopback endpoint.` These were local reported validation results associated with the accepted implementation, not GitHub Actions results. Final hardening made no production security relaxation and no database, Manifest, CSP, Preview protocol, or generated-version contract change.
 
-Milestone 6 explicitly excludes export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, automatic execution of generated or revised source, storage migration, screenshot-pixel comparison, rendered-output comparison, scoring, winner selection, merge, edit, cross-capture comparison, three-way comparison, and multi-version comparison. Export begins in Milestone 7A as a narrow local generated-source export architecture and implementation track.
+Milestone 6 explicitly excludes export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, automatic execution of generated or revised source, storage migration, screenshot-pixel comparison, rendered-output comparison, scoring, winner selection, merge, edit, cross-capture comparison, three-way comparison, and multi-version comparison. The first narrow local generated-source export path was completed in Milestone 7A.
 
 Milestone 6E architecture: `docs/MILESTONE_6E_COMPARISON_ARCHITECTURE.md`.
 
@@ -959,7 +959,7 @@ Objective: Define and implement export and expansion paths without turning the M
 
 Substage status:
 
-- Milestone 7A - Local generated source export: Current.
+- Milestone 7A - Local generated source export: Completed.
 - GitHub workflow: Planned or explicitly out of scope until separately scoped.
 - Figma integration: Planned or explicitly out of scope until separately scoped.
 - Cloud sync: Planned or explicitly out of scope until separately scoped.
@@ -988,9 +988,15 @@ Acceptance criteria:
 
 ### Milestone 7A - Local Generated Source Export
 
-Status: Current
+Status: Completed
 
 Objective: Define and implement one narrow local generated-source export path from Saved Capture Detail without changing the database, Manifest permissions, CSP, Preview protocol, generated-version contracts, package dependencies, backend, GitHub workflows, or production security boundaries.
+
+Accepted implementation history:
+
+- `b4cc9384edef40c4829d62b3d2e635c1b1c185b3` recorded the Milestone 7A architecture and started Milestone 7.
+- `f0f37cc8655edd4747315d6ef190f1ecba8f2bd3` delivered local exact-source export implementation and focused tests.
+- `ec89ccb46a2621d8fc0509ac493a85ca65743481` delivered real Chromium download validation, lifecycle/security hardening, and final regression.
 
 Included scope:
 
@@ -1004,6 +1010,17 @@ Included scope:
 - Revoke object URLs deterministically after initiation and on cleanup.
 - Prove the download mechanism in real Chromium with Playwright download events, expected suggested filename, and exact downloaded-byte inspection.
 
+Accepted result:
+
+- Saved Capture Detail exposes a row-specific `Export .tsx` action for expanded generated-version rows.
+- The exported file contains only the exact persisted `entry.value.code` encoded as UTF-8.
+- The suggested filename is deterministic and derives only from the validated persisted `componentName`.
+- Export rereads the authoritative IndexedDB generated-version entry at activation time and requires exact displayed-entry equality plus `sourceCaptureId` ownership.
+- Missing, altered, invalid, unsafe, or wrong-capture rereads fail closed and do not download.
+- Same-row rapid activation produces at most one real download; repeated successful exports stay explicit and use the same suggested filename while duplicate-name handling remains browser-owned.
+- Object URLs are revoked on success, replacement, failure, unmount, and capture switch; stale older attempts cannot affect newer attempts or unrelated object URLs.
+- Export remains independent from Preview, Comparison, Revision, Regeneration, backend/provider/OpenAI calls, source pages, runtime/tab messages, and IndexedDB writes.
+
 Explicitly excluded scope:
 
 - New `downloads` permission, optional permission, Manifest change, host-permission change, File System Access API, native messaging, arbitrary filesystem access, or automatic clipboard write.
@@ -1012,16 +1029,17 @@ Explicitly excluded scope:
 
 Acceptance criteria:
 
-- V1, V2 Revision, and V2 Regeneration exact-byte `.tsx` export pass.
-- Deterministic filename behavior passes, including unsafe-name fail-closed cases.
-- Empty, newline-sensitive, CRLF-sensitive, Unicode, JSX, Tailwind, and final-newline-sensitive code pass exact-byte validation.
-- Preview-rejected but contract-valid source remains exportable.
-- Active Comparison, Preview, Revision, and Regeneration state remain independently controlled.
-- Missing, replaced, externally altered, or wrong-`sourceCaptureId` selected versions fail with a stale-state message and require refresh.
-- Repeated export, rapid double activation, Detail unmount during preparation, and capture switch during preparation are deterministic.
-- Object URL cleanup is verified.
-- Zero IndexedDB writes, zero HTTP/HTTPS requests, zero runtime or tab messages, and zero automatic iframe creation are verified.
-- `CaptureRecord`, screenshot asset, and every pre-existing V1/V2 entry remain byte-for-byte unchanged.
-- Default E2E remains headless.
+- Completed. V1 CRLF, V2 Revision Unicode, V2 Regeneration JSX/Tailwind, no-final-newline, exactly-one-final-newline, Preview-rejected but contract-valid source, and maximum-valid persisted component-name cases passed real Chromium suggested-filename and downloaded-byte validation.
+- Completed. Empty generated code remains rejected by the existing generation contract and was not enabled.
+- Completed. Deterministic filename behavior and unsafe-name fail-closed behavior passed.
+- Completed. Active Comparison, Preview, Revision, and Regeneration state remain independently controlled.
+- Completed. Missing, replaced, externally altered, invalid, unsafe, or wrong-`sourceCaptureId` selected versions fail without a download.
+- Completed. Repeated export, rapid double activation, Detail unmount during preparation, and capture switch during preparation are deterministic.
+- Completed. Object URL cleanup is verified.
+- Completed. Zero IndexedDB writes, zero HTTP/HTTPS requests, zero runtime or tab messages, zero automatic iframe creation, zero clipboard writes, and zero File System Access API calls are verified.
+- Completed. `CaptureRecord`, screenshot assets, generated-version ordering, and every pre-existing V1/V2 entry remain unchanged.
+- Completed. Default E2E remains headless.
+
+Accepted local validation reported for the Milestone 7A closeout: Slice 2 contract tests `3 passed`; Slice 2 Side Panel tests `6 passed`; Slice 3 hardening tests `11 passed`; combined Milestone 7A focused suite run 1 `20 passed`; combined Milestone 7A focused suite run 2 `20 passed`; relevant generated-version/Comparison/Preview/Revision regressions `93 passed`; backend tests `13 passed`; full Playwright E2E `245 passed, 1 skipped`; `npm run build` passed; and `npm audit --omit=dev` reported `0 vulnerabilities`. The existing skip was `generation-5c-loopback.spec.ts › browser generation flow sends one loopback request and preserves persistence`, with reason `Milestone 5C loopback E2E requires an extension build with the loopback endpoint.` These are local reported results associated with the accepted implementation, not GitHub Actions results or a general security proof.
 
 Architecture: `docs/MILESTONE_7A_LOCAL_EXPORT_ARCHITECTURE.md`.
