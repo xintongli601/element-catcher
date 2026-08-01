@@ -2,9 +2,18 @@
 
 ## 1. Status and Scope
 
-Milestone 6E is Current. Milestone 6D is Completed. Milestone 6 remains Current. Milestone 7 remains Planned.
+Milestone 6E is Completed. Milestone 6D is Completed. Milestone 6 is Completed. Milestone 7 remains Planned.
 
-This document freezes the implementation-ready architecture for local comparison of two persisted generated component versions. It does not add production behavior, tests, storage changes, backend routes, Preview protocol changes, or package dependencies. Final integrated Milestone 6 regression and documentation closure remain later Milestone 6E slices.
+This document records the accepted architecture and closeout state for local comparison of two persisted generated component versions. Milestone 6E delivered production behavior and tests without storage schema changes, backend routes, Preview protocol changes, package dependencies, Manifest changes, CSP changes, generated-version contract changes, or production security relaxation. Final integrated Milestone 6 regression and documentation closure are complete.
+
+Accepted implementation history:
+
+- `778aa54abb0145256b718d19617916391e55a7fb` - comparison architecture.
+- `dead6397574af2458fbd7b9d5adaed7c97a3d834` - initial comparison implementation.
+- `642ff37ae6c0fc8dc95cece2d758096d979c69ee` - Slice 2 review fixes.
+- `db96241f96e769d1442763107444a854b5f01d22` - integrated hardening baseline.
+- `86005b85f8d298f2bcce19522461d810642ab555` - stale-state, coexistence, and immutability hardening.
+- `7b9bffaebc3e33bb745e3547af33c1a1243a98ca` - pending refresh ownership closure.
 
 ## 2. Current Implementation Inventory
 
@@ -22,7 +31,7 @@ Version Comparison is local, deterministic, read-only, ephemeral, and limited to
 
 Comparison must not write IndexedDB, mutate a `CaptureRecord`, mutate generated versions, call backend/provider/OpenAI/content script/service worker/source webpage/analytics/remote origins, automatically Preview or execute code, compare screenshot pixels or rendered output, score versions, choose a winner, merge code, edit code, compare across captures, compare three or more versions, delete, roll back, export, sync, authenticate, collaborate, or add payments.
 
-No database migration, new dependency, Preview protocol change, sandbox change, Manifest change, package-file change, or backend change is approved for Slice 2.
+No database migration, new dependency, Preview protocol change, sandbox change, Manifest change, package-file change, generated-version contract change, or backend change was introduced by Milestone 6E.
 
 ## 4. Comparison Model
 
@@ -238,7 +247,7 @@ Displayed data is limited to the metadata allowlist and exact persisted generate
 
 ## 11. Implementation Boundaries
 
-Likely Slice 2 files:
+Accepted implementation shape:
 
 - One pure comparison helper module.
 - One dedicated Side Panel comparison component.
@@ -294,9 +303,9 @@ Side Panel E2E coverage:
 - Keyboard operation.
 - Default headless execution.
 
-## 13. Remaining Slices
+## 13. Accepted Slice Closeout
 
-Slice 2 - Version Comparison Implementation:
+Slice 2 delivered Version Comparison implementation:
 
 - Pure comparison helper.
 - Bounded deterministic diff.
@@ -306,7 +315,7 @@ Slice 2 - Version Comparison Implementation:
 - Focused tests.
 - No backend, storage, schema, or Preview changes.
 
-Slice 3 - Hardening and Final Milestone 6 Regression:
+Slice 3 delivered hardening and final Milestone 6 regression:
 
 - Adversarial lifecycle and stale-state tests.
 - Privacy and no-network assertions.
@@ -315,7 +324,7 @@ Slice 3 - Hardening and Final Milestone 6 Regression:
 - Backend regression and audit.
 - Only minimal fixes exposed by tests.
 
-Slice 4 - Documentation Closeout:
+Slice 4 delivered documentation closeout:
 
 - Documentation-only after independent acceptance of Slice 3.
 - Mark 6E and Milestone 6 Completed.
@@ -324,7 +333,7 @@ Slice 4 - Documentation Closeout:
 
 ## 14. Acceptance Gates
 
-Slice 2 can be accepted only when:
+Milestone 6E is accepted with these gates satisfied:
 
 - Comparison is local, read-only, deterministic, and ephemeral.
 - Exactly two different versions with the same `sourceCaptureId` are required.
@@ -338,6 +347,31 @@ Slice 2 can be accepted only when:
 - No automatic Preview, iframe creation, transport, network, or IndexedDB write occurs.
 - Keyboard and screen-reader behavior follows the accessibility requirements.
 - Tests cover helper behavior, Side Panel workflow, privacy, refresh, stale state, and headless default execution.
+
+Hardening acceptance additionally confirmed:
+
+- Stale and out-of-order refreshes cannot overwrite newer accepted state.
+- Pending Capture A refresh cannot update Capture B.
+- Pending refresh completion cannot reopen Detail or Comparison after returning to Library.
+- Revision and Regeneration can save while Comparison remains active.
+- Original Baseline and Candidate IDs remain selected.
+- Newly persisted exact version IDs appear in available options.
+- Preview remains explicitly triggered and independent.
+- Existing `CaptureRecord`, screenshot asset, and pre-existing V1/V2 entries remain immutable.
+- Revision and Regeneration append new immutable versions only.
+- Privacy, no-network, no-runtime-message, no-automatic-iframe, and schema boundaries remain intact.
+
+Accepted local validation associated with closure:
+
+- `npm run build`: passed.
+- Focused Milestone 6E suite: 25 passed.
+- Focused stability rerun: 25 passed.
+- Backend tests: 13 passed.
+- Full E2E: 225 passed, 1 skipped.
+- `npm audit --omit=dev`: 0 vulnerabilities.
+- Existing skip: `Milestone 5C loopback E2E requires an extension build with the loopback endpoint.`
+
+These were local reported validation results associated with the accepted implementation, not GitHub Actions results.
 
 ## 15. Residual Risks
 

@@ -2,7 +2,7 @@
 
 ## Implementation Status and Supersession Note
 
-Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Completed with the accepted production safe generated-component preview for Previewable Subset V1. Milestone 6D is Completed for regeneration and natural-language revision. Milestone 6E is Current for version comparison and final Milestone 6 regression.
+Milestone 6A architecture review is Completed. Milestone 6B runtime foundation is Completed. Milestone 6C is Completed with the accepted production safe generated-component preview for Previewable Subset V1. Milestone 6D is Completed for regeneration and natural-language revision. Milestone 6E is Completed for local generated-version comparison and final Milestone 6 regression. Milestone 6 is Completed.
 
 This document began as the Milestone 6A architecture draft. Its original nested packaged architecture was a 6A proposal, not the accepted current implementation. Real Chromium feasibility testing showed that a topology where the Side Panel loads a packaged sandbox host, and that host then navigates a second packaged sandbox page, fails unless the second page is exposed through `web_accessible_resources`. That exposure was not approved for Milestone 6B. `srcdoc` was also not selected.
 
@@ -162,7 +162,7 @@ Explicitly excluded from Milestone 6D:
 - Automatic execution of revised source.
 - Storage migration unless separately reviewed and approved.
 
-Milestone 6E is Current and remains responsible for version comparison and final Milestone 6 regression.
+Milestone 6E is Completed and closed version comparison plus final Milestone 6 regression.
 
 Milestone 6D architecture closure:
 
@@ -608,7 +608,7 @@ Retry recreates a completely new preview realm.
 - Version selection uses existing `GeneratedComponentVersionEntryV1` records.
 - Source CaptureRecord remains unchanged.
 - Regeneration and natural-language revision are completed in Milestone 6D.
-- Comparison is a later Milestone 6 stage.
+- Local generated-version comparison is completed in Milestone 6E.
 - Export remains Milestone 7.
 
 Current sequence:
@@ -618,7 +618,7 @@ Current sequence:
 6B - Completed - Sandbox runtime foundation with trusted packaged fixtures
 6C - Completed - Safe generated-component preview for Previewable Subset V1
 6D - Completed - Regeneration and natural-language revision
-6E - Current - Version comparison and final Milestone 6 regression
+6E - Completed - Version comparison and final Milestone 6 regression
 ```
 
 Each stage needs independent security review before expanding the amount of generated code that can run.

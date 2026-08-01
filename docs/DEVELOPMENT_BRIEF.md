@@ -2,22 +2,22 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 5 and the accepted Milestone 6C Preview plus Milestone 6D revision/regeneration work.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 6, including the accepted Milestone 6C Preview, Milestone 6D revision/regeneration, and Milestone 6E generated-version comparison work.
 
 Current implementation order:
 
 ```text
 Milestones 1-5: Completed
-Milestone 6: Current
+Milestone 6: Completed
 Milestone 6A: Completed
 Milestone 6B: Completed
 Milestone 6C: Completed
 Milestone 6D: Completed
-Milestone 6E: Current
+Milestone 6E: Completed
 Milestone 7: Planned
 ```
 
-Milestone 6E is the current handoff for version comparison and final Milestone 6 integrated regression. Export remains planned for Milestone 7.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Export remains planned for Milestone 7.
 
 ## 2. Current Architecture
 
@@ -36,6 +36,7 @@ Supported webpage
   -> isolated Preview
   -> revision/regeneration Review
   -> immutable V2 generated-version persistence
+  -> local generated-version comparison
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -43,6 +44,7 @@ The `CaptureRecord` remains the immutable source capture. Generated versions hav
 ## 3. Development Principles
 
 - Keep the MVP focused on Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate.
+- Keep generated-version comparison local, read-only, deterministic, and ephemeral.
 - Preserve local-first behavior by default.
 - Treat raw extraction data as intermediate input, not the persisted product.
 - Normalize persisted capture data into `CaptureRecord v1`.
@@ -73,6 +75,7 @@ The Side Panel owns the user workflow:
 - Start trusted Revision or Regeneration from a selected generated version.
 - Show exact frozen revision/regeneration Review data and require consent before transport.
 - Persist successful revision/regeneration results as immutable V2 generated-version entries.
+- Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection.
 
 ### 4.2 Background Service Worker
 
@@ -301,6 +304,22 @@ Lifecycle rules:
 - Conflicting recovery targets fail safely without overwrite.
 - Commit-after-cancel results may remain stored and become discoverable through later explicit refresh.
 
+### 4.13 Version Comparison
+
+Milestone 6E comparison is implemented from the Generated Versions section:
+
+- It compares exactly two distinct persisted generated versions with the same `sourceCaptureId`.
+- The user explicitly chooses Baseline and Candidate and may Swap them.
+- V1 and V2 versions are supported.
+- Full original generated code remains visible and copyable.
+- Code comparison uses a bounded internal LCS diff and no added dependency.
+- Comparison state is local UI state only and is not persisted.
+- Stale, out-of-order, and pending generated-version refresh completions cannot update a newer capture, reopen Detail, or restore ephemeral Comparison after returning to Library.
+- Revision and Regeneration may save while Comparison remains active; the original selected Baseline and Candidate IDs remain selected, and exact newly persisted version IDs appear in available options.
+- Existing `CaptureRecord`, screenshot asset, and pre-existing V1/V2 entries remain immutable; Revision and Regeneration append new immutable versions only.
+
+Comparison does not automatically Preview, execute generated code, write IndexedDB, call backend/provider/OpenAI/source pages/content scripts/service workers/remote origins, compare screenshot pixels or rendered output, score versions, choose winners, merge, edit, compare across captures, or compare three or more versions.
+
 ## 5. Security and Privacy Boundaries
 
 - Captures remain local by default.
@@ -310,22 +329,24 @@ Lifecycle rules:
 - Generated code is displayed as source text unless the user explicitly chooses Preview.
 - Preview execution is limited to accepted data-only render plans in the Milestone 6C sandbox; no full arbitrary generated-code execution, `eval`, `Function` constructor, `dangerouslySetInnerHTML`, browser APIs, storage, navigation, network, workers, or generated CSS runtime is allowed.
 - Revision/regeneration never automatically previews or executes revised source.
+- Comparison never automatically previews or executes generated source, never persists comparison state, and never calls backend/provider/OpenAI/source pages/content scripts/service workers or remote origins.
 
-## 6. Current Milestone 6 Handoff
+## 6. Completed Milestone 6 Handoff
 
-Milestone 6E may build on the accepted generated-version persistence and revision lineage to add:
+Milestone 6 is completed. The accepted Milestone 6E closure added:
 
 - Version comparison.
 - Final Milestone 6 integrated regression.
 - Final Milestone 6 documentation closure after implementation and independent acceptance.
 
-Milestone 6 must preserve the local-first capture model, provider-secret boundary, source CaptureRecord immutability, generated-version separation, and no-raw-provider-state extension boundary.
+Accepted local validation associated with the Milestone 6E closure reported: `npm run build` passed; focused Milestone 6E suite 25 passed; focused stability rerun 25 passed; backend tests 13 passed; full E2E 225 passed and 1 skipped; `npm audit --omit=dev` 0 vulnerabilities. The existing skip was: `Milestone 5C loopback E2E requires an extension build with the loopback endpoint.` These are local reported results, not GitHub Actions results.
+
+Milestone 6 preserves the local-first capture model, provider-secret boundary, source CaptureRecord immutability, generated-version separation, and no-raw-provider-state extension boundary. Final hardening made no production security relaxation and no database, Manifest, CSP, Preview protocol, or generated-version contract change.
 
 ## 7. Explicit Exclusions
 
 The current implementation does not include:
 
-- Version comparison.
 - Export.
 - Website publishing.
 - Figma export.

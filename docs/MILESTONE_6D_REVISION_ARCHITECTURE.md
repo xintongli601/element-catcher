@@ -2,7 +2,7 @@
 
 ## 1. Status, Acceptance, and Supersession
 
-Milestone 6D is Completed. Milestone 6 remains Current. Milestone 6E is Current for version comparison and final Milestone 6 regression. This document remains the accepted design record for natural-language revision and regeneration, and this top section supersedes the original documentation-only/current disclaimer with the accepted implementation state.
+Milestone 6D is Completed. Milestone 6E is Completed for local generated-version comparison and final Milestone 6 regression. Milestone 6 is Completed. This document remains the accepted design record for natural-language revision and regeneration, and this top section supersedes the original documentation-only/current disclaimer with the accepted implementation state.
 
 Accepted remote baseline:
 
@@ -82,7 +82,7 @@ Residual risks:
 - Local storage can still be deleted or altered outside ordinary application behavior.
 - Automated acceptance is not a general security proof.
 
-Milestone 6D does not include version comparison UI, final Milestone 6 regression closure, export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, or automatic execution of revised source. Milestone 6E is responsible for version comparison, final Milestone 6 integrated regression, and final Milestone 6 documentation closure after implementation and independent acceptance.
+Milestone 6D did not include version comparison UI or final Milestone 6 regression closure; those were completed later by Milestone 6E. Milestone 6D also does not include export, GitHub integration, Figma integration, cloud sync, collaboration, authentication, payment, multiple framework generation, production hosted backend operations, arbitrary conversational coding-agent behavior, or automatic execution of revised source.
 
 Milestone 6D preserves the accepted Milestone 6C execution boundary:
 
@@ -899,7 +899,7 @@ Incomplete backend or transport helpers must remain unreachable from production 
 | 4. Atomic V2 persistence and deterministic recovery | Enforce same-transaction CaptureRecord/source-version re-read, target ID, read-back | `extension/src/storage/*`, tests | Slices 1 and 3 | TOCTOU closed; duplicate behavior correct | Yes | UI send path without stale guards | Independent acceptance |
 | 5. Complete trusted Side Panel workflow | Add first reachable Revise/Regenerate UI with AbortController ownership, workflow-token retirement, source/attempt binding, late-continuation rejection | `extension/src/sidepanel/*`, styles, Playwright | Slices 1-4 | Complete Review/consent/send/save/cancel/Retry safety in first UI release | Yes | Partial unsafe production UI | Independent acceptance |
 | 6. Regression hardening | Broaden stale, cancellation, privacy, M5, M6C tests | tests and docs | Slices 1-5 | Full accepted matrix coverage | Yes | New product scope | Independent acceptance |
-| 7. Documentation closeout | Mark implementation slice results without starting 6E | docs only | Slices 1-6 | Milestone status remains correct until acceptance | Yes | 6E/version comparison/export | Independent acceptance |
+| 7. Documentation closeout | Mark 6D implementation slice results before 6E began | docs only | Slices 1-6 | Historical 6D status remained correct until later 6E acceptance | Yes | 6E/version comparison/export | Independent acceptance |
 
 ## 21. Final Decisions Table
 
@@ -925,7 +925,7 @@ Incomplete backend or transport helpers must remain unreachable from production 
 | ComponentName | Preserve source name | Provider rename | Deterministic preview/list | Equality check | Yes |
 | Preview | Separate explicit Preview after persistence | Auto-preview | Preserve 6C | No protocol changes | Yes |
 | Slice safety | First reachable UI includes stale/cancel guards | Add guards later | Avoid unsafe partial workflow | Reordered slices | Yes |
-| 6D/6E boundary | No comparison/export | Start 6E | Keep scope tight | 6E is Current after 6D acceptance | Yes |
+| 6D/6E boundary | No comparison/export in 6D; comparison completed later in 6E | Start comparison inside 6D | Keep scope tight | 6E later completed comparison and Milestone 6 closure | Yes |
 
 ## 22. Residual Risks
 

@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 5 are completed. Milestone 6 is current.
+Milestones 1 through 6 are completed. Milestone 7 remains planned.
 
 Implemented:
 
@@ -34,11 +34,11 @@ Implemented:
 - Natural-language revision from an existing persisted generated version.
 - Instruction-free regeneration from an existing persisted generated version.
 - Immutable V2 generated-version persistence with lineage to the selected source version.
+- Local generated-version comparison for exactly two distinct persisted versions with the same `sourceCaptureId`.
 
 Current next product stage:
 
-- Version comparison.
-- Final Milestone 6 integrated regression.
+- Milestone 7 export and future expansion planning.
 
 ## 3. Problem Statement
 
@@ -69,7 +69,7 @@ The differentiation is the workflow:
 4. Organize captures with title, tags, notes, and component type.
 5. Generate React + Tailwind component versions from screenshot plus structured capture data.
 6. Preserve generated versions separately from the original capture.
-7. Preview safe generated source explicitly, revise or regenerate from persisted versions, and hand off to comparison plus eventual export without becoming a full publishing platform.
+7. Preview safe generated source explicitly, revise or regenerate from persisted versions, compare local generated versions, and hand off to eventual export without becoming a full publishing platform.
 
 ## 6. Supported Page Limitations
 
@@ -109,7 +109,7 @@ The local backend/proxy is a development/demo topology, not a production multi-u
 Implemented:
 
 ```text
-Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Persist new version
+Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Persist new version -> Compare
 ```
 
 Implemented details:
@@ -132,14 +132,15 @@ Implemented details:
 16. Choose Revise or Regenerate from an existing persisted generated version.
 17. Review the exact approved outbound revision/regeneration data and consent before transport.
 18. Persist the successful result as a new immutable V2 generated-version entry linked to the selected source version.
+19. Compare exactly two persisted generated versions for the same source capture through explicit Baseline and Candidate selection, optional Swap, metadata comparison, bounded source diff, and complete original source display.
 
 Current/future:
 
 ```text
-Compare -> Reuse/Export
+Reuse/Export
 ```
 
-Version comparison, reuse workflow polish, and export remain future.
+Reuse workflow polish and export remain future.
 
 ## 9. Structured Capture Concept
 
@@ -151,7 +152,7 @@ The normalized `CaptureRecord` is the source of truth for:
 - Capture preview.
 - Search and filtering.
 - AI generation input.
-- Future preview, comparison, and export workflows.
+- Preview, comparison, and future export workflows.
 
 Generated versions are intentionally persisted outside the original `CaptureRecord` in a separate IndexedDB store. Initial generation uses the V1 generated-version entry shape. Revision and regeneration create immutable V2 entries that record the exact selected source generated-version ID, source fingerprint, logical attempt, review fingerprint, operation kind, and screenshot-inclusion state. V1 and V2 versions are read together through a union reader.
 
@@ -218,6 +219,8 @@ Index:
 
 Generated-version persistence validates the complete source `CaptureRecord`, source linkage, screenshot reference, response shape, stable generated-version ID, idempotent retry behavior, read-back, cancellation, orphan cleanup, deletion cascade, and deterministic newest-first ordering. Revision/regeneration persistence adds deterministic V2 target IDs, exact source-version lineage, idempotent recovery, conflict-safe recovery failure without overwrite, and source immutability across existing captures, screenshot assets, V1 versions, V2 source versions, and earlier versions.
 
+Version comparison is local, deterministic, read-only, ephemeral, and limited to exactly two distinct persisted generated versions with the same `sourceCaptureId`. It supports explicit Baseline and Candidate selection, Swap, V1/V2 entries, full original code retention, and bounded internal LCS source diff. It does not persist comparison state, automatically Preview, execute generated code, call backend/provider/OpenAI/source pages/content scripts/service workers/remote origins, compare screenshot pixels or rendered output, score, select winners, merge, edit, compare across captures, or compare three or more versions.
+
 ## 13. Roadmap
 
 - Milestone 1: Completed - extension scaffold.
@@ -226,7 +229,7 @@ Generated-version persistence validates the complete source `CaptureRecord`, sou
 - Milestone 3: Completed - reliable element capture, CaptureRecord assembly, screenshot persistence, Capture Preview, and Save.
 - Milestone 4: Completed - personal Capture Library.
 - Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
-- Milestone 6: Current - isolated preview and version management. Milestone 6A, 6B, 6C, and 6D are Completed; Milestone 6E is Current.
+- Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Planned - export and future expansion.
 
 ## 14. Success Criteria
@@ -258,7 +261,8 @@ Element Catcher v0.1 does not include:
 - Complete page HTML export.
 - Website publishing.
 - Automatic generated-source execution.
-- Version comparison before Milestone 6E.
+- Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
+- Comparison scoring, winner selection, merging, or editing.
 - Export before Milestone 7.
 - Figma export.
 - GitHub export.

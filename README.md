@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 5 are completed. Milestone 6 is the current milestone and is reserved for isolated preview and version management. Milestone 6A, Milestone 6B, Milestone 6C, and Milestone 6D are completed; Milestone 6E is current for version comparison and final Milestone 6 regression. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 remains planned for export and future expansion. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -32,6 +32,8 @@ Milestones 1 through 5 are completed. Milestone 6 is the current milestone and i
 - Persist successful revision/regeneration results as new immutable V2 generated-version entries with deterministic target IDs and lineage to the exact selected source version.
 - Keep existing `CaptureRecord` data, screenshot assets, V1 versions, V2 source versions, and earlier versions immutable during revision/regeneration.
 - Keep revised and regenerated source inert until the user separately chooses Preview through the accepted Milestone 6C sandbox boundary.
+- Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection, Swap, metadata comparison, bounded internal LCS source diff, and complete original source display.
+- Keep comparison local, deterministic, read-only, ephemeral, and separate from Preview, revision, regeneration, persistence, backend/provider/OpenAI calls, source pages, content scripts, service workers, and remote origins.
 
 ## Local-First and AI Boundary
 
@@ -107,14 +109,14 @@ The Playwright extension fixture uses Playwright's bundled Chromium with an isol
 - Milestone 4: Personal Capture Library with list, reopen, metadata editing, deletion, search, and filtering.
 - Milestone 5: AI React + Tailwind reconstruction with explicit Review data, consent-gated transport, local backend/proxy integration, Responses API adapter, and separate local generated-version persistence.
 
-Current milestone:
+Completed Milestone 6:
 
 - Milestone 6: Isolated Preview and Version Management.
   - Milestone 6A: Completed. Architecture and threat model.
   - Milestone 6B: Completed. Sandbox runtime foundation with trusted packaged fixtures.
   - Milestone 6C: Completed. Production safe generated-component preview for the approved Previewable Subset V1.
   - Milestone 6D: Completed. Regeneration and natural-language revision.
-  - Milestone 6E: Current. Version comparison and final Milestone 6 regression.
+  - Milestone 6E: Completed. Local generated-version comparison and final Milestone 6 regression closure.
 
 See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
@@ -130,7 +132,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 ## Current Roadmap
 
 - Milestones 1-5: Completed.
-- Milestone 6: Current. Milestone 6A, 6B, 6C, and 6D are Completed. Milestone 6E is Current for version comparison and final Milestone 6 regression. Version comparison and export remain unimplemented until their later implementation milestones land.
+- Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Planned. Export and future expansion remain unimplemented.
 
 ## Intentionally Unimplemented
@@ -138,7 +140,8 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Full arbitrary generated-code execution.
 - Full React, TypeScript, JavaScript, CSS, or Tailwind runtime compatibility.
 - Dynamic Tailwind class evaluation, generated CSS, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
-- Version comparison.
+- Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
+- Comparison scoring, winner selection, merging, or editing.
 - Export.
 - Figma export.
 - Authentication, hosted production multi-user backend operations, cloud sync, team collaboration, payments, quotas, and account management.
