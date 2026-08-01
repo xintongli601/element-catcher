@@ -147,6 +147,10 @@ export async function putGeneratedVersion(page: Page, entry: unknown) {
   await runDatabaseOperation(page, "putGeneratedVersion", { entry });
 }
 
+export async function deleteGeneratedVersion(page: Page, generatedVersionId: string) {
+  await runDatabaseOperation(page, "deleteGeneratedVersion", { generatedVersionId });
+}
+
 export async function replaceRecordWrapper(page: Page, wrapper: unknown) {
   await runDatabaseOperation(page, "replaceRecordWrapper", { wrapper });
 }
@@ -636,6 +640,17 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
 
           try {
             await putValue(database, generatedComponentVersionStoreName, entry);
+            return undefined;
+          } finally {
+            database.close();
+          }
+        },
+        deleteGeneratedVersion: async (value) => {
+          const { generatedVersionId } = value as { generatedVersionId: string };
+          const database = await openDatabase();
+
+          try {
+            await deleteValue(database, generatedComponentVersionStoreName, generatedVersionId);
             return undefined;
           } finally {
             database.close();

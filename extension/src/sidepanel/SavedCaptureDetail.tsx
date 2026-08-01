@@ -16,6 +16,7 @@ import { GenerationWorkflow } from "./GenerationWorkflow";
 import { PreviewSandbox } from "./PreviewSandbox";
 import { RevisionWorkflow } from "./RevisionWorkflow";
 import { VersionComparison } from "./VersionComparison";
+import { GeneratedVersionExport } from "./GeneratedVersionExport";
 
 export type SavedCaptureDetailState =
   | {
@@ -406,6 +407,7 @@ function GeneratedVersionsSection({
                       ) : null}
                     </dl>
                     <pre className="generated-code"><code>{entry.value.code}</code></pre>
+                    <GeneratedVersionExport entry={entry} sourceCaptureId={sourceCaptureId} />
                     <button
                       className="secondary-action compact-action"
                       type="button"
