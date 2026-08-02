@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 6 and completed Milestone 7A local generated-source export.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 6, completed Milestone 7A local generated-source export, and current Milestone 7B GitHub export architecture.
 
 Current implementation order:
 
@@ -16,9 +16,10 @@ Milestone 6D: Completed
 Milestone 6E: Completed
 Milestone 7: Current
 Milestone 7A: Completed
+Milestone 7B: Current
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7A completed one narrow local `.tsx` export path. Milestone 7 remains Current, but no later Milestone 7 substage has been started.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7A completed one narrow local `.tsx` export path. Milestone 7B is Current for GitHub export feasibility and security architecture only. Runtime GitHub export is not implemented.
 
 ## 2. Current Architecture
 
@@ -39,6 +40,7 @@ Supported webpage
   -> immutable V2 generated-version persistence
   -> local generated-version comparison
   -> local generated-source export
+  -> GitHub export architecture
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -48,6 +50,7 @@ The `CaptureRecord` remains the immutable source capture. Generated versions hav
 - Keep the MVP focused on Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate.
 - Keep generated-version comparison local, read-only, deterministic, and ephemeral.
 - Keep local generated-source export explicit, source-only, deterministic, and independent from Preview.
+- Keep GitHub export architecture explicit, single-file, Review-gated, and separate from local generated-source persistence.
 - Preserve local-first behavior by default.
 - Treat raw extraction data as intermediate input, not the persisted product.
 - Normalize persisted capture data into `CaptureRecord v1`.
@@ -80,6 +83,7 @@ The Side Panel owns the user workflow:
 - Persist successful revision/regeneration results as immutable V2 generated-version entries.
 - Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection.
 - Export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
+- Milestone 7B documents a future `Export to GitHub` row action for one selected generated version, one selected repository, one existing branch, one `.tsx` path, and a frozen Review before any remote write.
 
 ### 4.2 Background Service Worker
 
@@ -356,6 +360,21 @@ Hardening boundaries:
 - Temporary anchors are removed even when initiation fails, and failure remains retryable.
 - Export adds no `chrome.downloads`, no `downloads` permission, no optional permission, no Manifest change, no host-permission change, no File System Access API, no native messaging, no clipboard write, and no dependency.
 
+### 4.15 GitHub Export Architecture
+
+Milestone 7B is architecture-only. It defines a future narrow GitHub handoff without adding runtime GitHub code:
+
+- The future user action is `Export to GitHub` from one expanded generated-version row.
+- The future target is exactly one `.tsx` file in one user-selected repository and existing branch.
+- File contents remain exactly the selected generated version's persisted `entry.value.code`.
+- The default filename reuses the accepted Milestone 7A deterministic safe filename helper.
+- Target path validation is separate from filename validation and must reject traversal, absolute paths, `.github/workflows/`, and unsafe segments.
+- Every GitHub write requires a fresh local reread, exact displayed-entry equality, `sourceCaptureId` ownership, remote branch/file check, frozen Review, and explicit confirmation.
+- The selected auth architecture is GitHub App user authorization mediated by a narrow GitHub gateway backend. The extension must not contain GitHub client secrets, access tokens, refresh tokens, OAuth codes, cookies, or raw GitHub responses.
+- The selected write model is GitHub's repository contents API for one-file create/update, with current remote blob SHA required for update and branch/file state rechecked immediately before write.
+- Ambiguous writes must be reconciled by rereading the target path, exact bytes, and a public attempt marker; they must not be blindly resent.
+- Runtime GitHub export, GitHub gateway routes, token storage, Manifest permission changes, host-permission changes, dependencies, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, ZIP/package export, and multi-file export are not implemented.
+
 ## 5. Security and Privacy Boundaries
 
 - Captures remain local by default.
@@ -368,6 +387,7 @@ Hardening boundaries:
 - Comparison never automatically previews or executes generated source, never persists comparison state, and never calls backend/provider/OpenAI/source pages/content scripts/service workers or remote origins.
 - Local export never executes, parses, compiles, evaluates, or transforms generated source; never opens Preview; never creates Preview iframes; never writes IndexedDB; never mutates `CaptureRecord`, screenshots, V1 entries, or V2 entries; never persists export UI state; and never calls backend/provider/OpenAI/source pages/content scripts/service workers, analytics, GitHub, Figma, or remote origins.
 - Exported files contain generated source only and exclude capture IDs, generated-version IDs, `sourceCaptureId`, source URL, page title, notes, tags, screenshots, storage keys, fingerprints, logical attempt IDs, lineage fields, provider metadata, and backend metadata.
+- GitHub export architecture requires GitHub credentials to stay out of extension source, IndexedDB, generated-version stores, exported files, logs, URLs, source maps, and generated bundles. A future GitHub gateway must be separate from AI provider routes, must not receive screenshots or full `CaptureRecord` data, and must normalize GitHub errors without leaking tokens or raw response bodies.
 
 ## 6. Completed Milestone 6 Handoff
 
@@ -385,12 +405,12 @@ Milestone 6 preserves the local-first capture model, provider-secret boundary, s
 
 The current implementation does not include:
 
-- Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path.
+- Runtime export beyond the narrow Milestone 7A local single-version `.tsx` source-export path and current Milestone 7B GitHub architecture slice.
 - ZIP/package export.
 - Multi-file export.
 - Website publishing.
 - Figma export.
-- GitHub export.
+- Runtime GitHub export.
 - Team collaboration.
 - Cloud sync.
 - Multiple framework generation.

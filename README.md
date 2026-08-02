@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is current. Milestone 7A is completed for narrow local generated-source export. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is current. Milestone 7A is completed for narrow local generated-source export. Milestone 7B is current for GitHub export feasibility and security architecture only; runtime GitHub export is not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -40,6 +40,7 @@ Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and
 - Reread the authoritative IndexedDB generated-version entry at export time, require exact displayed-entry equality and `sourceCaptureId` ownership, and fail closed for missing, altered, invalid, unsafe, or wrong-capture entries.
 - Keep export Preview-independent, explicit, local, read-only, source-only, and separate from Comparison, Revision, Regeneration, backend/provider/OpenAI calls, runtime/tab messages, source pages, iframes, clipboard, File System Access API, and IndexedDB writes.
 - Use a trusted Side Panel UTF-8 Blob, temporary object URL, and temporary anchor download path. Milestone 7A added no `chrome.downloads`, no `downloads` permission, no optional permission, no Manifest change, no host-permission change, and no dependency.
+- Define Milestone 7B GitHub export architecture for a future explicit `Export to GitHub` action that would write exactly one selected generated version's exact source to one user-selected repository, existing branch, and `.tsx` path after a frozen Review. No GitHub authentication, backend gateway, token storage, remote write, Manifest permission, host permission, or dependency exists yet.
 
 ## Local-First and AI Boundary
 
@@ -139,7 +140,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
 - Milestones 1-5: Completed.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Current. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. No later Milestone 7 substage has been started.
+- Milestone 7: Current. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Current for GitHub export architecture only.
 
 ## Intentionally Unimplemented
 
@@ -151,5 +152,6 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path.
 - ZIP/package export.
 - Multi-file export.
+- Runtime GitHub export, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, background sync, and credential storage.
 - Figma export.
 - Authentication, hosted production multi-user backend operations, cloud sync, team collaboration, payments, quotas, and account management.

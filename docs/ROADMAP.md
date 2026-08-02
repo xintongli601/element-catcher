@@ -960,7 +960,7 @@ Objective: Define and implement export and expansion paths without turning the M
 Substage status:
 
 - Milestone 7A - Local generated source export: Completed.
-- GitHub workflow: Planned or explicitly out of scope until separately scoped.
+- Milestone 7B - GitHub export architecture: Current.
 - Figma integration: Planned or explicitly out of scope until separately scoped.
 - Cloud sync: Planned or explicitly out of scope until separately scoped.
 - Collaboration: Planned or explicitly out of scope until separately scoped.
@@ -969,6 +969,7 @@ Substage status:
 Included scope:
 
 - Narrow local generated source export.
+- Narrow single-file GitHub export architecture.
 - Future export and expansion hooks only after explicit scoping.
 
 Explicitly excluded scope:
@@ -1043,3 +1044,27 @@ Acceptance criteria:
 Accepted local validation reported for the Milestone 7A closeout: Slice 2 contract tests `3 passed`; Slice 2 Side Panel tests `6 passed`; Slice 3 hardening tests `11 passed`; combined Milestone 7A focused suite run 1 `20 passed`; combined Milestone 7A focused suite run 2 `20 passed`; relevant generated-version/Comparison/Preview/Revision regressions `93 passed`; backend tests `13 passed`; full Playwright E2E `245 passed, 1 skipped`; `npm run build` passed; and `npm audit --omit=dev` reported `0 vulnerabilities`. The existing skip was `generation-5c-loopback.spec.ts › browser generation flow sends one loopback request and preserves persistence`, with reason `Milestone 5C loopback E2E requires an extension build with the loopback endpoint.` These are local reported results associated with the accepted implementation, not GitHub Actions results or a general security proof.
 
 Architecture: `docs/MILESTONE_7A_LOCAL_EXPORT_ARCHITECTURE.md`.
+
+### Milestone 7B - GitHub Export Architecture
+
+Status: Current
+
+Objective: Define a narrow, secure GitHub handoff for one explicitly selected persisted generated version without implementing runtime GitHub authentication, repository selection, backend GitHub routes, token storage, or remote writes in Slice 1.
+
+Included scope:
+
+- `Export to GitHub` begins from one expanded generated-version row.
+- The future write target is exactly one `.tsx` file in one user-selected repository and existing branch.
+- File contents must be exactly the persisted `entry.value.code`.
+- The default filename reuses the accepted Milestone 7A deterministic safe filename contract.
+- V1 and V2 generated-version entries are supported.
+- Every remote write requires a frozen visible Review and explicit confirmation.
+- Preferred auth architecture is GitHub App user authorization mediated by a narrow GitHub gateway backend, keeping GitHub secrets and tokens out of extension source, IndexedDB, generated-version entries, logs, URLs, exported files, and generated bundles.
+- Preferred write model is GitHub's repository contents API for one-file create/update, with current remote blob SHA required for update and branch/file state rechecked before write.
+
+Explicitly excluded scope:
+
+- Runtime GitHub export implementation in Slice 1.
+- Repository creation, branch creation, pull requests, issues, branch protection management, Actions workflows, releases, deployments, GitHub Pages, ZIP/package export, general multi-file export, README generation, package generation, Tailwind configuration generation, CSS bundle generation, screenshot upload, `CaptureRecord` upload, cloud sync, background sync, continuous sync, collaboration, Figma integration, publishing, and additional frameworks.
+
+Architecture: `docs/MILESTONE_7B_GITHUB_EXPORT_ARCHITECTURE.md`.

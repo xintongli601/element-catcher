@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 6 are completed. Milestone 7 is Current. Milestone 7A local generated-source export is Completed.
+Milestones 1 through 6 are completed. Milestone 7 is Current. Milestone 7A local generated-source export is Completed. Milestone 7B GitHub export architecture is Current, with no runtime GitHub export implemented.
 
 Implemented:
 
@@ -134,6 +134,8 @@ Implemented details:
 
 Milestone 7A delivered the first narrow export path: one explicit local `.tsx` export of one selected persisted generated version's exact stored source. Broader reuse workflow polish remains future.
 
+Milestone 7B defines the next narrow handoff architecture: a future explicit `Export to GitHub` action for one selected persisted generated version, one user-selected repository, one existing branch, and one `.tsx` path. The planned file contents remain exactly persisted `entry.value.code`, the default filename reuses the Milestone 7A filename helper, and every remote write would require a frozen Review and explicit confirmation. GitHub authentication, backend gateway routes, tokens, repository selection, and remote writes are not implemented.
+
 ## 9. Structured Capture Concept
 
 A capture is not just a screenshot. A capture is a normalized, serializable record that combines visual reference, source context, sanitized structure, normalized style information, semantic summaries, and user library metadata.
@@ -228,7 +230,7 @@ The implementation uses the trusted Side Panel, a UTF-8 Blob, a temporary object
 - Milestone 4: Completed - personal Capture Library.
 - Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Current - local generated-source export starts with Milestone 7A. Milestone 7A is Completed; broader GitHub, Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and multi-file export remain Planned or explicitly out of scope.
+- Milestone 7: Current - local generated-source export started with completed Milestone 7A. Milestone 7B is Current for narrow single-file GitHub export architecture only; runtime GitHub export is not implemented. Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and general multi-file export remain Planned or explicitly out of scope.
 
 ## 14. Success Criteria
 
@@ -261,9 +263,9 @@ Element Catcher v0.1 does not include:
 - Automatic generated-source execution.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
-- Export beyond the completed narrow Milestone 7A local `.tsx` source-export path.
+- Runtime export beyond the completed narrow Milestone 7A local `.tsx` source-export path and the current Milestone 7B GitHub architecture slice.
 - Figma export.
-- GitHub export.
+- Runtime GitHub export.
 - Team collaboration.
 - Cloud sync.
 - Multiple framework generation.
