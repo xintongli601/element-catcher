@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is current. Milestone 7A is completed for narrow local generated-source export. Milestone 7B is current for GitHub export feasibility and security architecture only; runtime GitHub export is not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is current. Milestone 7A is completed for narrow local generated-source export. Milestone 7B is completed after final local validation and acceptance for deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -40,7 +40,10 @@ Milestones 1 through 6 are completed. Milestone 6 delivered isolated preview and
 - Reread the authoritative IndexedDB generated-version entry at export time, require exact displayed-entry equality and `sourceCaptureId` ownership, and fail closed for missing, altered, invalid, unsafe, or wrong-capture entries.
 - Keep export Preview-independent, explicit, local, read-only, source-only, and separate from Comparison, Revision, Regeneration, backend/provider/OpenAI calls, runtime/tab messages, source pages, iframes, clipboard, File System Access API, and IndexedDB writes.
 - Use a trusted Side Panel UTF-8 Blob, temporary object URL, and temporary anchor download path. Milestone 7A added no `chrome.downloads`, no `downloads` permission, no optional permission, no Manifest change, no host-permission change, and no dependency.
-- Define Milestone 7B GitHub export architecture for a future explicit `Export to GitHub` action that would write exactly one selected generated version's exact source to one user-selected repository, existing branch, and `.tsx` path after a frozen Review. No GitHub authentication, backend gateway, token storage, remote write, Manifest permission, host permission, or dependency exists yet.
+- Use the Milestone 7B row-specific `Export to GitHub` workflow in deterministic fake/development mode: select one persisted generated version, one repository, one existing branch, one validated repository-relative `.tsx` path, open a frozen semantic Review, and explicitly confirm one single-file create/update.
+- Validate strict GitHub export contracts, repository-relative `.tsx` paths, bounded single-line commit messages, authoritative local generated-version rereads, repository and existing-branch selection, remote target inspection, local stale handling, remote conflict handling, duplicate write suppression, semantic Review and Success states, and integrated regression coverage.
+- Route GitHub export through isolated, versioned backend gateway routes for session, repositories, branches, inspect, and write; normal runtime remains fail-closed/not-configured, while deterministic fake GitHub behavior is enabled only through explicit development/test injection.
+- Keep current GitHub behavior limited to deterministic fake/development transport. There is no real GitHub account connection, OAuth exchange, token persistence, real `api.github.com` call, production GitHub write, repository or branch creation, PR, workflow, Action, release, deployment, Pages, package, ZIP, or multi-file export.
 
 ## Local-First and AI Boundary
 
@@ -140,7 +143,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 
 - Milestones 1-5: Completed.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Current. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Current for GitHub export architecture only.
+- Milestone 7: Current. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Milestone 7 itself is not completed.
 
 ## Intentionally Unimplemented
 
@@ -149,9 +152,9 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Dynamic Tailwind class evaluation, generated CSS, arbitrary CSS execution, external assets, imports, hooks, browser APIs, timers, workers, storage, navigation, or network access from generated source.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
-- Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path.
+- Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path and the deterministic Milestone 7B fake/development GitHub workflow.
 - ZIP/package export.
 - Multi-file export.
-- Runtime GitHub export, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, background sync, and credential storage.
+- Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, background sync, protected operational controls, and credential storage.
 - Figma export.
 - Authentication, hosted production multi-user backend operations, cloud sync, team collaboration, payments, quotas, and account management.

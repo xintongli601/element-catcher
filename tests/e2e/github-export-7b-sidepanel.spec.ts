@@ -83,6 +83,79 @@ test.describe("Milestone 7B Slice 3 GitHub export Side Panel workflow", () => {
       await server.close();
     }
   });
+
+  test("supports keyboard Review and Success semantics and clears ephemeral state after Detail leave", async ({ sidePanelPage, extensionId }) => {
+    const server = await startFakeGateway(extensionId);
+    try {
+      const { target, createEntry } = await seedGitHubVersions(sidePanelPage);
+      await sidePanelPage.reload();
+      await enableGitHubLoopback(sidePanelPage);
+      await openCapture(sidePanelPage, target);
+      const beforeCounts = await readPersistenceCounts(sidePanelPage);
+
+      const item = pageRowForVersion(sidePanelPage, createEntry);
+      const rowToggle = item.getByRole("button", { name: versionLabel(createEntry) });
+      await rowToggle.focus();
+      await sidePanelPage.keyboard.press("Enter");
+      await expect(item.locator(".generated-version-details")).toBeVisible();
+      await expectRowExportControls(item, createEntry);
+
+      const githubButton = item.getByRole("button", { name: githubLabel(createEntry) });
+      await githubButton.focus();
+      await sidePanelPage.keyboard.press("Enter");
+      await sidePanelPage.getByLabel("GitHub repository").selectOption({ label: "octocat/hello-world" });
+      await sidePanelPage.getByLabel("GitHub branch").selectOption({ label: "main" });
+      await sidePanelPage.getByLabel("GitHub target path").fill("components/KeyboardCard.tsx");
+      await sidePanelPage.getByLabel("GitHub commit message").fill("Export KeyboardCard");
+
+      const reviewButton = sidePanelPage.getByRole("button", { name: "Review GitHub export" });
+      await reviewButton.focus();
+      await sidePanelPage.keyboard.press("Enter");
+      let review = await getGitHubReview(sidePanelPage);
+      await expectGitHubReviewField(review, "Account", "octocat");
+      await expectGitHubReviewField(review, "Repository", "octocat/hello-world");
+      await expectGitHubReviewField(review, "Branch", "main");
+      await expectGitHubReviewField(review, "Target path", "components/KeyboardCard.tsx");
+      await expectGitHubReviewField(review, "Operation", "create");
+      await expectGitHubReviewField(review, "Commit message", "Export KeyboardCard");
+      await expectGitHubReviewField(review, "Source filename", "NewCard.tsx");
+      await expectGitHubReviewField(review, "Source byte count", String(new TextEncoder().encode(createEntry.value.code).byteLength));
+      await expectGitHubReviewField(review, "Remote blob SHA", "None");
+      await expectGitHubReviewField(review, "Remote commit", "One remote commit will be created.");
+      await expect(review.locator("input, select, textarea")).toHaveCount(0);
+
+      const cancelButton = review.getByRole("button", { name: "Cancel GitHub export" });
+      await cancelButton.focus();
+      await sidePanelPage.keyboard.press("Enter");
+      await expect(sidePanelPage.getByRole("status").filter({ hasText: /^GitHub export cancelled\.$/ })).toHaveCount(1);
+
+      await reviewButton.focus();
+      await sidePanelPage.keyboard.press("Enter");
+      review = await getGitHubReview(sidePanelPage);
+      const confirmButton = review.getByRole("button", { name: "Confirm GitHub write" });
+      await confirmButton.focus();
+      await sidePanelPage.keyboard.press("Enter");
+      const success = await getGitHubSuccess(sidePanelPage);
+      await expectSuccessField(success, "Repository", "octocat/hello-world");
+      await expectSuccessField(success, "Branch", "main");
+      await expectSuccessField(success, "Target path", "components/KeyboardCard.tsx");
+      await expectSuccessField(success, "Operation", "create");
+      await expectSuccessField(success, "Commit SHA", "f000000000000000000000000000000000000001");
+      await expectSuccessField(success, "Commit URL", "https://github.com/octocat/hello-world/commit/f000000000000000000000000000000000000001");
+
+      await sidePanelPage.getByRole("button", { name: "Back to Library" }).click();
+      await expect(sidePanelPage.getByRole("heading", { name: "Capture Library" })).toBeVisible();
+      await expect(sidePanelPage.getByRole("heading", { name: "GitHub export Review" })).toHaveCount(0);
+      await expect(sidePanelPage.getByRole("heading", { name: "GitHub export succeeded" })).toHaveCount(0);
+      await openCapture(sidePanelPage, target);
+      await expect(sidePanelPage.getByRole("heading", { name: "GitHub export Review" })).toHaveCount(0);
+      await expect(sidePanelPage.getByRole("heading", { name: "GitHub export succeeded" })).toHaveCount(0);
+      await expect(sidePanelPage.locator("iframe")).toHaveCount(0);
+      expect(await readPersistenceCounts(sidePanelPage)).toEqual(beforeCounts);
+    } finally {
+      await server.close();
+    }
+  });
 });
 
 async function completeGitHubExport(
@@ -210,14 +283,18 @@ async function openCapture(page: Page, target: SeededCapture) {
 }
 
 async function expandVersion(page: Page, entry: GeneratedComponentVersionEntry) {
-  const item = page.locator(".generated-version-item", {
-    has: page.getByRole("button", { name: versionLabel(entry) })
-  });
+  const item = pageRowForVersion(page, entry);
   await item.getByRole("button", { name: versionLabel(entry) }).click();
   await expect(item.locator(".generated-version-details")).toBeVisible();
   await expectRowExportControls(item, entry);
   await expect(page.getByRole("button", { name: githubLabel(entry) })).toHaveCount(1);
   return item;
+}
+
+function pageRowForVersion(page: Page, entry: GeneratedComponentVersionEntry) {
+  return page.locator(".generated-version-item", {
+    has: page.getByRole("button", { name: versionLabel(entry) })
+  });
 }
 
 async function expectRowExportControls(item: Locator, entry: GeneratedComponentVersionEntry) {

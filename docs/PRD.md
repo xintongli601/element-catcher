@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 6 are completed. Milestone 7 is Current. Milestone 7A local generated-source export is Completed. Milestone 7B GitHub export architecture is Current, with no runtime GitHub export implemented.
+Milestones 1 through 6 are completed. Milestone 7 is Current. Milestone 7A local generated-source export is Completed. Milestone 7B deterministic fake/development GitHub export workflow is Completed after final local validation and acceptance. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 Implemented:
 
@@ -36,6 +36,7 @@ Implemented:
 - Immutable V2 generated-version persistence with lineage to the selected source version.
 - Local generated-version comparison for exactly two distinct persisted versions with the same `sourceCaptureId`.
 - Local single-version exact-source `.tsx` export for one explicitly selected persisted generated version.
+- Deterministic fake/development single-file GitHub export workflow for one explicitly selected persisted generated version, with strict contracts, repository and existing-branch selection, validated path and commit message, frozen Review, explicit create/update confirmation, stale/conflict handling, duplicate suppression, and semantic Review/Success states.
 
 ## 3. Problem Statement
 
@@ -131,10 +132,11 @@ Implemented details:
 18. Persist the successful result as a new immutable V2 generated-version entry linked to the selected source version.
 19. Compare exactly two persisted generated versions for the same source capture through explicit Baseline and Candidate selection, optional Swap, metadata comparison, bounded source diff, and complete original source display.
 20. Expand one generated-version row and activate `Export .tsx` to initiate one local browser download containing exactly that persisted generated version's `entry.value.code`.
+21. In deterministic fake/development mode, expand one generated-version row, activate `Export to GitHub`, choose a repository and existing branch, enter a validated `.tsx` path and commit message, inspect a frozen Review, explicitly confirm one create/update, and see Success only after the backend gateway verifies the fake write.
 
 Milestone 7A delivered the first narrow export path: one explicit local `.tsx` export of one selected persisted generated version's exact stored source. Broader reuse workflow polish remains future.
 
-Milestone 7B defines the next narrow handoff architecture: a future explicit `Export to GitHub` action for one selected persisted generated version, one user-selected repository, one existing branch, and one `.tsx` path. The planned file contents remain exactly persisted `entry.value.code`, the default filename reuses the Milestone 7A filename helper, and every remote write would require a frozen Review and explicit confirmation. GitHub authentication, backend gateway routes, tokens, repository selection, and remote writes are not implemented.
+Milestone 7B delivers the next narrow handoff as a deterministic fake/development workflow: an explicit `Export to GitHub` action for one selected persisted generated version, one user-selected repository, one existing branch, and one `.tsx` path. The file contents remain exactly persisted `entry.value.code`, the default filename reuses the Milestone 7A filename helper, and every create/update requires a frozen Review and explicit confirmation. Normal runtime remains not-configured for real GitHub; real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production writes are not implemented.
 
 ## 9. Structured Capture Concept
 
@@ -221,6 +223,10 @@ The exported bytes preserve persisted source exactly: no CRLF/LF normalization, 
 
 The implementation uses the trusted Side Panel, a UTF-8 Blob, a temporary object URL, and a temporary anchor with `download`. It does not use `chrome.downloads`, File System Access API, native messaging, clipboard writes, arbitrary filesystem access, or new dependencies. Accepted hardening confirmed zero HTTP/HTTPS requests, backend/provider/OpenAI calls, runtime messages, tab messages, source-page interaction, automatic Preview, automatic iframe creation, generated-source parsing/compilation/evaluation/execution, and IndexedDB writes. `CaptureRecord`, screenshot assets, pre-existing V1/V2 generated versions, generated-version ordering, Comparison selections, Preview state, and Revision/Regeneration state remain unchanged by export.
 
+Milestone 7B GitHub export is Completed for deterministic fake/development behavior. The row action makes no GitHub request on row expansion and starts only through explicit `Export to GitHub`. The user chooses a repository and existing branch, enters a validated repository-relative `.tsx` path and bounded single-line commit message, then opens a frozen semantic Review that distinguishes create/update and includes the inspected remote state. Final write requires explicit confirmation, performs another authoritative local generated-version reread immediately before write, fails closed on local stale state or remote conflict, suppresses duplicate confirmation, and shows Success only after the backend gateway returns a verified fake write result. Cancellation, Detail leave, and capture switching clear ephemeral Review/Success state. Keyboard and semantic accessibility coverage verifies row expansion, workflow start, Review, cancellation, confirmation, and Success fields.
+
+The GitHub gateway exposes only versioned session, repositories, branches, inspect, and write routes. Normal runtime uses the not-configured transport and exposes no fake active session. The deterministic fake transport is explicitly injected for tests/development and never performs real `api.github.com` requests. The extension-facing contracts carry bounded versioned models and opaque session references only; no token, refresh token, OAuth code, client secret, cookie, authorization header, screenshot, `CaptureRecord`, source URL, page title, notes, storage key, provider metadata, or OpenAI credential enters GitHub export UI state or persistence. GitHub export does not write IndexedDB, mutate captures or generated versions, execute source, create iframes automatically, contact provider/OpenAI routes, create repositories or branches, open pull requests, create workflows, run Actions, publish releases/deployments/Pages/packages, create ZIPs, or export multiple files.
+
 ## 13. Roadmap
 
 - Milestone 1: Completed - extension scaffold.
@@ -230,7 +236,7 @@ The implementation uses the trusted Side Panel, a UTF-8 Blob, a temporary object
 - Milestone 4: Completed - personal Capture Library.
 - Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Current - local generated-source export started with completed Milestone 7A. Milestone 7B is Current for narrow single-file GitHub export architecture only; runtime GitHub export is not implemented. Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and general multi-file export remain Planned or explicitly out of scope.
+- Milestone 7: Current - local generated-source export started with completed Milestone 7A. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and general multi-file export remain Planned or explicitly out of scope.
 
 ## 14. Success Criteria
 
@@ -263,9 +269,9 @@ Element Catcher v0.1 does not include:
 - Automatic generated-source execution.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
-- Runtime export beyond the completed narrow Milestone 7A local `.tsx` source-export path and the current Milestone 7B GitHub architecture slice.
+- Runtime export beyond the completed narrow Milestone 7A local `.tsx` source-export path and deterministic Milestone 7B fake/development GitHub workflow.
 - Figma export.
-- Runtime GitHub export.
+- Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, protected manual validation, production deployment, and operational controls.
 - Team collaboration.
 - Cloud sync.
 - Multiple framework generation.

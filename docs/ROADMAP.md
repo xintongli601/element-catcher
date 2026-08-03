@@ -960,7 +960,7 @@ Objective: Define and implement export and expansion paths without turning the M
 Substage status:
 
 - Milestone 7A - Local generated source export: Completed.
-- Milestone 7B - GitHub export architecture: Current.
+- Milestone 7B - Deterministic GitHub export workflow: Completed after final local validation and acceptance.
 - Figma integration: Planned or explicitly out of scope until separately scoped.
 - Cloud sync: Planned or explicitly out of scope until separately scoped.
 - Collaboration: Planned or explicitly out of scope until separately scoped.
@@ -969,7 +969,7 @@ Substage status:
 Included scope:
 
 - Narrow local generated source export.
-- Narrow single-file GitHub export architecture.
+- Narrow deterministic fake/development single-file GitHub export workflow.
 - Future export and expansion hooks only after explicit scoping.
 
 Explicitly excluded scope:
@@ -1047,24 +1047,49 @@ Architecture: `docs/MILESTONE_7A_LOCAL_EXPORT_ARCHITECTURE.md`.
 
 ### Milestone 7B - GitHub Export Architecture
 
-Status: Current
+Status: Completed after final local validation and acceptance
 
-Objective: Define a narrow, secure GitHub handoff for one explicitly selected persisted generated version without implementing runtime GitHub authentication, repository selection, backend GitHub routes, token storage, or remote writes in Slice 1.
+Objective: Define and implement a narrow, secure deterministic fake/development GitHub handoff for one explicitly selected persisted generated version without implementing real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, or production GitHub writes.
+
+Accepted implementation history:
+
+- `1327ca4f1aea85f6cf286998f7d4324c83c45b6b` completed Slice 1 architecture and feasibility.
+- `16c37e69a0db239bbe1e26247677bfa6543a6bb0` completed Slice 2 contracts and local preparation.
+- `78f58d37e0d9ca5538422229d7c23e55fd09c4f3` completed Slice 3 Review workflow and deterministic fake gateway path.
+- Slice 4 completes final hardening, keyboard/accessibility coverage, status consistency, integrated regression definition, and documentation closeout after the user runs and accepts final local validation.
+
+Slice status:
+
+- Slice 1 - Architecture and feasibility: Completed.
+- Slice 2 - Contracts and local preparation: Completed.
+- Slice 3 - Review workflow and fake gateway path: Completed.
+- Slice 4 - Final hardening and documentation closeout: Completed after final local validation and acceptance.
 
 Included scope:
 
 - `Export to GitHub` begins from one expanded generated-version row.
-- The future write target is exactly one `.tsx` file in one user-selected repository and existing branch.
+- Row expansion makes no GitHub request; workflow starts only from explicit `Export to GitHub`.
+- The write target is exactly one `.tsx` file in one user-selected repository and existing branch.
 - File contents must be exactly the persisted `entry.value.code`.
 - The default filename reuses the accepted Milestone 7A deterministic safe filename contract.
 - V1 and V2 generated-version entries are supported.
 - Every remote write requires a frozen visible Review and explicit confirmation.
-- Preferred auth architecture is GitHub App user authorization mediated by a narrow GitHub gateway backend, keeping GitHub secrets and tokens out of extension source, IndexedDB, generated-version entries, logs, URLs, exported files, and generated bundles.
-- Preferred write model is GitHub's repository contents API for one-file create/update, with current remote blob SHA required for update and branch/file state rechecked before write.
+- Strict versioned contracts validate session, repository, branch, inspect, Review, write, success, target path, commit message, source byte count, and safe error shapes.
+- The extension rereads the authoritative generated-version entry before Review and immediately before write, requires exact ID, exact `sourceCaptureId`, validation, and canonical displayed-entry equality, freezes exact UTF-8 source bytes, and sends no write after local stale.
+- The isolated backend GitHub gateway has fixed session, repositories, branches, inspect, and write routes; normal runtime defaults to not-configured; deterministic fake transport is enabled only through explicit development/test injection.
+- Repository and branch selection are explicit; only existing branches are selectable.
+- Remote inspect freezes account, session, repository, branch, branch head SHA, path, operation, and remote file state; write verifies the same state again and fails closed on conflict.
+- Create never silently becomes update, update never silently becomes create, duplicate confirmation creates at most one fake write, and one approved fake write changes exactly one file and one commit.
+- Review and Success use named semantic sections and label/value fields, including distinct commit SHA and commit URL fields; keyboard/accessibility coverage verifies the complete fake workflow.
 
 Explicitly excluded scope:
 
-- Runtime GitHub export implementation in Slice 1.
-- Repository creation, branch creation, pull requests, issues, branch protection management, Actions workflows, releases, deployments, GitHub Pages, ZIP/package export, general multi-file export, README generation, package generation, Tailwind configuration generation, CSS bundle generation, screenshot upload, `CaptureRecord` upload, cloud sync, background sync, continuous sync, collaboration, Figma integration, publishing, and additional frameworks.
+- Real GitHub App registration, real authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, protected manual validation, production deployment, operational controls, real ambiguous-write reconciliation, repository creation, branch creation, pull requests, issues, branch protection management, Actions workflows, releases, deployments, GitHub Pages, ZIP/package export, general multi-file export, README generation, package generation, Tailwind configuration generation, CSS bundle generation, screenshot upload, `CaptureRecord` upload, cloud sync, background sync, continuous sync, collaboration, Figma integration, publishing, and additional frameworks.
+
+Historical accepted Slice 3 validation reported: focused GitHub create/update test passed; focused invalid-path/conflict/navigation test passed; complete GitHub focused suite 8 passed; Milestone 7A regression 9 passed; Preview, Comparison, and Revision coexistence regression 59 passed; backend suite 15 passed; build passed; content-script validation passed; `npm audit --omit=dev` reported 0 vulnerabilities.
+
+Slice 4 adds focused keyboard/accessibility regression coverage for keyboard row expansion, keyboard workflow start, semantic Review inspection, cancellation, reopening, keyboard confirmation, semantic Success inspection, Detail leave cleanup, zero iframe, and unchanged IndexedDB counts. Final Slice 4 local validation remains pending until the user runs the supplied Terminal validation block.
+
+Remaining future GitHub production work is separate from completed Milestone 7B: GitHub App registration, real authorization UX, OAuth token exchange, secure backend token/session storage, real GitHub REST transport, protected manual validation against an authorized repository, production ambiguous-write reconciliation, deployment policy, monitoring, rate limiting, abuse controls, and operational security review.
 
 Architecture: `docs/MILESTONE_7B_GITHUB_EXPORT_ARCHITECTURE.md`.

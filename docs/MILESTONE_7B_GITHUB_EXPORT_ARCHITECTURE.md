@@ -2,26 +2,26 @@
 
 ## 1. Status and Scope
 
-Status: Current architecture slice for Milestone 7B. Milestone 7 is Current. Milestone 7A is Completed. Milestone 7B is Current. Milestone 7B is not Completed, and Milestone 7 is not Completed.
+Status: Completed for Milestone 7B deterministic fake/development GitHub export after final local validation and acceptance. Milestone 7 is Current. Milestone 7A is Completed. Milestone 7B is Completed. Milestone 7 is not Completed.
 
-Milestone 7B defines one narrow GitHub handoff path for one explicitly selected persisted generated version. It does not implement runtime GitHub authentication, repository selection, or remote writes in this slice.
+Milestone 7B defines and implements one narrow deterministic fake/development GitHub handoff path for one explicitly selected persisted generated version. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 The intended user outcome is:
 
 ```text
 Expanded generated-version row
   -> Export to GitHub
-  -> authorize GitHub App session
+  -> deterministic fake/development session, or fail closed in normal runtime
   -> choose repository and existing branch
   -> choose or confirm one repository-relative .tsx path
   -> frozen Review
   -> explicit confirmation
-  -> exactly one GitHub commit that creates or updates exactly one .tsx file
+  -> exactly one fake/development commit that creates or updates exactly one .tsx file
 ```
 
 ## 2. Current Repository Inventory
 
-The accepted repository baseline provides:
+The accepted repository baseline and Milestone 7B implementation provide:
 
 - `extension/src/shared/generated-version-contract.ts`: validated V1 and V2 generated-version entries, generated-version IDs, `sourceCaptureId` ownership, and V2 lineage.
 - `extension/src/shared/generation-contract.ts`: generated response validation, including non-empty `code` and validated `componentName`.
@@ -29,11 +29,17 @@ The accepted repository baseline provides:
 - `extension/src/sidepanel/GeneratedVersionExport.tsx`: Milestone 7A row-local local export UI, authoritative IndexedDB reread, exact displayed-entry equality, `sourceCaptureId` ownership, stale fail-closed handling, Blob/object URL/anchor initiation, and cleanup.
 - `extension/src/storage/indexed-db.ts`: IndexedDB version 2 with `captureRecords`, `screenshotAssets`, and `generatedComponentVersions`; one `generatedComponentVersions.sourceCaptureId` index; V1/V2 union generated-version readers.
 - `extension/src/sidepanel/SavedCaptureDetail.tsx`: Saved Capture Detail, expanded generated-version rows, Preview, Revision/Regeneration, Comparison, and local `Export .tsx`.
-- `backend/src/app.ts`: local generation and revision backend routes only, with provider-secret handling, safe error envelopes, CORS origin checks, request-size limits, and no GitHub route.
+- `extension/src/github/github-export-contract.ts`: strict versioned GitHub export contracts, request/response validation, bounded paths, bounded commit messages, source byte counts, safe error mapping, and forbidden secret/raw data guards.
+- `extension/src/github/github-export-local.ts`: exact local generated-source preparation, authoritative reread ownership, displayed-entry equality, `sourceCaptureId` checks, exact UTF-8 byte counts, and fail-closed local stale handling.
+- `extension/src/github/github-export-transport.ts`: fixed extension-to-backend GitHub gateway transport for session, repositories, branches, inspect, and write.
+- `extension/src/sidepanel/GitHubVersionExport.tsx`: row-specific GitHub export UI, explicit start, repository and existing-branch selection, target path and commit-message controls, frozen Review, pre-write reread, duplicate suppression, cancellation, Success, and lifecycle cleanup.
+- `backend/src/app.ts`: local generation and revision backend routes plus isolated GitHub gateway routes, with provider-secret handling, safe error envelopes, CORS origin checks, route-specific request-size limits, and no generic proxy.
+- `backend/src/github/github-gateway.ts`: fixed GitHub gateway route dispatch and normal-runtime not-configured transport.
+- `backend/src/github/fake-github-transport.ts`: deterministic fake GitHub transport enabled only through explicit injection.
 - `extension/manifest.json`: Manifest V3 with `activeTab` and `sidePanel` permissions, `http://127.0.0.1/*` host permission for the local backend, strict preview sandbox CSP, and no GitHub, identity, downloads, native messaging, or broad host permission.
 - `package.json`: no GitHub SDK or OAuth dependency.
 
-Milestone 7B Slice 1 preserves all source code, backend code, tests, package files, lockfiles, Manifest permissions, CSP, Preview protocol, IndexedDB schema, CaptureRecord contract, generated-version contract, and GitHub workflows.
+Milestone 7B preserves package files, lockfiles, Manifest permissions, CSP, Preview protocol, IndexedDB schema, CaptureRecord contract, generated-version persisted shapes, and GitHub workflows.
 
 ## 3. Official-Source Research
 
@@ -70,13 +76,13 @@ Research conclusions:
 
 ## 4. Product Definition
 
-Milestone 7B is a portfolio-relevant GitHub handoff, not a publishing platform.
+Milestone 7B is a portfolio-relevant deterministic GitHub handoff, not a publishing platform.
 
-The user explicitly chooses `Export to GitHub` from one expanded generated-version row. The selected generated version may be V1, V2 Revision, or V2 Regeneration. Element Catcher creates or updates exactly one `.tsx` file in a user-selected repository and existing branch.
+The user explicitly chooses `Export to GitHub` from one expanded generated-version row. The selected generated version may be V1, V2 Revision, or V2 Regeneration. In the completed deterministic fake/development workflow, Element Catcher creates or updates exactly one `.tsx` file in a user-selected repository and existing branch through the explicitly injected fake transport. In normal runtime, the GitHub gateway remains not configured and no real GitHub write is available.
 
-The GitHub file contents are exactly the persisted `entry.value.code` encoded as UTF-8 before Base64 transport to GitHub. The default filename uses the accepted Milestone 7A deterministic safe filename helper. Export remains independent from Preview eligibility and never executes, parses, transforms, compiles, evaluates, or iframes generated source.
+The GitHub file contents are exactly the persisted `entry.value.code` encoded as UTF-8. The default filename uses the accepted Milestone 7A deterministic safe filename helper. Export remains independent from Preview eligibility and never executes, parses, transforms, compiles, evaluates, or iframes generated source.
 
-Every GitHub write requires a fresh explicit user action and a frozen visible Review. No automatic GitHub write occurs after generation, revision, regeneration, Preview, Comparison, local `Export .tsx`, refresh, reopen, or navigation.
+Every fake/development GitHub write requires a fresh explicit user action and a frozen visible Review. No automatic GitHub request occurs on row expansion. No automatic GitHub write occurs after generation, revision, regeneration, Preview, Comparison, local `Export .tsx`, refresh, reopen, or navigation.
 
 ## 5. Authentication Options Comparison
 
@@ -91,7 +97,7 @@ Classic personal access tokens are not approved. Fine-grained PATs may be used o
 
 ## 6. Selected Authentication Architecture
 
-Milestone 7B selects a GitHub App user authorization model with a narrow backend-mediated GitHub gateway.
+Milestone 7B selects a GitHub App user authorization model with a narrow backend-mediated GitHub gateway as the future production architecture.
 
 Preferred implementation model:
 
@@ -103,7 +109,7 @@ Preferred implementation model:
 
 Backend is required for the preferred production architecture because the Chrome extension is a public client and cannot keep a GitHub App client secret or long-lived GitHub credential confidential. The GitHub gateway must be separate from the AI provider adapter and must not become a generic open proxy.
 
-The later implementation may use `chrome.identity.launchWebAuthFlow` for the browser redirect experience, but adding the Chrome `identity` permission, redirect callback configuration, and any GitHub host permission is out of Slice 1 and must be reviewed before runtime work.
+A future production implementation may use `chrome.identity.launchWebAuthFlow` for the browser redirect experience, but adding the Chrome `identity` permission, redirect callback configuration, and any GitHub host permission remains unimplemented and must be reviewed before real authorization work.
 
 ## 7. Extension and Backend Trust Boundaries
 
@@ -132,7 +138,7 @@ The existing AI local backend remains a development/demo topology. A production 
 
 ## 8. Minimum GitHub Permissions
 
-GitHub App permissions for Milestone 7B:
+Future production GitHub App permissions selected by the Milestone 7B architecture:
 
 - Repository `Contents`: read and write, limited to selected repositories.
 - Metadata: implicit/minimum repository metadata needed by GitHub APIs.
@@ -346,6 +352,7 @@ State rules:
 - Success is shown only after remote verification.
 - Leaving Detail clears ephemeral GitHub export UI state.
 - Local `Export .tsx`, Comparison, Preview, Revision, and Regeneration remain independent.
+- In the completed deterministic implementation, Review and Success are named semantic sections using label/value fields. Success distinguishes commit SHA from commit URL and does not automatically navigate to the commit URL.
 
 ## 17. Accessibility
 
@@ -361,6 +368,8 @@ The GitHub export workflow must use native keyboard-operable controls with acces
 - cancel/back actions.
 
 The UI must not steal focus after async updates, must keep errors associated with the relevant controls, must not render secrets, and must announce success/failure states through existing safe status/alert patterns.
+
+Completed Slice 4 adds focused keyboard/accessibility regression coverage for keyboard row expansion, keyboard `Export to GitHub` start, repository and branch selection, path and commit-message input, keyboard Review opening, semantic Review field inspection, Review cancellation, Review reopening, keyboard confirmation, semantic Success field inspection, Detail leave cleanup, zero automatic iframe, and unchanged IndexedDB counts.
 
 ## 18. Error and Rate-Limit Model
 
@@ -405,15 +414,20 @@ Rate-limit handling:
 | Generated-source execution | Prohibited; GitHub export sends inert source bytes only after Review. |
 | Provider credential crossover | Prohibited; GitHub gateway is separate from AI provider adapter. |
 
-## 20. Test Matrix
+## 20. Test Matrix and Evidence
 
-Future implementation acceptance must include deterministic coverage for:
+Completed Milestone 7B deterministic coverage includes:
 
 - V1 exact-source GitHub payload.
 - V2 Revision exact-source GitHub payload.
 - V2 Regeneration exact-source GitHub payload.
 - accepted Milestone 7A filename reuse.
 - target path validation.
+- commit-message validation.
+- strict unknown-field and forbidden-secret rejection.
+- session, repository, branch, inspect, write, success, and safe error contracts.
+- normal runtime not-configured behavior.
+- explicit fake transport injection.
 - create Review.
 - update Review with remote SHA.
 - remote SHA conflict.
@@ -429,6 +443,9 @@ Future implementation acceptance must include deterministic coverage for:
 - rapid double activation.
 - capture switch.
 - Detail unmount.
+- Review cancellation and retry.
+- duplicate confirmation suppression.
+- keyboard and semantic accessibility workflow.
 - account change during pending work.
 - repository change during pending work.
 - branch change during pending work.
@@ -442,18 +459,22 @@ Future implementation acceptance must include deterministic coverage for:
 - local `Export .tsx`, Comparison, Preview, Revision, and Regeneration coexistence.
 - default E2E remains headless.
 
-Real GitHub writes should not be required in ordinary CI because committed tests must not require secrets. The future suite should use a deterministic local fake GitHub gateway and fake GitHub API. A separately documented protected-environment or manual validation gate must cover one real authorized create and update path before Milestone 7B is marked Completed.
+Historical accepted Slice 3 validation reported: focused GitHub create/update test passed; focused invalid-path/conflict/navigation test passed; complete GitHub focused suite 8 passed; Milestone 7A regression 9 passed; Preview, Comparison, and Revision coexistence regression 59 passed; backend suite 15 passed; build passed; content-script validation passed; `npm audit --omit=dev` reported 0 vulnerabilities.
+
+Slice 4 adds the keyboard/accessibility regression above. Final Slice 4 local validation remains pending until the user runs the supplied Terminal command block; this document does not fabricate a passing result for that new test.
+
+Real GitHub writes are not required in ordinary CI because committed tests must not require secrets. A future separately scoped production GitHub phase must cover protected-environment or manual validation for real authorized create and update paths before any production GitHub write capability is claimed.
 
 ## 21. Implementation Slices
 
-Slice 1: feasibility and architecture.
+Slice 1: feasibility and architecture. Completed.
 
 - Official platform research.
 - Authentication and write-model decision.
 - Milestone 7B start.
 - No runtime changes.
 
-Slice 2: contracts and local preparation.
+Slice 2: contracts and local preparation. Completed.
 
 - Frozen shared request/response contracts.
 - Local generated-entry reread.
@@ -462,44 +483,51 @@ Slice 2: contracts and local preparation.
 - authentication/session boundary foundation.
 - deterministic unit and contract tests.
 
-Slice 3: Review UI and one-file GitHub gateway path.
+Slice 3: Review UI and one-file GitHub gateway path. Completed.
 
 - repository/branch/path Review UI.
 - one-file create/update implementation through the selected gateway.
 - stale local state and remote conflict handling.
 - focused integration tests with fake GitHub server/gateway.
 
-Slice 4: hardening and closeout.
+Slice 4: hardening and closeout. Completed after final local validation and acceptance.
 
-- protected real authorized validation where safely possible.
-- ambiguous-write reconciliation.
-- lifecycle, privacy, credential, and rate-limit hardening.
-- full regression, audit, and documentation closeout after independent acceptance.
+- lifecycle, privacy, credential, accessibility, and deterministic regression hardening.
+- status consistency and documentation closeout.
+- final validation command definition for user-run build, Playwright, backend, audit, commit, and push.
 
 ## 22. Acceptance Gates
 
-Milestone 7B cannot be marked Completed until later implementation and hardening acceptance demonstrate:
+Milestone 7B deterministic fake/development acceptance demonstrates:
 
-- secure GitHub App authorization without embedding secrets in extension code;
-- no raw GitHub token exposure to extension UI or persistent local stores when backend mediation is used;
+- normal runtime fail-closed/not-configured behavior;
+- explicit deterministic fake transport injection only;
+- no raw GitHub token, OAuth code, refresh token, client secret, cookie, or authorization header exposure to extension UI or persistent local stores;
 - exact-source payload for V1 and V2 entries;
 - Milestone 7A filename helper reuse;
-- repository and existing branch selection scoped to the authenticated session;
+- repository and existing branch selection scoped to the deterministic session;
 - create and update Review with correct operation and remote SHA state;
-- one-file contents API write with remote verification before success;
+- one-file deterministic fake write with verification before success;
 - stale local and remote state fail closed;
-- ambiguous-write reconciliation without blind resend;
 - credential-safe logging and error normalization;
 - no local IndexedDB writes or capture/generated-version mutation;
 - no Preview, iframe, source execution, source-page interaction, provider/OpenAI call, workflow creation, branch creation, repo creation, PR creation, issue creation, release, deployment, or Pages action;
-- deterministic fake-server coverage plus protected/manual real GitHub validation;
-- full regression and audit.
+- deterministic fake-server coverage plus integrated regression definition.
+
+Future production GitHub acceptance remains separate and must demonstrate secure GitHub App registration, real authorization, OAuth exchange, backend token/session storage, real GitHub REST transport, protected manual validation, real ambiguous-write reconciliation, production deployment, monitoring, rate limiting, abuse controls, and operational security review.
 
 ## 23. Explicit Exclusions
 
 Milestone 7B does not include:
 
-- runtime implementation in Slice 1;
+- real GitHub authorization;
+- OAuth exchange;
+- token storage;
+- real GitHub REST transport;
+- production GitHub writes;
+- protected real-repository validation;
+- production deployment or operational controls;
+- real ambiguous-write reconciliation;
 - repository creation;
 - pull-request creation;
 - issue creation;
@@ -528,13 +556,13 @@ Milestone 7B does not include:
 
 ## 24. Residual Risks
 
-Residual risks after Slice 1:
+Residual risks after Milestone 7B deterministic closeout:
 
-- The selected GitHub App backend-mediated architecture still requires later implementation review for hosted backend security, session storage, CSRF/state/PKCE details, token refresh, revocation, and deployment policy.
-- Chrome `identity` permission and redirect behavior must be reviewed before runtime implementation; Slice 1 adds no Manifest permission.
-- Real GitHub writes cannot be safely validated in ordinary CI without credentials. A protected-environment or manual validation gate remains required.
-- Repository contents API is selected for one-file export; if later GitHub API constraints appear for branch protection or enterprise policies, implementation must fail safely or document a blocked state rather than broadening scope.
-- GitHub commit creation is remote state outside local deterministic control; ambiguous writes require reconciliation and cannot promise exactly-once remote commits.
+- The selected GitHub App backend-mediated production architecture still requires later implementation review for hosted backend security, session storage, CSRF/state/PKCE details, token refresh, revocation, deployment policy, monitoring, rate limiting, and abuse controls.
+- Chrome `identity` permission and redirect behavior must be reviewed before real authorization; Milestone 7B adds no Manifest identity permission and no GitHub host permission.
+- Real GitHub writes cannot be safely validated in ordinary CI without credentials. A protected-environment or manual validation gate remains required for future production integration.
+- Repository contents API remains the selected future one-file write model; if later GitHub API constraints appear for branch protection or enterprise policies, implementation must fail safely or document a blocked state rather than broadening scope.
+- GitHub commit creation is remote state outside local deterministic control; real ambiguous writes require reconciliation and cannot promise exactly-once remote commits.
 
 ## 25. Frozen Decisions
 
@@ -552,8 +580,14 @@ Frozen for Milestone 7B:
 - Existing branch selection is required; no branch creation.
 - Remote Review and explicit confirmation are required before every write.
 - Branch head and file SHA/absence are rechecked immediately before write.
-- Ambiguous writes are reconciled by rereading target path, exact bytes, and public attempt marker; no blind resend.
-- No runtime code, backend route, tests, package, Manifest, permission, CSP, Preview protocol, schema, contract, workflow, token, or credential change is part of Slice 1.
+- Normal runtime remains not-configured for real GitHub.
+- Deterministic fake transport is enabled only through explicit development/test injection.
+- Extension-facing contracts expose bounded versioned models and opaque session references only.
+- No token, OAuth code, refresh token, client secret, cookie, authorization header, screenshot, `CaptureRecord`, source URL, page title, notes, storage key, provider metadata, or OpenAI credential crosses into GitHub export UI state or persistence.
+- Review and Success use semantic label/value sections; Success separates commit SHA and commit URL.
+- Duplicate confirmation creates at most one fake write.
+- Ambiguous real-write reconciliation remains future production work.
+- No package, lockfile, Manifest permission, CSP, Preview protocol, IndexedDB schema, CaptureRecord contract, generated-version persisted shape, GitHub workflow, token, credential, or real GitHub transport change is part of completed Milestone 7B.
 
 ## 26. Official Source References
 
