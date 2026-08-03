@@ -3,7 +3,15 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { GENERATION_CONTRACT_VERSION, GENERATION_LIMITS } from "../../extension/src/shared/generation-contract.js";
 import { isValidChromeExtensionOrigin, type BackendConfig } from "./config.js";
 import type { ProviderAdapter } from "./contracts/contracts.js";
-import { BackendSafeError, safeErrorResponse, statusForCode } from "./contracts/contracts.js";
+import { BackendSafeError, safeErrorResponse } from "./contracts/contracts.js";
+import {
+  GITHUB_GATEWAY_ALLOWED_HEADERS,
+  GITHUB_GATEWAY_SESSION_STATUS_ROUTE,
+  GitHubGatewaySafeError,
+  githubGatewaySafeErrorResponse,
+  handleGitHubGatewaySessionStatusRequest,
+  validateGitHubGatewayContentLength
+} from "./github/github-gateway.js";
 import {
   validateBackendRequest,
   validateBackendResponse,
@@ -17,7 +25,7 @@ export type BackendLogEntry = {
   status: number;
   durationMs: number;
   requestBodyBytes: number;
-  route: "generation" | "revision";
+  route: "generation" | "revision" | "github";
   mode?: "revision" | "regeneration";
   screenshotBytes?: number;
   screenshotWidth?: number;
@@ -51,7 +59,7 @@ export function createApp({
     let bodyBytes = 0;
     let status = 500;
     let outcome = "unknown";
-    let route: "generation" | "revision" = "generation";
+    let route: "generation" | "revision" | "github" = "generation";
     let mode: "revision" | "regeneration" | undefined;
     let screenshotBytes: number | undefined;
     let screenshotWidth: number | undefined;
@@ -71,6 +79,7 @@ export function createApp({
 
     try {
       applyBaseHeaders(response);
+      route = inferRouteKind(request.url) ?? "generation";
       const routeConfig = validateRouteAndMethod(request);
       route = routeConfig.kind;
       validateRequestOrigin(request, config);
@@ -92,22 +101,31 @@ export function createApp({
             screenshotWidth = metrics.width;
             screenshotHeight = metrics.height;
           })
-        : await handleRevisionRequest(provider, parsed, controller.signal, (metrics) => {
+        : routeConfig.kind === "revision"
+          ? await handleRevisionRequest(provider, parsed, controller.signal, (metrics) => {
             mode = metrics.mode;
             if (metrics.screenshot) {
               screenshotBytes = metrics.screenshot.byteLength;
               screenshotWidth = metrics.screenshot.width;
               screenshotHeight = metrics.screenshot.height;
             }
-          });
+          })
+          : handleGitHubGatewaySessionStatusRequest(parsed);
       status = 200;
       outcome = "ok";
       completedNormally = writeJson(response, status, validated, config, corsAllowed, routeConfig);
     } catch (error) {
-      const safe = normalizeError(error);
+      const safe = normalizeError(error, route);
       status = safe.status;
       outcome = safe.code;
-      completedNormally = writeJson(response, status, safeErrorResponse(safe.code), config, corsAllowed, route === "revision" ? revisionRouteConfig() : generationRouteConfig());
+      completedNormally = writeJson(
+        response,
+        status,
+        route === "github" ? githubGatewaySafeErrorResponse(safe.code as never) : safeErrorResponse(safe.code as never),
+        config,
+        corsAllowed,
+        route === "revision" ? revisionRouteConfig() : route === "github" ? githubRouteConfig() : generationRouteConfig()
+      );
     } finally {
       clearTimeout(timeout);
       request.off("aborted", abortController);
@@ -178,6 +196,8 @@ function validateRouteAndMethod(request: IncomingMessage) {
     ? generationRouteConfig()
     : url.pathname === REVISION_ROUTE
       ? revisionRouteConfig()
+      : url.pathname === GITHUB_GATEWAY_SESSION_STATUS_ROUTE
+        ? githubRouteConfig()
       : undefined;
   if (!routeConfig) {
     throw new BackendSafeError("request_validation_failed", 404);
@@ -186,6 +206,20 @@ function validateRouteAndMethod(request: IncomingMessage) {
     throw new BackendSafeError("request_validation_failed", 405);
   }
   return routeConfig;
+}
+
+function inferRouteKind(rawUrl: string | undefined): "generation" | "revision" | "github" | undefined {
+  const url = new URL(rawUrl ?? "/", "http://127.0.0.1");
+  if (url.pathname === GENERATION_ROUTE) {
+    return "generation";
+  }
+  if (url.pathname === REVISION_ROUTE) {
+    return "revision";
+  }
+  if (url.pathname === GITHUB_GATEWAY_SESSION_STATUS_ROUTE) {
+    return "github";
+  }
+  return undefined;
 }
 
 function validateRequestOrigin(request: IncomingMessage, config: BackendConfig) {
@@ -210,7 +244,11 @@ function validateRequestHeaders(request: IncomingMessage, routeConfig: RouteConf
   }
   const declared = request.headers["content-length"];
   if (declared !== undefined) {
-    validateContentLength(declared);
+    if (routeConfig.kind === "github") {
+      validateGitHubGatewayContentLength(declared);
+    } else {
+      validateContentLength(declared);
+    }
   }
 }
 
@@ -292,7 +330,22 @@ function parseJson(body: Buffer) {
   }
 }
 
-function normalizeError(error: unknown) {
+function normalizeError(error: unknown, route: "generation" | "revision" | "github") {
+  if (route === "github") {
+    if (error instanceof GitHubGatewaySafeError) {
+      return error;
+    }
+    if (error instanceof BackendSafeError) {
+      if (error.status === 403) {
+        return new GitHubGatewaySafeError("access_denied", 403);
+      }
+      return new GitHubGatewaySafeError("invalid_request", error.status);
+    }
+    if (error instanceof Error && error.message === "invalid_request") {
+      return new GitHubGatewaySafeError("invalid_request", 400);
+    }
+    return new GitHubGatewaySafeError("invalid_request", 400);
+  }
   if (error instanceof BackendSafeError) {
     return error;
   }
@@ -324,7 +377,7 @@ function writeJson(response: ServerResponse, status: number, body: unknown, conf
 }
 
 type RouteConfig = {
-  kind: "generation" | "revision";
+  kind: "generation" | "revision" | "github";
   allowedHeaders: string;
   allowedHeaderNames: readonly string[];
   requiredPreflightHeaders: readonly string[];
@@ -345,6 +398,15 @@ function revisionRouteConfig(): RouteConfig {
     allowedHeaders: REVISION_ALLOWED_HEADERS,
     allowedHeaderNames: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"],
     requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"]
+  };
+}
+
+function githubRouteConfig(): RouteConfig {
+  return {
+    kind: "github",
+    allowedHeaders: GITHUB_GATEWAY_ALLOWED_HEADERS,
+    allowedHeaderNames: ["content-type", "x-element-catcher-contract-version"],
+    requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version"]
   };
 }
 
