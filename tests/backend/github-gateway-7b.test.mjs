@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
 import test from "node:test";
 import { createApp } from "../../.backend-dist/backend/src/app.js";
+import { createDeterministicFakeGitHubTransport } from "../../.backend-dist/backend/src/github/fake-github-transport.js";
 import { GITHUB_EXPORT_CONTRACT_VERSION } from "../../.backend-dist/extension/src/github/github-export-contract.js";
 
 const EXTENSION_ORIGIN = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
@@ -103,13 +104,161 @@ test("GitHub gateway session endpoint is honest, bounded, origin-gated, and cred
   }
 });
 
-async function startServer(provider) {
-  const server = createServer(createApp({ config, provider, logger: { log: (entry) => provider.logs.push(entry) } }));
+test("GitHub gateway fake transport lists repositories, inspects paths, writes one file, and fails conflicts safely", async () => {
+  const calls = { generate: 0, revise: 0 };
+  const logs = [];
+  const githubTransport = createDeterministicFakeGitHubTransport();
+  const { base, close } = await startServer({
+    logs,
+    async generate() {
+      calls.generate += 1;
+      throw new Error("generate should not be called");
+    },
+    async revise() {
+      calls.revise += 1;
+      throw new Error("revise should not be called");
+    }
+  }, githubTransport);
+
+  try {
+    const sessionResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      kind: "github.session.status.v1"
+    });
+    assert.equal(sessionResponse.status, 200);
+    const session = await sessionResponse.json();
+    assert.equal(session.session.state, "active");
+    assert.equal(session.session.sessionRef, "github-session-abcdefghijklmnopqrstuvwx12345678");
+    assert.equal(JSON.stringify(session).includes("token"), false);
+
+    const repositoriesResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      kind: "github.repositories.list.v1",
+      sessionRef: session.session.sessionRef
+    }, { path: "/v1/github-export/repositories" });
+    assert.equal(repositoriesResponse.status, 200);
+    const repositories = await repositoriesResponse.json();
+    assert.equal(repositories.repositories[0].fullName, "octocat/hello-world");
+
+    const repository = repositories.repositories[0];
+    const branchesResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      kind: "github.branches.list.v1",
+      sessionRef: session.session.sessionRef,
+      repository
+    }, { path: "/v1/github-export/branches" });
+    assert.equal(branchesResponse.status, 200);
+    const branches = await branchesResponse.json();
+    assert.deepEqual(branches.branches.map((branch) => branch.name), ["main", "release"]);
+
+    const createInspectResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      kind: "github.remote.inspect.v1",
+      sessionRef: session.session.sessionRef,
+      repository,
+      branchName: "main",
+      targetPath: "components/NewCard.tsx"
+    }, { path: "/v1/github-export/inspect" });
+    assert.equal(createInspectResponse.status, 200);
+    const createInspect = await createInspectResponse.json();
+    assert.equal(createInspect.operation, "create");
+    assert.equal(createInspect.remoteFile.status, "missing");
+
+    const createReview = reviewFromInspection(createInspect, {
+      commitMessage: "Export NewCard",
+      sourceFilename: "NewCard.tsx",
+      sourceByteCount: 47,
+      publicAttemptId: "github-export-attempt-0123456789abcdef0123456789abcdef"
+    });
+    const createWriteResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      sessionRef: session.session.sessionRef,
+      review: createReview,
+      source: "export function NewCard() {\n  return <div />;\n}"
+    }, { path: "/v1/github-export/write" });
+    assert.equal(createWriteResponse.status, 200);
+    const createWrite = await createWriteResponse.json();
+    assert.equal(createWrite.ok, true);
+    assert.equal(createWrite.operation, "create");
+    assert.equal(createWrite.commitSha, "f000000000000000000000000000000000000001");
+    assert.equal(createWrite.commitUrl, "https://github.com/octocat/hello-world/commit/f000000000000000000000000000000000000001");
+
+    const updateInspectResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      kind: "github.remote.inspect.v1",
+      sessionRef: session.session.sessionRef,
+      repository,
+      branchName: "main",
+      targetPath: "components/ExistingCard.tsx"
+    }, { path: "/v1/github-export/inspect" });
+    assert.equal(updateInspectResponse.status, 200);
+    const updateInspect = await updateInspectResponse.json();
+    assert.equal(updateInspect.operation, "update");
+    assert.equal(updateInspect.remoteFile.blobSha, "d".repeat(40));
+
+    const updateReview = reviewFromInspection(updateInspect, {
+      commitMessage: "Export ExistingCard",
+      sourceFilename: "ExistingCard.tsx",
+      sourceByteCount: 52,
+      publicAttemptId: "github-export-attempt-fedcba9876543210fedcba9876543210"
+    });
+    const staleReview = {
+      ...updateReview,
+      remoteFile: {
+        ...updateReview.remoteFile,
+        blobSha: "0".repeat(40)
+      }
+    };
+    const conflictResponse = await requestGitHubJson(base, "POST", {
+      contractVersion: GITHUB_EXPORT_CONTRACT_VERSION,
+      sessionRef: session.session.sessionRef,
+      review: staleReview,
+      source: "export function ExistingCard() {\n  return <div />;\n}"
+    }, { path: "/v1/github-export/write" });
+    assert.equal(conflictResponse.status, 409);
+    assert.deepEqual(await conflictResponse.json(), {
+      contractVersion: 1,
+      ok: false,
+      error: {
+        code: "remote_conflict",
+        message: "The remote GitHub file or branch changed."
+      }
+    });
+
+    const leakText = JSON.stringify({ logs, session, repositories, branches, createInspect, createWrite, updateInspect });
+    assert.equal(leakText.includes("ghp_"), false);
+    assert.equal(leakText.includes("authorization"), false);
+    assert.equal(leakText.includes("api.github.com"), false);
+    assert.equal(calls.generate, 0);
+    assert.equal(calls.revise, 0);
+  } finally {
+    await close();
+  }
+});
+
+async function startServer(provider, githubTransport) {
+  const server = createServer(createApp({ config, provider, githubTransport, logger: { log: (entry) => provider.logs.push(entry) } }));
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   return {
     base: `http://127.0.0.1:${address.port}`,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+  };
+}
+
+function reviewFromInspection(inspection, fields) {
+  return {
+    contractVersion: 1,
+    account: inspection.account,
+    repository: inspection.repository,
+    branch: inspection.branch,
+    targetPath: inspection.targetPath,
+    operation: inspection.operation,
+    commitMessage: fields.commitMessage,
+    sourceFilename: fields.sourceFilename,
+    sourceByteCount: fields.sourceByteCount,
+    publicAttemptId: fields.publicAttemptId,
+    remoteFile: inspection.remoteFile
   };
 }
 

@@ -4,7 +4,15 @@ import {
   validateGitHubCommitMessage,
   validateGitHubExportApprovedWriteRequest,
   validateGitHubExportReview,
+  validateGitHubExportSuccessResult,
+  validateGitHubGatewayBranchListRequest,
+  validateGitHubGatewayBranchListResponse,
+  validateGitHubGatewayRemoteInspectRequest,
+  validateGitHubGatewayRemoteInspectResponse,
+  validateGitHubGatewayRepositoryListRequest,
+  validateGitHubGatewayRepositoryListResponse,
   validateGitHubGatewaySessionStatusRequest,
+  validateGitHubGatewaySessionStatusResponse,
   validateGitHubPublicAttemptId,
   validateGitHubSessionRef,
   validateGitHubTargetPath
@@ -203,6 +211,91 @@ test.describe("Milestone 7B Slice 2 GitHub export contracts and local ownership"
       kind: "github.session.status.v1",
       accessToken: "ghp_abcdefghijklmnopqrstuvwxyz123456"
     })).toThrow();
+  });
+
+  test("validates Slice 3 repository, branch, inspect, and success gateway contracts", () => {
+    const account = validReview().account;
+    const repository = validReview().repository;
+    const branch = validReview().branch;
+    const remoteFile = validReview().remoteFile;
+
+    expect(() => validateGitHubGatewaySessionStatusResponse({
+      contractVersion: 1,
+      kind: "github.session.status.v1",
+      session: {
+        state: "active",
+        sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678",
+        account
+      }
+    })).not.toThrow();
+    expect(() => validateGitHubGatewayRepositoryListRequest({
+      contractVersion: 1,
+      kind: "github.repositories.list.v1",
+      sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678"
+    })).not.toThrow();
+    expect(() => validateGitHubGatewayRepositoryListResponse({
+      contractVersion: 1,
+      kind: "github.repositories.list.v1",
+      account,
+      repositories: [repository]
+    })).not.toThrow();
+    expect(() => validateGitHubGatewayBranchListRequest({
+      contractVersion: 1,
+      kind: "github.branches.list.v1",
+      sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678",
+      repository
+    })).not.toThrow();
+    expect(() => validateGitHubGatewayBranchListResponse({
+      contractVersion: 1,
+      kind: "github.branches.list.v1",
+      account,
+      repository,
+      branches: [branch]
+    })).not.toThrow();
+    expect(() => validateGitHubGatewayRemoteInspectRequest({
+      contractVersion: 1,
+      kind: "github.remote.inspect.v1",
+      sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678",
+      repository,
+      branchName: branch.name,
+      targetPath: "components/GitHubBaseCard.tsx"
+    })).not.toThrow();
+    expect(() => validateGitHubGatewayRemoteInspectResponse({
+      contractVersion: 1,
+      kind: "github.remote.inspect.v1",
+      account,
+      repository,
+      branch,
+      targetPath: "components/GitHubBaseCard.tsx",
+      operation: "create",
+      remoteFile
+    })).not.toThrow();
+    expect(() => validateGitHubExportSuccessResult({
+      contractVersion: 1,
+      ok: true,
+      repository,
+      branch,
+      targetPath: "components/GitHubBaseCard.tsx",
+      operation: "create",
+      commitSha: "f".repeat(40),
+      commitUrl: "https://github.com/octocat/hello-world/commit/" + "f".repeat(40)
+    })).not.toThrow();
+
+    for (const malformed of [
+      { contractVersion: 1, kind: "github.repositories.list.v1", sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678", url: "https://api.github.com" },
+      { contractVersion: 1, kind: "github.branches.list.v1", sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678", repository: { ...repository, fullName: "octocat/other" } },
+      { contractVersion: 1, kind: "github.remote.inspect.v1", sessionRef: "github-session-abcdefghijklmnopqrstuvwx12345678", repository, branchName: branch.name, targetPath: ".github/workflows/build.tsx" },
+      { contractVersion: 1, kind: "github.remote.inspect.v1", account, repository, branch, targetPath: "components/GitHubBaseCard.tsx", operation: "update", remoteFile },
+      { contractVersion: 1, ok: true, repository, branch, targetPath: "components/GitHubBaseCard.tsx", operation: "create", commitSha: "f".repeat(40), commitUrl: "http://github.com/octocat/hello-world/commit/" + "f".repeat(40) }
+    ]) {
+      expect(() => {
+        validateGitHubGatewayRepositoryListRequest(malformed);
+        validateGitHubGatewayBranchListRequest(malformed);
+        validateGitHubGatewayRemoteInspectRequest(malformed);
+        validateGitHubGatewayRemoteInspectResponse(malformed);
+        validateGitHubExportSuccessResult(malformed);
+      }).toThrow();
+    }
   });
 });
 

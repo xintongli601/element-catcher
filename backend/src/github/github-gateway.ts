@@ -3,18 +3,97 @@ import {
   GITHUB_EXPORT_LIMITS,
   githubSafeErrorResponse,
   safeMessageForGitHubError,
+  validateGitHubExportApprovedWriteRequest,
+  validateGitHubGatewayBranchListRequest,
+  validateGitHubGatewayRemoteInspectRequest,
+  validateGitHubGatewayRepositoryListRequest,
   validateGitHubGatewaySessionStatusRequest,
   type GitHubExportErrorCode,
+  type GitHubExportGatewayBranchListResponseV1,
+  type GitHubExportGatewayRemoteInspectResponseV1,
+  type GitHubExportGatewayRepositoryListResponseV1,
   type GitHubExportGatewaySessionStatusResponseV1
 } from "../../../extension/src/github/github-export-contract.js";
 
 export const GITHUB_GATEWAY_SESSION_STATUS_ROUTE = "/v1/github-export/session";
+export const GITHUB_GATEWAY_REPOSITORY_LIST_ROUTE = "/v1/github-export/repositories";
+export const GITHUB_GATEWAY_BRANCH_LIST_ROUTE = "/v1/github-export/branches";
+export const GITHUB_GATEWAY_REMOTE_INSPECT_ROUTE = "/v1/github-export/inspect";
+export const GITHUB_GATEWAY_WRITE_ROUTE = "/v1/github-export/write";
+export const GITHUB_GATEWAY_ROUTES = Object.freeze([
+  GITHUB_GATEWAY_SESSION_STATUS_ROUTE,
+  GITHUB_GATEWAY_REPOSITORY_LIST_ROUTE,
+  GITHUB_GATEWAY_BRANCH_LIST_ROUTE,
+  GITHUB_GATEWAY_REMOTE_INSPECT_ROUTE,
+  GITHUB_GATEWAY_WRITE_ROUTE
+]);
 export const GITHUB_GATEWAY_ALLOWED_HEADERS = "Content-Type, X-Element-Catcher-Contract-Version";
+
+export type GitHubGatewayRoute =
+  | typeof GITHUB_GATEWAY_SESSION_STATUS_ROUTE
+  | typeof GITHUB_GATEWAY_REPOSITORY_LIST_ROUTE
+  | typeof GITHUB_GATEWAY_BRANCH_LIST_ROUTE
+  | typeof GITHUB_GATEWAY_REMOTE_INSPECT_ROUTE
+  | typeof GITHUB_GATEWAY_WRITE_ROUTE;
+
+export type GitHubGatewayResponse =
+  | GitHubExportGatewaySessionStatusResponseV1
+  | GitHubExportGatewayRepositoryListResponseV1
+  | GitHubExportGatewayBranchListResponseV1
+  | GitHubExportGatewayRemoteInspectResponseV1
+  | import("../../../extension/src/github/github-export-contract.js").GitHubExportSuccessResultV1;
+
+export type GitHubGatewayTransport = {
+  getSessionStatus(parsed: unknown): GitHubExportGatewaySessionStatusResponseV1;
+  listRepositories(parsed: unknown): GitHubExportGatewayRepositoryListResponseV1;
+  listBranches(parsed: unknown): GitHubExportGatewayBranchListResponseV1;
+  inspectRemote(parsed: unknown): GitHubExportGatewayRemoteInspectResponseV1;
+  writeFile(parsed: unknown): import("../../../extension/src/github/github-export-contract.js").GitHubExportSuccessResultV1;
+};
 
 export class GitHubGatewaySafeError extends Error {
   constructor(readonly code: GitHubExportErrorCode, readonly status: number) {
     super(safeMessageForGitHubError(code));
     this.name = "GitHubGatewaySafeError";
+  }
+}
+
+export const githubGatewayNotConfiguredTransport: GitHubGatewayTransport = Object.freeze({
+  getSessionStatus: handleGitHubGatewaySessionStatusRequest,
+  listRepositories(parsed: unknown) {
+    validateGitHubGatewayRepositoryListRequest(parsed);
+    throw new GitHubGatewaySafeError("gateway_not_configured", statusForGitHubGatewayCode("gateway_not_configured"));
+  },
+  listBranches(parsed: unknown) {
+    validateGitHubGatewayBranchListRequest(parsed);
+    throw new GitHubGatewaySafeError("gateway_not_configured", statusForGitHubGatewayCode("gateway_not_configured"));
+  },
+  inspectRemote(parsed: unknown) {
+    validateGitHubGatewayRemoteInspectRequest(parsed);
+    throw new GitHubGatewaySafeError("gateway_not_configured", statusForGitHubGatewayCode("gateway_not_configured"));
+  },
+  writeFile(parsed: unknown) {
+    validateGitHubExportApprovedWriteRequest(parsed);
+    throw new GitHubGatewaySafeError("gateway_not_configured", statusForGitHubGatewayCode("gateway_not_configured"));
+  }
+});
+
+export function handleGitHubGatewayRequest(
+  route: GitHubGatewayRoute,
+  parsed: unknown,
+  transport: GitHubGatewayTransport = githubGatewayNotConfiguredTransport
+): GitHubGatewayResponse {
+  switch (route) {
+    case GITHUB_GATEWAY_SESSION_STATUS_ROUTE:
+      return transport.getSessionStatus(parsed);
+    case GITHUB_GATEWAY_REPOSITORY_LIST_ROUTE:
+      return transport.listRepositories(parsed);
+    case GITHUB_GATEWAY_BRANCH_LIST_ROUTE:
+      return transport.listBranches(parsed);
+    case GITHUB_GATEWAY_REMOTE_INSPECT_ROUTE:
+      return transport.inspectRemote(parsed);
+    case GITHUB_GATEWAY_WRITE_ROUTE:
+      return transport.writeFile(parsed);
   }
 }
 

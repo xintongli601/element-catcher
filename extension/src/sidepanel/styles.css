@@ -323,6 +323,50 @@ h2 {
   line-height: 1.4;
 }
 
+.github-export,
+.github-export-panel,
+.github-review {
+  display: grid;
+  gap: 10px;
+}
+
+.github-export-panel {
+  border: 1px solid #c6d0df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcff;
+}
+
+.github-export-panel label {
+  display: grid;
+  gap: 6px;
+  color: #25324a;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.github-export-panel select,
+.github-export-panel input {
+  min-width: 0;
+  border: 1px solid #c6d0df;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: #ffffff;
+  color: #172033;
+  font: inherit;
+}
+
+.github-export-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.github-review h4,
+.github-export .save-state h4 {
+  margin: 0;
+}
+
 .generation-consent {
   display: grid;
   grid-template-columns: auto 1fr;

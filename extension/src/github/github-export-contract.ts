@@ -133,6 +133,54 @@ export type GitHubExportGatewaySessionStatusResponseV1 = Readonly<{
   session: GitHubExportSessionSummaryV1;
 }>;
 
+export type GitHubExportGatewayRepositoryListRequestV1 = Readonly<{
+  contractVersion: typeof GITHUB_EXPORT_CONTRACT_VERSION;
+  kind: "github.repositories.list.v1";
+  sessionRef: string;
+}>;
+
+export type GitHubExportGatewayRepositoryListResponseV1 = Readonly<{
+  contractVersion: typeof GITHUB_EXPORT_CONTRACT_VERSION;
+  kind: "github.repositories.list.v1";
+  account: GitHubAccountSummaryV1;
+  repositories: readonly GitHubRepositoryIdentityV1[];
+}>;
+
+export type GitHubExportGatewayBranchListRequestV1 = Readonly<{
+  contractVersion: typeof GITHUB_EXPORT_CONTRACT_VERSION;
+  kind: "github.branches.list.v1";
+  sessionRef: string;
+  repository: GitHubRepositoryIdentityV1;
+}>;
+
+export type GitHubExportGatewayBranchListResponseV1 = Readonly<{
+  contractVersion: typeof GITHUB_EXPORT_CONTRACT_VERSION;
+  kind: "github.branches.list.v1";
+  account: GitHubAccountSummaryV1;
+  repository: GitHubRepositoryIdentityV1;
+  branches: readonly GitHubBranchIdentityV1[];
+}>;
+
+export type GitHubExportGatewayRemoteInspectRequestV1 = Readonly<{
+  contractVersion: typeof GITHUB_EXPORT_CONTRACT_VERSION;
+  kind: "github.remote.inspect.v1";
+  sessionRef: string;
+  repository: GitHubRepositoryIdentityV1;
+  branchName: string;
+  targetPath: string;
+}>;
+
+export type GitHubExportGatewayRemoteInspectResponseV1 = Readonly<{
+  contractVersion: typeof GITHUB_EXPORT_CONTRACT_VERSION;
+  kind: "github.remote.inspect.v1";
+  account: GitHubAccountSummaryV1;
+  repository: GitHubRepositoryIdentityV1;
+  branch: GitHubBranchIdentityV1;
+  targetPath: string;
+  operation: GitHubExportOperationV1;
+  remoteFile: GitHubRemoteFileStateV1;
+}>;
+
 const GITHUB_LOGIN_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const GITHUB_REPOSITORY_NAME_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
 const GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
@@ -244,6 +292,103 @@ export function validateGitHubGatewaySessionStatusRequest(value: unknown): asser
   if (request.sessionRef !== undefined && !validateGitHubSessionRef(request.sessionRef).ok) {
     throw new Error("invalid_request");
   }
+}
+
+export function validateGitHubGatewaySessionStatusResponse(value: unknown): asserts value is GitHubExportGatewaySessionStatusResponseV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "session"]);
+  const response = value as Record<string, unknown>;
+  if (response.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || response.kind !== "github.session.status.v1") {
+    throw new Error("invalid_request");
+  }
+  validateGitHubSessionSummary(response.session);
+  rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubGatewayRepositoryListRequest(value: unknown): asserts value is GitHubExportGatewayRepositoryListRequestV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "sessionRef"]);
+  const request = value as Record<string, unknown>;
+  if (request.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || request.kind !== "github.repositories.list.v1" || !validateGitHubSessionRef(request.sessionRef).ok) {
+    throw new Error("invalid_request");
+  }
+  rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubGatewayRepositoryListResponse(value: unknown): asserts value is GitHubExportGatewayRepositoryListResponseV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "account", "repositories"]);
+  const response = value as Record<string, unknown>;
+  if (response.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || response.kind !== "github.repositories.list.v1" || !Array.isArray(response.repositories)) {
+    throw new Error("invalid_request");
+  }
+  validateGitHubAccountSummary(response.account);
+  if (response.repositories.length === 0 || response.repositories.length > 20) {
+    throw new Error("invalid_request");
+  }
+  for (const repository of response.repositories) {
+    validateGitHubRepositoryIdentity(repository);
+  }
+  rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubGatewayBranchListRequest(value: unknown): asserts value is GitHubExportGatewayBranchListRequestV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "sessionRef", "repository"]);
+  const request = value as Record<string, unknown>;
+  if (request.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || request.kind !== "github.branches.list.v1" || !validateGitHubSessionRef(request.sessionRef).ok) {
+    throw new Error("invalid_request");
+  }
+  validateGitHubRepositoryIdentity(request.repository);
+  rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubGatewayBranchListResponse(value: unknown): asserts value is GitHubExportGatewayBranchListResponseV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "account", "repository", "branches"]);
+  const response = value as Record<string, unknown>;
+  if (response.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || response.kind !== "github.branches.list.v1" || !Array.isArray(response.branches)) {
+    throw new Error("invalid_request");
+  }
+  validateGitHubAccountSummary(response.account);
+  validateGitHubRepositoryIdentity(response.repository);
+  if (response.branches.length === 0 || response.branches.length > 50) {
+    throw new Error("invalid_request");
+  }
+  for (const branch of response.branches) {
+    validateGitHubBranchIdentity(branch);
+  }
+  rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubGatewayRemoteInspectRequest(value: unknown): asserts value is GitHubExportGatewayRemoteInspectRequestV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "sessionRef", "repository", "branchName", "targetPath"]);
+  const request = value as Record<string, unknown>;
+  if (request.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || request.kind !== "github.remote.inspect.v1" || !validateGitHubSessionRef(request.sessionRef).ok) {
+    throw new Error("invalid_request");
+  }
+  validateGitHubRepositoryIdentity(request.repository);
+  if (!isBoundedPlainString(request.branchName, GITHUB_EXPORT_LIMITS.branchNameBytes) || !validateGitHubTargetPath(request.targetPath).ok) {
+    throw new Error("invalid_request");
+  }
+  rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubGatewayRemoteInspectResponse(value: unknown): asserts value is GitHubExportGatewayRemoteInspectResponseV1 {
+  assertExactObjectKeys(value, ["contractVersion", "kind", "account", "repository", "branch", "targetPath", "operation", "remoteFile"]);
+  const response = value as Record<string, unknown>;
+  if (response.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || response.kind !== "github.remote.inspect.v1" || (response.operation !== "create" && response.operation !== "update")) {
+    throw new Error("invalid_request");
+  }
+  validateGitHubAccountSummary(response.account);
+  validateGitHubRepositoryIdentity(response.repository);
+  validateGitHubBranchIdentity(response.branch);
+  validateGitHubRemoteFileState(response.remoteFile);
+  if (!validateGitHubTargetPath(response.targetPath).ok) {
+    throw new Error("invalid_request");
+  }
+  if (response.operation === "create" && (response.remoteFile as GitHubRemoteFileStateV1).status !== "missing") {
+    throw new Error("invalid_request");
+  }
+  if (response.operation === "update" && (response.remoteFile as GitHubRemoteFileStateV1).status !== "existing") {
+    throw new Error("invalid_request");
+  }
+  rejectForbiddenCredentialFields(value);
 }
 
 export function validateGitHubAccountSummary(value: unknown): asserts value is GitHubAccountSummaryV1 {
@@ -363,6 +508,41 @@ export function validateGitHubExportApprovedWriteRequest(value: unknown): assert
     throw new Error("invalid_request");
   }
   rejectForbiddenCredentialFields(value);
+}
+
+export function validateGitHubExportSuccessResult(value: unknown): asserts value is GitHubExportSuccessResultV1 {
+  assertExactObjectKeys(value, ["contractVersion", "ok", "repository", "branch", "targetPath", "operation", "commitSha", "commitUrl"]);
+  const response = value as Record<string, unknown>;
+  if (response.contractVersion !== GITHUB_EXPORT_CONTRACT_VERSION || response.ok !== true || (response.operation !== "create" && response.operation !== "update")) {
+    throw new Error("invalid_request");
+  }
+  validateGitHubRepositoryIdentity(response.repository);
+  validateGitHubBranchIdentity(response.branch);
+  if (!validateGitHubTargetPath(response.targetPath).ok || !isGitSha(response.commitSha) || !isSafeHttpsUrl(response.commitUrl, 512)) {
+    throw new Error("invalid_request");
+  }
+  rejectForbiddenCredentialFields(value);
+}
+
+function validateGitHubSessionSummary(value: unknown): asserts value is GitHubExportSessionSummaryV1 {
+  if (!isPlainObject(value) || !["authorization_required", "active", "expired", "revoked"].includes(String(value.state))) {
+    throw new Error("invalid_request");
+  }
+  const session = value as Record<string, unknown>;
+  const optional = ["authorization_required"].includes(String(session.state)) ? [] : ["sessionRef", "account", "expiresAt"];
+  assertAllowedExactOrOptional(value, ["state"], optional);
+  if (session.state === "active" && (session.sessionRef === undefined || session.account === undefined)) {
+    throw new Error("invalid_request");
+  }
+  if (session.sessionRef !== undefined && !validateGitHubSessionRef(session.sessionRef).ok) {
+    throw new Error("invalid_request");
+  }
+  if (session.account !== undefined) {
+    validateGitHubAccountSummary(session.account);
+  }
+  if (session.expiresAt !== undefined && (!isBoundedPlainString(session.expiresAt, 64) || Number.isNaN(Date.parse(session.expiresAt)))) {
+    throw new Error("invalid_request");
+  }
 }
 
 export function githubSafeErrorResponse(code: GitHubExportErrorCode): GitHubExportErrorResultV1 {

@@ -6,11 +6,14 @@ import type { ProviderAdapter } from "./contracts/contracts.js";
 import { BackendSafeError, safeErrorResponse } from "./contracts/contracts.js";
 import {
   GITHUB_GATEWAY_ALLOWED_HEADERS,
-  GITHUB_GATEWAY_SESSION_STATUS_ROUTE,
+  GITHUB_GATEWAY_ROUTES,
+  githubGatewayNotConfiguredTransport,
   GitHubGatewaySafeError,
   githubGatewaySafeErrorResponse,
-  handleGitHubGatewaySessionStatusRequest,
-  validateGitHubGatewayContentLength
+  handleGitHubGatewayRequest,
+  validateGitHubGatewayContentLength,
+  type GitHubGatewayRoute,
+  type GitHubGatewayTransport
 } from "./github/github-gateway.js";
 import {
   validateBackendRequest,
@@ -47,10 +50,12 @@ const IDEMPOTENCY_KEY_PATTERN = /^revision-attempt-[0-9a-f]{32}$/;
 export function createApp({
   config,
   provider,
+  githubTransport = githubGatewayNotConfiguredTransport,
   logger = consoleLogger
 }: {
   config: BackendConfig;
   provider: ProviderAdapter;
+  githubTransport?: GitHubGatewayTransport;
   logger?: BackendLogger;
 }) {
   return async function handle(request: IncomingMessage, response: ServerResponse) {
@@ -92,7 +97,7 @@ export function createApp({
         completedNormally = writeJson(response, status, undefined, config, corsAllowed, routeConfig);
         return;
       }
-      const body = await readLimitedBody(request);
+      const body = await readLimitedBody(request, routeConfig.bodyLimitBytes);
       bodyBytes = body.byteLength;
       const parsed = parseJson(body);
       const validated = routeConfig.kind === "generation"
@@ -110,7 +115,7 @@ export function createApp({
               screenshotHeight = metrics.screenshot.height;
             }
           })
-          : handleGitHubGatewaySessionStatusRequest(parsed);
+          : handleGitHubGatewayRequest(routeConfig.githubRoute!, parsed, githubTransport);
       status = 200;
       outcome = "ok";
       completedNormally = writeJson(response, status, validated, config, corsAllowed, routeConfig);
@@ -196,8 +201,8 @@ function validateRouteAndMethod(request: IncomingMessage) {
     ? generationRouteConfig()
     : url.pathname === REVISION_ROUTE
       ? revisionRouteConfig()
-      : url.pathname === GITHUB_GATEWAY_SESSION_STATUS_ROUTE
-        ? githubRouteConfig()
+      : getGitHubGatewayRoute(url.pathname)
+        ? githubRouteConfig(getGitHubGatewayRoute(url.pathname)!)
       : undefined;
   if (!routeConfig) {
     throw new BackendSafeError("request_validation_failed", 404);
@@ -216,10 +221,14 @@ function inferRouteKind(rawUrl: string | undefined): "generation" | "revision" |
   if (url.pathname === REVISION_ROUTE) {
     return "revision";
   }
-  if (url.pathname === GITHUB_GATEWAY_SESSION_STATUS_ROUTE) {
+  if (getGitHubGatewayRoute(url.pathname)) {
     return "github";
   }
   return undefined;
+}
+
+function getGitHubGatewayRoute(pathname: string): GitHubGatewayRoute | undefined {
+  return GITHUB_GATEWAY_ROUTES.find((route): route is GitHubGatewayRoute => route === pathname);
 }
 
 function validateRequestOrigin(request: IncomingMessage, config: BackendConfig) {
@@ -291,14 +300,14 @@ function validateContentLength(value: string | string[]) {
   }
 }
 
-function readLimitedBody(request: IncomingMessage) {
+function readLimitedBody(request: IncomingMessage, limitBytes: number) {
   return new Promise<Buffer>((resolve, reject) => {
     const chunks: Buffer[] = [];
     let size = 0;
     let overLimit = false;
     request.on("data", (chunk: Buffer) => {
       size += chunk.byteLength;
-      if (size > GENERATION_LIMITS.serializedRequestBytes) {
+      if (size > limitBytes) {
         overLimit = true;
         return;
       }
@@ -381,6 +390,8 @@ type RouteConfig = {
   allowedHeaders: string;
   allowedHeaderNames: readonly string[];
   requiredPreflightHeaders: readonly string[];
+  bodyLimitBytes: number;
+  githubRoute?: GitHubGatewayRoute;
 };
 
 function generationRouteConfig(): RouteConfig {
@@ -388,7 +399,8 @@ function generationRouteConfig(): RouteConfig {
     kind: "generation",
     allowedHeaders: GENERATION_ALLOWED_HEADERS,
     allowedHeaderNames: ["content-type", "x-element-catcher-contract-version"],
-    requiredPreflightHeaders: []
+    requiredPreflightHeaders: [],
+    bodyLimitBytes: GENERATION_LIMITS.serializedRequestBytes
   };
 }
 
@@ -397,16 +409,19 @@ function revisionRouteConfig(): RouteConfig {
     kind: "revision",
     allowedHeaders: REVISION_ALLOWED_HEADERS,
     allowedHeaderNames: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"],
-    requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"]
+    requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version", "x-element-catcher-idempotency-key"],
+    bodyLimitBytes: GENERATION_LIMITS.serializedRequestBytes
   };
 }
 
-function githubRouteConfig(): RouteConfig {
+function githubRouteConfig(githubRoute?: GitHubGatewayRoute): RouteConfig {
   return {
     kind: "github",
     allowedHeaders: GITHUB_GATEWAY_ALLOWED_HEADERS,
     allowedHeaderNames: ["content-type", "x-element-catcher-contract-version"],
-    requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version"]
+    requiredPreflightHeaders: ["content-type", "x-element-catcher-contract-version"],
+    bodyLimitBytes: 65_536,
+    ...(githubRoute ? { githubRoute } : {})
   };
 }
 
