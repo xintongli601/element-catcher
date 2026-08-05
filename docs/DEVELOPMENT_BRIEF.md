@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 6, completed Milestone 7A local generated-source export, and completed Milestone 7B deterministic fake/development GitHub export workflow.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 7, including completed Milestone 7A local generated-source export and completed Milestone 7B deterministic fake/development GitHub export workflow.
 
 Current implementation order:
 
@@ -14,12 +14,12 @@ Milestone 6B: Completed
 Milestone 6C: Completed
 Milestone 6D: Completed
 Milestone 6E: Completed
-Milestone 7: Current
+Milestone 7: Completed
 Milestone 7A: Completed
 Milestone 7B: Completed
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7A completed one narrow local `.tsx` export path. Milestone 7B completed a deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Milestone 7 remains Current. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 

@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 6 are completed. Milestone 7 is Current. Milestone 7A local generated-source export is Completed. Milestone 7B deterministic fake/development GitHub export workflow is Completed after final local validation and acceptance. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
+Milestones 1 through 7 are completed. Milestone 7 is Completed based on accepted Milestone 7A local generated-source export and accepted Milestone 7B deterministic fake/development GitHub export workflow. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 Implemented:
 
@@ -236,7 +236,7 @@ The GitHub gateway exposes only versioned session, repositories, branches, inspe
 - Milestone 4: Completed - personal Capture Library.
 - Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
-- Milestone 7: Current - local generated-source export started with completed Milestone 7A. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and general multi-file export remain Planned or explicitly out of scope.
+- Milestone 7: Completed - accepted based on completed Milestone 7A local exact-source `.tsx` export and completed Milestone 7B deterministic fake/development single-file GitHub export workflow. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and general multi-file export remain Planned or explicitly out of scope.
 
 ## 14. Success Criteria
 

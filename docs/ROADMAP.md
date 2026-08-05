@@ -953,7 +953,7 @@ Milestone 6E architecture: `docs/MILESTONE_6E_COMPARISON_ARCHITECTURE.md`.
 
 ## Milestone 7 - Export and Future Expansion
 
-Status: Current
+Status: Completed
 
 Objective: Define and implement export and expansion paths without turning the MVP into a full publishing, enterprise, or multi-framework platform.
 
@@ -978,7 +978,7 @@ Explicitly excluded scope:
 - Full-site cloning as a product direction.
 - Website publishing as a primary product direction.
 - Enterprise suite requirements as MVP requirements.
-- GitHub, Figma, cloud sync, collaboration, publishing, additional frameworks, archive export, package scaffolding, and multi-file export are not part of Milestone 7A.
+- Real GitHub integration, Figma, cloud sync, collaboration, publishing, additional frameworks, archive export, package scaffolding, ZIP/package export, and multi-file export are not part of completed Milestone 7 beyond accepted 7A and 7B scope.
 
 Acceptance criteria:
 
@@ -986,6 +986,8 @@ Acceptance criteria:
 - Future integrations do not replace the core CaptureRecord-centered architecture.
 - Any added sync, collaboration, framework, GitHub, or Figma capability is explicitly scoped before implementation.
 - The product remains focused on reusable UI inspiration capture rather than full-site cloning or publishing.
+
+Acceptance status: Completed. Parent Milestone 7 is accepted based only on completed Milestone 7A local exact-source export and completed Milestone 7B deterministic fake/development single-file GitHub export workflow. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, production deployment, ZIP/package export, multi-file export, publishing, Figma, cloud sync, collaboration, and additional frameworks remain unimplemented and future separately scoped work.
 
 ### Milestone 7A - Local Generated Source Export
 
@@ -1088,7 +1090,7 @@ Explicitly excluded scope:
 
 Historical accepted Slice 3 validation reported: focused GitHub create/update test passed; focused invalid-path/conflict/navigation test passed; complete GitHub focused suite 8 passed; Milestone 7A regression 9 passed; Preview, Comparison, and Revision coexistence regression 59 passed; backend suite 15 passed; build passed; content-script validation passed; `npm audit --omit=dev` reported 0 vulnerabilities.
 
-Slice 4 adds focused keyboard/accessibility regression coverage for keyboard row expansion, keyboard workflow start, semantic Review inspection, cancellation, reopening, keyboard confirmation, semantic Success inspection, Detail leave cleanup, zero iframe, and unchanged IndexedDB counts. Final Slice 4 local validation remains pending until the user runs the supplied Terminal validation block.
+Accepted Slice 4 closeout added focused keyboard/accessibility regression coverage for keyboard row expansion, keyboard workflow start, semantic Review inspection, cancellation, reopening, keyboard confirmation, semantic Success inspection, Detail leave cleanup, zero iframe, and unchanged IndexedDB counts. Historical Slice 4 validation is treated as previously reported acceptance evidence only, not newly executed during this documentation-only parent closeout.
 
 Remaining future GitHub production work is separate from completed Milestone 7B: GitHub App registration, real authorization UX, OAuth token exchange, secure backend token/session storage, real GitHub REST transport, protected manual validation against an authorized repository, production ambiguous-write reconciliation, deployment policy, monitoring, rate limiting, abuse controls, and operational security review.
 
