@@ -124,37 +124,58 @@ Required entry order:
 
 Internal paths must be bounded, UTF-8 text paths with `/` separators only. They must not include absolute paths, empty segments, `.`, `..`, backslashes, query or fragment characters, NUL, ASCII control characters, Unicode control/format characters, leading slash, trailing slash, or path traversal after normalization.
 
-## 9. Deterministic ZIP Metadata
+## 9. Deterministic ZIP32 Wire Profile
 
 Bundle V1 must be byte-stable for repeated exports of the same authoritative generated-version entry and implementation version, apart from browser-owned duplicate download naming outside the ZIP bytes.
 
-Required ZIP metadata choices:
+Bundle V1 is ZIP32 only. ZIP64, multi-disk archives, encryption, data descriptors, streaming ZIP output, directory entries, local-header extra fields, central-directory extra fields, Unicode path extra fields, file comments, archive comments, and trailing bytes after EOCD are forbidden. Every size, CRC, and offset must be known before local file headers are written. Any value exceeding a ZIP32 field or the stricter Bundle V1 limits fails closed.
 
-- Entry timestamps use fixed DOS timestamp `1980-01-01 00:00:00`.
-- Compression method is Store only, with no compression.
-- CRC-32 and sizes are computed from exact entry bytes.
-- No ZIP comments.
-- No archive comment.
-- No extra fields unless technically required by the selected writer; if required, they must be deterministic and documented before implementation.
-- UTF-8 filename flag is set consistently.
-- Directory entries are omitted.
-- Entry order is fixed as defined above.
-- File permissions and external attributes are fixed to ordinary read/write file semantics or zero when browser ZIP compatibility permits.
+Exact archive layout:
+
+1. Local file header for `README.md`, followed immediately by exact README bytes.
+2. Local file header for `element-catcher.json`, followed immediately by exact JSON bytes.
+3. Local file header for `src/<ComponentName>.tsx`, followed immediately by exact source bytes.
+4. Central-directory file headers in the same fixed order.
+5. One EOCD record.
+
+No other records or trailing bytes are allowed. All numeric ZIP fields are written little-endian.
+
+Exact ZIP fields:
+
+- Compression method: Store, numeric value `0`.
+- General-purpose bit flag: UTF-8 filename flag bit 11 set; data descriptor flag bit 3 unset; encryption flag bit 0 unset; all other unsupported flags unset. Exact bit mask: `0x0800`.
+- `version needed to extract`: `20` (`2.0`).
+- `version made by`: `0x0314`, meaning Unix host OS value `3` and ZIP version `2.0`.
+- Internal file attributes: `0x0000`.
+- external attributes: `0x81A40000`, encoding regular file mode `0100644` in the upper 16 bits.
+- Local-header extra-field length: `0`.
+- Central-directory extra-field length: `0`.
+- File-comment length: `0`.
+- Archive-comment length: `0`.
+- Disk number start: `0`.
+- EOCD number of this disk: `0`.
+- EOCD disk where central directory starts: `0`.
+- Fixed DOS date: `0x0021`, representing `1980-01-01`.
+- Fixed DOS time: `0x0000`, representing `00:00:00`.
+
+CRC-32 uses the standard ZIP/IEEE reflected CRC-32 variant: reflected polynomial `0xEDB88320`, initial value `0xFFFFFFFF`, and final XOR `0xFFFFFFFF`. CRC-32 is calculated over the exact uncompressed entry bytes for each entry.
 
 ## 10. Limits
 
 Bundle V1 limits:
 
-- Exactly 3 file entries.
-- No directory entries.
-- One source entry.
+- Exact file-entry count: `3`.
+- Exact directory-entry count: `0`.
 - One selected generated version.
 - One selected capture owner.
-- Source bytes must remain within the existing generated-response contract.
-- README and JSON bytes are fixed and small.
-- Total ZIP bytes must be bounded by a documented implementation constant before runtime work begins.
+- maximum source-entry UTF-8 bytes: `240,000` bytes.
+- maximum UTF-8 bytes for each internal entry path: `128` bytes.
+- maximum total uncompressed entry bytes: `241,024` bytes.
+- maximum final ZIP bytes: `242,048` bytes.
 
-If any limit is exceeded, export fails closed before download initiation.
+The source-byte bound covers every currently valid generated source under the existing generated-source contract because `GENERATION_LIMITS.codeCodePoints` is `60,000` Unicode code points and the worst-case UTF-8 expansion is 4 bytes per code point, yielding `240,000` bytes. Existing generation documentation measures string limits in Unicode code points and serialized limits in UTF-8 bytes; Bundle V1 uses the byte form for archive construction. README and `element-catcher.json` are fixed small entries, and the uncompressed and final ZIP limits include conservative headroom for their bytes plus deterministic ZIP32 headers and central-directory records.
+
+If any entry path, entry byte length, total uncompressed byte length, final ZIP byte length, CRC, offset, count, or other numeric ZIP field exceeds these exact limits or any ZIP32 field, export fails closed before download initiation.
 
 ## 11. Archive Strategy Decision
 
@@ -262,8 +283,9 @@ Architecture acceptance does not run runtime validation. Later implementation sh
 - Source entry exact bytes for V1, V2 Revision, and V2 Regeneration.
 - CRLF-sensitive source, Unicode source, JSX/Tailwind-heavy source, no-final-newline source, and exactly-one-final-newline source.
 - Repeated-export byte stability.
-- ZIP metadata: fixed timestamp, Store method, no comments, no directory entries, deterministic flags, deterministic attributes.
-- Archive size and entry-count limits.
+- ZIP32 profile: Store method, bit mask `0x0800`, versions, attributes, fixed DOS date/time, no ZIP64, no data descriptors, no extra fields, no comments, no directory entries, no trailing bytes, little-endian numeric fields, one EOCD record, and same-order central directory.
+- CRC-32 ZIP/IEEE variant over exact uncompressed entry bytes.
+- Exact archive size, path, source, final ZIP, file-entry, and directory-entry limits.
 - Missing, replaced, externally altered, invalid, unsafe, and wrong-`sourceCaptureId` selected versions.
 - Duplicate activation suppression.
 - Detail unmount during preparation.
@@ -282,13 +304,13 @@ Architecture acceptance does not run runtime validation. Later implementation sh
 
 Slice 1: Architecture and feasibility. Current.
 
-- Define Bundle V1 contents, exact source rule, JSON contract, README template, ZIP filename, internal paths, deterministic metadata, limits, archive strategy, privacy boundaries, accessibility, test matrix, and implementation slices.
+- Define Bundle V1 contents, exact source rule, JSON contract, README template, ZIP filename, internal paths, deterministic ZIP32 profile, exact numeric limits, archive strategy, privacy boundaries, accessibility, test matrix, and implementation slices.
 - No runtime behavior.
 
 Slice 2: Pure bundle contracts and deterministic archive writer.
 
 - Add no runtime UI.
-- Implement bounded Bundle V1 helpers, canonical JSON builder, README builder, internal path validation, ZIP filename derivation, CRC-32, Store-only ZIP writer, limits, and deterministic contract tests.
+- Implement bounded Bundle V1 helpers, canonical JSON builder, README builder, internal path validation, ZIP filename derivation, ZIP/IEEE CRC-32, Store-only ZIP32 writer, exact limits, and deterministic contract tests.
 
 Slice 3: Side Panel row workflow.
 
