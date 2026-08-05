@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 7 are completed. Milestone 7 is Completed based on accepted Milestone 7A local generated-source export and accepted Milestone 7B deterministic fake/development GitHub export workflow. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
+Milestones 1 through 7 are completed. Milestone 8 is Current as a documentation-only architecture and feasibility slice for a future portable component source bundle export. Milestone 8 runtime bundle export is not implemented. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 Implemented:
 
@@ -138,6 +138,8 @@ Milestone 7A delivered the first narrow export path: one explicit local `.tsx` e
 
 Milestone 7B delivers the next narrow handoff as a deterministic fake/development workflow: an explicit `Export to GitHub` action for one selected persisted generated version, one user-selected repository, one existing branch, and one `.tsx` path. The file contents remain exactly persisted `entry.value.code`, the default filename reuses the Milestone 7A filename helper, and every create/update requires a frozen Review and explicit confirmation. Normal runtime remains not-configured for real GitHub; real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production writes are not implemented.
 
+Milestone 8 is Current for architecture only. It defines a future explicit local ZIP portable component source bundle for one selected persisted generated version. Bundle V1 is not an npm package, runnable application, publishing workflow, production-ready scaffold, dependency-complete project, or compile guarantee.
+
 ## 9. Structured Capture Concept
 
 A capture is not just a screenshot. A capture is a normalized, serializable record that combines visual reference, source context, sanitized structure, normalized style information, semantic summaries, and user library metadata.
@@ -227,6 +229,8 @@ Milestone 7B GitHub export is Completed for deterministic fake/development behav
 
 The GitHub gateway exposes only versioned session, repositories, branches, inspect, and write routes. Normal runtime uses the not-configured transport and exposes no fake active session. The deterministic fake transport is explicitly injected for tests/development and never performs real `api.github.com` requests. The extension-facing contracts carry bounded versioned models and opaque session references only; no token, refresh token, OAuth code, client secret, cookie, authorization header, screenshot, `CaptureRecord`, source URL, page title, notes, storage key, provider metadata, or OpenAI credential enters GitHub export UI state or persistence. GitHub export does not write IndexedDB, mutate captures or generated versions, execute source, create iframes automatically, contact provider/OpenAI routes, create repositories or branches, open pull requests, create workflows, run Actions, publish releases/deployments/Pages/packages, create ZIPs, or export multiple files.
 
+Milestone 8 Bundle V1 architecture defines exactly `README.md`, `element-catcher.json`, and `src/<ComponentName>.tsx`. The source file bytes must exactly equal `new TextEncoder().encode(authoritativeEntry.value.code)`. The JSON contract contains only safe bundle fields: `formatVersion`, `framework: react`, `styling: tailwind`, `componentName`, and `entryPath`. The README is a deterministic fixed warning template and does not include capture metadata or generated summaries. The selected later implementation strategy is a bounded internal uncompressed ZIP writer, not an approved third-party ZIP dependency.
+
 ## 13. Roadmap
 
 - Milestone 1: Completed - extension scaffold.
@@ -237,6 +241,7 @@ The GitHub gateway exposes only versioned session, repositories, branches, inspe
 - Milestone 5: Completed - AI React + Tailwind reconstruction and generated-version persistence.
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed - accepted based on completed Milestone 7A local exact-source `.tsx` export and completed Milestone 7B deterministic fake/development single-file GitHub export workflow. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, ZIP/package export, and general multi-file export remain Planned or explicitly out of scope.
+- Milestone 8: Current - architecture-only definition for a future local ZIP portable component source bundle export. Runtime bundle export is not implemented.
 
 ## 14. Success Criteria
 
@@ -270,6 +275,8 @@ Element Catcher v0.1 does not include:
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
 - Runtime export beyond the completed narrow Milestone 7A local `.tsx` source-export path and deterministic Milestone 7B fake/development GitHub workflow.
+- Runtime ZIP portable component bundle export.
+- npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
 - Figma export.
 - Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, protected manual validation, production deployment, and operational controls.
 - Team collaboration.

@@ -2,7 +2,7 @@
 
 ## 1. Status and Scope
 
-Status: Completed. Milestone 7 is Current. Milestone 7A is Completed. Milestone 7 is not Completed, and no new Milestone 7 substage is started by this closeout.
+Status: Completed. Milestone 7 is Completed. Milestone 7A is Completed. No new Milestone 7 substage is started by this closeout.
 
 Milestone 7A delivered a narrow local generated-source export capability. The accepted implementation exports exactly one explicitly selected persisted generated version as one UTF-8 `.tsx` file from Saved Capture Detail. It supports both validated V1 generated-version entries and validated V2 Revision or Regeneration entries.
 
@@ -303,7 +303,7 @@ Slice 4 completed:
 
 - documentation closeout after independent acceptance;
 - mark Milestone 7A Completed after implementation and hardening acceptance;
-- keep Milestone 7 Current without starting another substage prematurely.
+- record Milestone 7A within parent Milestone 7 without starting another substage prematurely.
 
 Milestone 7A must not split GitHub, Figma, cloud, ZIP bundles, package scaffolding, or multi-file export into implementation slices.
 

@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 7, including completed Milestone 7A local generated-source export and completed Milestone 7B deterministic fake/development GitHub export workflow.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 7 and the current Milestone 8 architecture-only work for a future portable component source bundle export.
 
 Current implementation order:
 
@@ -17,9 +17,10 @@ Milestone 6E: Completed
 Milestone 7: Completed
 Milestone 7A: Completed
 Milestone 7B: Completed
+Milestone 8: Current
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Current for documentation-only architecture and feasibility of a future local ZIP portable component source bundle. Milestone 8 runtime bundle export is not implemented. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -41,6 +42,7 @@ Supported webpage
   -> local generated-version comparison
   -> local generated-source export
   -> deterministic fake/development GitHub export workflow
+  -> future portable component bundle export architecture
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -84,6 +86,7 @@ The Side Panel owns the user workflow:
 - Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection.
 - Export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
 - Mount the Milestone 7B `Export to GitHub` row action for one selected generated version, one selected repository, one existing branch, one `.tsx` path, and a frozen Review before any fake/development write.
+- Milestone 8 runtime bundle export is not implemented. Future Side Panel work may add one row-specific explicit `Export bundle` action only after architecture acceptance.
 
 ### 4.2 Background Service Worker
 
@@ -379,6 +382,28 @@ Milestone 7B implements one deterministic fake/development GitHub handoff while 
 - Duplicate confirmation creates at most one write. Leaving Detail and capture switching clear ephemeral Review and Success state.
 - Runtime production GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, Manifest permission changes, host-permission changes, dependencies, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, ZIP/package export, multi-file export, and real ambiguous-write reconciliation are not implemented.
 
+### 4.16 Portable Component Bundle Export Architecture
+
+Milestone 8 is Current as an architecture-only slice for a future local portable component source bundle export. Runtime bundle export is not implemented.
+
+The proposed Bundle V1 is one explicit user-initiated local ZIP download for one selected persisted V1 or V2 generated version. It builds on the accepted Milestone 7A authoritative IndexedDB reread, exact displayed-entry equality, `sourceCaptureId` ownership, stale fail-closed behavior, and trusted Side Panel Blob/object-URL/temporary-anchor download boundary.
+
+Bundle V1 contents are fixed:
+
+```text
+README.md
+element-catcher.json
+src/<ComponentName>.tsx
+```
+
+The source bytes for `src/<ComponentName>.tsx` must exactly equal `new TextEncoder().encode(authoritativeEntry.value.code)`. Bundle export must not trim, format, parse, transpile, compile, normalize line endings, insert metadata, add comments, infer dependencies, or otherwise transform generated source.
+
+`element-catcher.json` is a strict canonical JSON contract containing only `formatVersion`, `framework: react`, `styling: tailwind`, `componentName`, and `entryPath`. It excludes capture IDs, generated-version IDs, `sourceCaptureId`, source URL, page title, screenshots, tags, notes, storage keys, timestamps, lineage, provider metadata, backend metadata, GitHub metadata, credentials, and session information.
+
+The README uses a deterministic fixed template stating that the source was generated by Element Catcher, must be reviewed before use, and excludes dependencies, `package.json`, Tailwind configuration, build configuration, and application scaffolding. It must also state that the bundle is not guaranteed to compile, render correctly, be secure, or be production-ready.
+
+Recommended later implementation strategy: a bounded internal uncompressed ZIP writer for the three-entry Bundle V1 format. This avoids approving a ZIP dependency before it is necessary, keeps supply-chain and bundle-size cost low, avoids compression nondeterminism, and allows deterministic artifact-inspection tests. Reviewed ZIP dependencies and browser compression strategies remain rejected for Bundle V1 unless later evidence proves the bounded internal writer insufficient.
+
 ## 5. Security and Privacy Boundaries
 
 - Captures remain local by default.
@@ -410,7 +435,8 @@ Milestone 6 preserves the local-first capture model, provider-secret boundary, s
 The current implementation does not include:
 
 - Runtime export beyond the narrow Milestone 7A local single-version `.tsx` source-export path and deterministic Milestone 7B fake/development GitHub workflow.
-- ZIP/package export.
+- Runtime ZIP portable component bundle export.
+- npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
 - Multi-file export.
 - Website publishing.
 - Figma export.

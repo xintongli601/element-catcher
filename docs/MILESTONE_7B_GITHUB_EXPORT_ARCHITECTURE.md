@@ -2,7 +2,7 @@
 
 ## 1. Status and Scope
 
-Status: Completed for Milestone 7B deterministic fake/development GitHub export after final local validation and acceptance. Milestone 7 is Current. Milestone 7A is Completed. Milestone 7B is Completed. Milestone 7 is not Completed.
+Status: Completed for Milestone 7B deterministic fake/development GitHub export after final local validation and acceptance. Milestone 7 is Completed. Milestone 7A is Completed. Milestone 7B is Completed.
 
 Milestone 7B defines and implements one narrow deterministic fake/development GitHub handoff path for one explicitly selected persisted generated version. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 

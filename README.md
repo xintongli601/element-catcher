@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 7 are completed. Milestone 6 delivered isolated preview and generated-version management: safe explicit Preview, revision, regeneration, and local generated-version comparison. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 7 are completed. Milestone 8 is current as a documentation-only architecture and feasibility slice for a future portable component source bundle export. Milestone 8 runtime bundle export is not implemented. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -144,6 +144,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Milestones 1-5: Completed.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Parent Milestone 7 is accepted based only on those completed 7A and 7B capabilities.
+- Milestone 8: Current. The architecture-only slice defines a future explicit local ZIP portable component source bundle for one selected persisted generated version. Runtime bundle export is not implemented.
 
 ## Intentionally Unimplemented
 
@@ -153,7 +154,8 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
 - Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path and the deterministic Milestone 7B fake/development GitHub workflow.
-- ZIP/package export.
+- Runtime ZIP portable component bundle export.
+- npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
 - Multi-file export.
 - Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, background sync, protected operational controls, and credential storage.
 - Figma export.
