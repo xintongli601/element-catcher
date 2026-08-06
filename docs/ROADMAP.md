@@ -1104,7 +1104,9 @@ Objective: Define and later implement one explicit local ZIP portable component 
 
 Current slice status:
 
-- Slice 1 - Architecture and feasibility: Current.
+- Slice 1 - Architecture and feasibility: Completed after independent acceptance at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`.
+- Slice 2 - Pure portable bundle contracts and deterministic ZIP32 writer: Current.
+- Slice 3 - Side Panel row workflow: Not started.
 - Runtime bundle export implementation: Not implemented.
 
 Bundle V1 contents:
