@@ -2,7 +2,7 @@
 
 ## 1. Status and Scope
 
-Status: Current. Slice 1 architecture and feasibility is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`. Slice 2 pure contracts and ZIP32 writer is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`. Slice 3 Side Panel row workflow is Current. Runtime portable bundle export is being implemented in Slice 3 and remains pending independent acceptance.
+Status: Current. Slice 1 architecture and feasibility is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`. Slice 2 pure contracts and ZIP32 writer is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`. Slice 3 Side Panel row workflow is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`. Slice 4 lifecycle hardening and final acceptance is Current and pending independent acceptance.
 
 Milestone 8 defines one explicit local ZIP bundle export for one selected persisted generated version. It builds on the accepted Milestone 7A exact-source export boundary and keeps the product focused on portable component source reuse.
 
@@ -16,7 +16,7 @@ The user expands one generated-version row in Saved Capture Detail and explicitl
 
 There is no automatic bundle export after generation, revision, regeneration, comparison, Preview, local `.tsx` export, fake/development GitHub export, refresh, reopen, capture switch, or navigation.
 
-Milestone 8 Slice 3 connects the accepted pure Bundle V1 writer to one explicit trusted Side Panel download action. It does not add dependencies, Manifest changes, CSP changes, IndexedDB writes, backend routes, generated-version contract changes, real Chromium filesystem/download-artifact validation, or final hardening.
+Milestone 8 Slice 3 connected the accepted pure Bundle V1 writer to one explicit trusted Side Panel download action. It added no dependencies, Manifest changes, CSP changes, IndexedDB writes, backend routes, generated-version contract changes, real Chromium filesystem/download-artifact validation, or final hardening. Slice 4 adds lifecycle hardening coverage and real Chromium download-artifact validation definitions without adding a new implementation slice.
 
 ## 3. Bundle V1 Contents
 
@@ -211,7 +211,7 @@ Missing, altered, invalid, unsafe, stale, or wrong-capture entries fail closed a
 
 ## 13. Side Panel State and Download Lifecycle
 
-Slice 3 adds a row-specific `Export bundle` control only inside expanded generated-version details.
+Slice 3 added a row-specific `Export bundle` control only inside expanded generated-version details.
 
 Row-local states:
 
@@ -312,7 +312,7 @@ Slice 2: Pure bundle contracts and deterministic archive writer. Completed and a
 - Add no runtime UI.
 - Implement bounded Bundle V1 helpers, canonical JSON builder, README builder, internal path validation, ZIP filename derivation, ZIP/IEEE CRC-32, Store-only ZIP32 writer, exact limits, and deterministic contract tests.
 
-Slice 3: Side Panel row workflow. Current.
+Slice 3: Side Panel row workflow. Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`.
 
 - Add row-specific explicit `Export bundle` action.
 - Reread authoritative IndexedDB generated-version entry.
@@ -320,9 +320,9 @@ Slice 3: Side Panel row workflow. Current.
 - Generate Blob/object URL/anchor download.
 - Handle row-local states and lifecycle cleanup.
 
-Slice 4: Hardening and acceptance closeout. Not started.
+Slice 4: Hardening and acceptance closeout. Current and pending independent acceptance.
 
-- Add artifact-inspection tests, Chromium download validation if required, stale-state hardening, coexistence regression, accessibility regression, documentation status updates, and final validation reporting.
+- Add artifact-inspection tests, real Chromium download validation scenarios, one-shot failure/retry coverage, stale-state hardening, object-URL and temporary-anchor lifecycle coverage, read-only/local-only privacy probes, coexistence regression, accessibility regression, documentation status updates, and final validation reporting.
 
 ## 19. Explicit Exclusions
 
@@ -330,4 +330,4 @@ Milestone 8 architecture and later Bundle V1 implementation exclude runtime beha
 
 ## 20. Acceptance Status
 
-Milestone 8 is Current. Slice 3 remains pending independent acceptance. Runtime Side Panel bundle export is being implemented in Slice 3. Real Chromium filesystem/download-artifact validation and final hardening remain Slice 4 work and are not completed.
+Milestone 8 is Current. Slice 1, Slice 2, and Slice 3 are completed and accepted. Runtime Side Panel bundle export is implemented. Slice 4 lifecycle hardening and real Chromium download-artifact validation remain pending user validation and independent acceptance, so final Milestone 8 closeout has not occurred.

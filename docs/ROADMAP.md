@@ -1106,10 +1106,10 @@ Current slice status:
 
 - Slice 1 - Architecture and feasibility: Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`.
 - Slice 2 - Pure portable bundle contracts and deterministic ZIP32 writer: Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`.
-- Slice 3 - Side Panel row workflow: Current.
-- Slice 4 - Hardening and acceptance closeout: Not started.
-- Runtime Side Panel bundle export: Being implemented in Slice 3 and pending independent acceptance.
-- Real Chromium filesystem/download-artifact validation and final hardening: Slice 4 work, not completed.
+- Slice 3 - Side Panel row workflow: Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`.
+- Slice 4 - Hardening and acceptance closeout: Current and pending independent acceptance.
+- Runtime Side Panel bundle export: Implemented.
+- Real Chromium filesystem/download-artifact validation and final hardening: Slice 4 work, pending user validation and independent acceptance.
 
 Bundle V1 contents:
 
@@ -1119,7 +1119,7 @@ element-catcher.json
 src/<ComponentName>.tsx
 ```
 
-Included scope for the architecture slice:
+Included scope:
 
 - Define the Bundle V1 file list, internal paths, entry order, ZIP filename contract, canonical JSON contract, README fixed template, exact source byte rule, exact numeric limits, frozen deterministic ZIP32 profile, archive implementation strategy, privacy boundary, Side Panel lifecycle model, accessibility behavior, coexistence rules, test matrix, and later implementation slices.
 - Define the source rule that `src/<ComponentName>.tsx` bytes must exactly equal `new TextEncoder().encode(authoritativeEntry.value.code)`.
@@ -1144,5 +1144,16 @@ Acceptance criteria for the architecture slice:
 - Completed only when documentation defines the Bundle V1 contract, exact source rule, JSON and README boundaries, exact numeric limits, frozen deterministic ZIP32 filename/internal path/wire-profile rules, no implementation-defined ZIP fields, recommended archive strategy, rejected alternatives, inherited Milestone 7A stale-state behavior, Side Panel lifecycle, privacy exclusions, accessibility, coexistence, deterministic test matrix, and later implementation slices.
 - Runtime bundle export remains unimplemented.
 - No runtime validation is claimed.
+
+Slice 4 acceptance criteria:
+
+- Real Chromium download artifacts are validated for V1, V2 Revision, and V2 Regeneration generated versions.
+- Downloaded ZIP bytes match the pure Bundle V1 writer output exactly; suggested filenames remain deterministic while duplicate-name handling stays browser-owned.
+- ZIP inspection verifies the exact entry list and order, matching central directory order, no directory entries, no ZIP64, no data descriptors, no extra fields, no comments, no trailing bytes, Store method, UTF-8 flag `0x0800`, fixed DOS date/time, version fields, Unix mode external attributes, exact README bytes, canonical JSON bytes, and exact source bytes.
+- Missing, altered, and wrong-`sourceCaptureId` authoritative rereads fail closed without download and remain retryable.
+- One-shot `structuredClone`, `Blob`, `createObjectURL`, `createElement`, temporary-anchor append, click, and cleanup failures fail closed without real download, leave no active bundle object URL or temporary ZIP anchor, and remain retryable.
+- Object URL ownership, duplicate activation suppression, unrelated object URL preservation, row collapse, Detail leave, capture switch, remount, keyboard accessibility, status semantics, read-only/local-only/privacy probes, and coexistence with Comparison and Revision workflows are covered.
+
+Slice 4 remains pending until the user runs and accepts validation. Historical Slice 1, Slice 2, and Slice 3 acceptance is previously reported evidence only; this Slice 4 documentation does not claim newly executed validation.
 
 Architecture: `docs/MILESTONE_8_PORTABLE_COMPONENT_BUNDLE_ARCHITECTURE.md`.

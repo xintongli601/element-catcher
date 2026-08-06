@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 7 and the current Milestone 8 architecture-only work for a future portable component source bundle export.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 7 and the current Milestone 8 portable component source bundle export work.
 
 Current implementation order:
 
@@ -20,7 +20,7 @@ Milestone 7B: Completed
 Milestone 8: Current
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Current for documentation-only architecture and feasibility of a future local ZIP portable component source bundle. Milestone 8 runtime bundle export is not implemented. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Current: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, and Slice 3 Side Panel row workflow are completed and accepted; Slice 4 lifecycle hardening and final acceptance remain current. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -42,7 +42,7 @@ Supported webpage
   -> local generated-version comparison
   -> local generated-source export
   -> deterministic fake/development GitHub export workflow
-  -> future portable component bundle export architecture
+  -> local portable component bundle export
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -86,7 +86,7 @@ The Side Panel owns the user workflow:
 - Compare exactly two distinct persisted generated versions for the same source capture through explicit Baseline and Candidate selection.
 - Export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
 - Mount the Milestone 7B `Export to GitHub` row action for one selected generated version, one selected repository, one existing branch, one `.tsx` path, and a frozen Review before any fake/development write.
-- Milestone 8 runtime bundle export is not implemented. Future Side Panel work may add one row-specific explicit `Export bundle` action only after architecture acceptance.
+- Mount the Milestone 8 `Export bundle` row action for one selected generated version and one local Bundle V1 ZIP download.
 
 ### 4.2 Background Service Worker
 
@@ -382,11 +382,11 @@ Milestone 7B implements one deterministic fake/development GitHub handoff while 
 - Duplicate confirmation creates at most one write. Leaving Detail and capture switching clear ephemeral Review and Success state.
 - Runtime production GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, Manifest permission changes, host-permission changes, dependencies, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, ZIP/package export, multi-file export, and real ambiguous-write reconciliation are not implemented.
 
-### 4.16 Portable Component Bundle Export Architecture
+### 4.16 Portable Component Bundle Export
 
-Milestone 8 is Current as an architecture-only slice for a future local portable component source bundle export. Runtime bundle export is not implemented.
+Milestone 8 is Current for local portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, and Slice 3 Side Panel row workflow are completed and accepted. Slice 4 lifecycle hardening and final acceptance remain current.
 
-The proposed Bundle V1 is one explicit user-initiated local ZIP download for one selected persisted V1 or V2 generated version. It builds on the accepted Milestone 7A authoritative IndexedDB reread, exact displayed-entry equality, `sourceCaptureId` ownership, stale fail-closed behavior, and trusted Side Panel Blob/object-URL/temporary-anchor download boundary.
+Bundle V1 is one explicit user-initiated local ZIP download for one selected persisted V1 or V2 generated version. It builds on the accepted Milestone 7A authoritative IndexedDB reread, exact displayed-entry equality, `sourceCaptureId` ownership, stale fail-closed behavior, and trusted Side Panel Blob/object-URL/temporary-anchor download boundary.
 
 Bundle V1 contents are fixed:
 
@@ -434,8 +434,8 @@ Milestone 6 preserves the local-first capture model, provider-secret boundary, s
 
 The current implementation does not include:
 
-- Runtime export beyond the narrow Milestone 7A local single-version `.tsx` source-export path and deterministic Milestone 7B fake/development GitHub workflow.
-- Runtime ZIP portable component bundle export.
+- Runtime export beyond the narrow Milestone 7A local single-version `.tsx` source-export path, deterministic Milestone 7B fake/development GitHub workflow, and Milestone 8 single-version Bundle V1 ZIP path.
+- Final accepted Milestone 8 closeout before Slice 4 validation is completed and independently accepted.
 - npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
 - Multi-file export.
 - Website publishing.

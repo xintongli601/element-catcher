@@ -69,9 +69,9 @@ export function GeneratedVersionBundleExport({
     revokeOwnedObjectUrl(objectUrlRef);
     setState({ status: "preparing" });
 
-    const snapshot = structuredClone(entry);
-
     try {
+      const snapshot = structuredClone(entry);
+
       await window.__EC_PORTABLE_COMPONENT_BUNDLE_EXPORT_TEST_HARNESS__?.beforeReread?.();
       if (!isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
         return;
@@ -176,7 +176,6 @@ export function GeneratedVersionBundleExport({
 
 function initiateDownload(payload: BundleDownloadPayload, objectUrlRef: MutableRefObject<string | null>) {
   let anchor: HTMLAnchorElement | null = null;
-  let appended = false;
   let initiated = false;
   try {
     const exactBytes = payload.bytes.slice();
@@ -190,22 +189,66 @@ function initiateDownload(payload: BundleDownloadPayload, objectUrlRef: MutableR
     anchor.download = payload.filename;
     anchor.style.display = "none";
     document.body.append(anchor);
-    appended = true;
     anchor.click();
     initiated = true;
   } catch {
     revokeOwnedObjectUrl(objectUrlRef);
   } finally {
-    if (appended && anchor) {
-      try {
-        anchor.remove();
-      } catch {
-        revokeOwnedObjectUrl(objectUrlRef);
-        initiated = false;
-      }
+    if (anchor && !cleanupTemporaryAnchor(anchor)) {
+      revokeOwnedObjectUrl(objectUrlRef);
+      initiated = false;
     }
   }
   return initiated;
+}
+
+function cleanupTemporaryAnchor(anchor: HTMLAnchorElement) {
+  try {
+    anchor.remove();
+  } catch {
+    if (!anchor.isConnected) {
+      return true;
+    }
+    try {
+      anchor.parentNode?.removeChild(anchor);
+    } catch {
+      neutralizeTemporaryAnchor(anchor);
+      return false;
+    }
+  }
+  if (anchor.isConnected) {
+    neutralizeTemporaryAnchor(anchor);
+    return false;
+  }
+  return true;
+}
+
+function neutralizeTemporaryAnchor(anchor: HTMLAnchorElement) {
+  try {
+    anchor.removeAttribute("href");
+  } catch {
+    // Best-effort inert cleanup only.
+  }
+  try {
+    anchor.removeAttribute("download");
+  } catch {
+    // Best-effort inert cleanup only.
+  }
+  try {
+    anchor.tabIndex = -1;
+  } catch {
+    // Best-effort inert cleanup only.
+  }
+  try {
+    anchor.setAttribute("aria-hidden", "true");
+  } catch {
+    // Best-effort inert cleanup only.
+  }
+  try {
+    anchor.style.display = "none";
+  } catch {
+    // Best-effort inert cleanup only.
+  }
 }
 
 function scheduleOwnedObjectUrlRevocation(objectUrlRef: MutableRefObject<string | null>) {
@@ -215,18 +258,22 @@ function scheduleOwnedObjectUrlRevocation(objectUrlRef: MutableRefObject<string 
   }
   window.setTimeout(() => {
     if (objectUrlRef.current === ownedUrl) {
-      URL.revokeObjectURL(ownedUrl);
-      objectUrlRef.current = null;
+      revokeOwnedObjectUrl(objectUrlRef);
     }
   }, 0);
 }
 
 function revokeOwnedObjectUrl(objectUrlRef: MutableRefObject<string | null>) {
-  if (!objectUrlRef.current) {
+  const ownedUrl = objectUrlRef.current;
+  if (!ownedUrl) {
     return;
   }
-  URL.revokeObjectURL(objectUrlRef.current);
   objectUrlRef.current = null;
+  try {
+    URL.revokeObjectURL(ownedUrl);
+  } catch {
+    // Safe local cleanup: ownership is already cleared, so later attempts cannot revoke this URL again.
+  }
 }
 
 function isCurrentAttempt(
