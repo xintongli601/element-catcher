@@ -1,0 +1,253 @@
+import { useEffect, useId, useRef, useState, type MutableRefObject } from "react";
+import { createPortableComponentBundle } from "../export/portable-component-bundle";
+import { generatedSourceExportEntriesEqual } from "../export/generated-source-export";
+import { getGeneratedComponentVersionUnionById } from "../storage/indexed-db";
+import type { GeneratedComponentVersionEntry } from "../shared/generated-version-contract";
+
+declare global {
+  interface Window {
+    __EC_PORTABLE_COMPONENT_BUNDLE_EXPORT_TEST_HARNESS__?: {
+      beforeReread?: () => void | Promise<void>;
+      beforeInitiate?: () => void | Promise<void>;
+    };
+  }
+}
+
+type BundleExportState =
+  | { status: "idle" }
+  | { status: "preparing" }
+  | { status: "initiated"; filename: string }
+  | { status: "stale" }
+  | { status: "failed" };
+
+type BundleDownloadPayload = Readonly<{
+  filename: string;
+  bytes: Uint8Array;
+  blobType: "application/zip";
+}>;
+
+export function GeneratedVersionBundleExport({
+  entry,
+  sourceCaptureId
+}: {
+  entry: GeneratedComponentVersionEntry;
+  sourceCaptureId: string;
+}) {
+  const statusId = useId();
+  const [state, setState] = useState<BundleExportState>({ status: "idle" });
+  const attemptTokenRef = useRef(0);
+  const preparingRef = useRef(false);
+  const objectUrlRef = useRef<string | null>(null);
+  const mountedRef = useRef(true);
+  const isPreparing = state.status === "preparing";
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      attemptTokenRef.current += 1;
+      preparingRef.current = false;
+      revokeOwnedObjectUrl(objectUrlRef);
+    };
+  }, []);
+
+  useEffect(() => {
+    attemptTokenRef.current += 1;
+    preparingRef.current = false;
+    revokeOwnedObjectUrl(objectUrlRef);
+    setState({ status: "idle" });
+  }, [entry, sourceCaptureId]);
+
+  const startExport = async () => {
+    if (isPreparing || preparingRef.current) {
+      return;
+    }
+
+    const attemptToken = attemptTokenRef.current + 1;
+    attemptTokenRef.current = attemptToken;
+    preparingRef.current = true;
+    revokeOwnedObjectUrl(objectUrlRef);
+    setState({ status: "preparing" });
+
+    const snapshot = structuredClone(entry);
+
+    try {
+      await window.__EC_PORTABLE_COMPONENT_BUNDLE_EXPORT_TEST_HARNESS__?.beforeReread?.();
+      if (!isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
+        return;
+      }
+
+      const reread = await getGeneratedComponentVersionUnionById(snapshot.id);
+      if (!isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
+        return;
+      }
+
+      if (
+        !reread ||
+        reread.id !== snapshot.id ||
+        reread.sourceCaptureId !== sourceCaptureId ||
+        reread.sourceCaptureId !== snapshot.sourceCaptureId ||
+        !generatedSourceExportEntriesEqual(reread, snapshot)
+      ) {
+        preparingRef.current = false;
+        setState({ status: "stale" });
+        return;
+      }
+
+      const bundle = createPortableComponentBundle(reread);
+      if (!bundle.ok) {
+        preparingRef.current = false;
+        setState({ status: "failed" });
+        return;
+      }
+
+      await window.__EC_PORTABLE_COMPONENT_BUNDLE_EXPORT_TEST_HARNESS__?.beforeInitiate?.();
+      if (!isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
+        return;
+      }
+
+      const initiated = initiateDownload(
+        {
+          filename: bundle.value.filename,
+          bytes: bundle.value.bytes,
+          blobType: bundle.value.blobType
+        },
+        objectUrlRef
+      );
+      if (!isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
+        revokeOwnedObjectUrl(objectUrlRef);
+        return;
+      }
+      if (!initiated) {
+        preparingRef.current = false;
+        setState({ status: "failed" });
+        return;
+      }
+
+      preparingRef.current = false;
+      setState({ status: "initiated", filename: bundle.value.filename });
+      scheduleOwnedObjectUrlRevocation(objectUrlRef);
+    } catch {
+      if (isCurrentAttempt(attemptTokenRef, attemptToken, mountedRef)) {
+        revokeOwnedObjectUrl(objectUrlRef);
+        preparingRef.current = false;
+        setState({ status: "failed" });
+      }
+    }
+  };
+
+  const statusText = getStatusText(state);
+
+  return (
+    <div className="generated-version-export">
+      <button
+        className="secondary-action compact-action"
+        type="button"
+        aria-label={`Export bundle for ${entry.value.componentName} - ${entry.createdAt}`}
+        aria-describedby={statusText ? statusId : undefined}
+        disabled={isPreparing}
+        onClick={() => void startExport()}
+      >
+        Export bundle
+      </button>
+      {state.status === "preparing" ? (
+        <p id={statusId} className="save-state save-state-saving" role="status">
+          {statusText}
+        </p>
+      ) : null}
+      {state.status === "initiated" ? (
+        <p id={statusId} className="save-state save-state-success" role="status">
+          {statusText}
+        </p>
+      ) : null}
+      {state.status === "stale" ? (
+        <p id={statusId} className="save-state save-state-failed" role="alert">
+          {statusText}
+        </p>
+      ) : null}
+      {state.status === "failed" ? (
+        <p id={statusId} className="save-state save-state-failed" role="alert">
+          {statusText}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function initiateDownload(payload: BundleDownloadPayload, objectUrlRef: MutableRefObject<string | null>) {
+  let anchor: HTMLAnchorElement | null = null;
+  let appended = false;
+  let initiated = false;
+  try {
+    const exactBytes = payload.bytes.slice();
+    const blobPart = exactBytes.buffer.slice(exactBytes.byteOffset, exactBytes.byteOffset + exactBytes.byteLength);
+    const blob = new Blob([blobPart], { type: payload.blobType });
+    const objectUrl = URL.createObjectURL(blob);
+    objectUrlRef.current = objectUrl;
+
+    anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = payload.filename;
+    anchor.style.display = "none";
+    document.body.append(anchor);
+    appended = true;
+    anchor.click();
+    initiated = true;
+  } catch {
+    revokeOwnedObjectUrl(objectUrlRef);
+  } finally {
+    if (appended && anchor) {
+      try {
+        anchor.remove();
+      } catch {
+        revokeOwnedObjectUrl(objectUrlRef);
+        initiated = false;
+      }
+    }
+  }
+  return initiated;
+}
+
+function scheduleOwnedObjectUrlRevocation(objectUrlRef: MutableRefObject<string | null>) {
+  const ownedUrl = objectUrlRef.current;
+  if (!ownedUrl) {
+    return;
+  }
+  window.setTimeout(() => {
+    if (objectUrlRef.current === ownedUrl) {
+      URL.revokeObjectURL(ownedUrl);
+      objectUrlRef.current = null;
+    }
+  }, 0);
+}
+
+function revokeOwnedObjectUrl(objectUrlRef: MutableRefObject<string | null>) {
+  if (!objectUrlRef.current) {
+    return;
+  }
+  URL.revokeObjectURL(objectUrlRef.current);
+  objectUrlRef.current = null;
+}
+
+function isCurrentAttempt(
+  attemptTokenRef: MutableRefObject<number>,
+  attemptToken: number,
+  mountedRef: MutableRefObject<boolean>
+) {
+  return mountedRef.current && attemptTokenRef.current === attemptToken;
+}
+
+function getStatusText(state: BundleExportState) {
+  switch (state.status) {
+    case "preparing":
+      return "Preparing bundle export...";
+    case "initiated":
+      return `Browser download initiated for ${state.filename}.`;
+    case "stale":
+      return "Generated version changed. Refresh or reopen the generated-version list before exporting.";
+    case "failed":
+      return "Could not prepare bundle export. Refresh or reopen the generated-version list before trying again.";
+    case "idle":
+      return undefined;
+  }
+}

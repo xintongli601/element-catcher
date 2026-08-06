@@ -17,6 +17,7 @@ import { PreviewSandbox } from "./PreviewSandbox";
 import { RevisionWorkflow } from "./RevisionWorkflow";
 import { VersionComparison } from "./VersionComparison";
 import { GeneratedVersionExport } from "./GeneratedVersionExport";
+import { GeneratedVersionBundleExport } from "./GeneratedVersionBundleExport";
 import { GitHubVersionExport } from "./GitHubVersionExport";
 
 export type SavedCaptureDetailState =
@@ -409,6 +410,11 @@ function GeneratedVersionsSection({
                     </dl>
                     <pre className="generated-code"><code>{entry.value.code}</code></pre>
                     <GeneratedVersionExport entry={entry} sourceCaptureId={sourceCaptureId} />
+                    <GeneratedVersionBundleExport
+                      key={`${sourceCaptureId}:${entry.id}:${entry.createdAt}:${entry.value.componentName}`}
+                      entry={entry}
+                      sourceCaptureId={sourceCaptureId}
+                    />
                     <GitHubVersionExport entry={entry} sourceCaptureId={sourceCaptureId} />
                     <button
                       className="secondary-action compact-action"

@@ -2,7 +2,7 @@
 
 ## 1. Status and Scope
 
-Status: Current. Slice 1 architecture and feasibility is Completed after independent acceptance at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`. Slice 2 pure contracts and ZIP32 writer is Current. Runtime portable bundle export is not implemented.
+Status: Current. Slice 1 architecture and feasibility is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`. Slice 2 pure contracts and ZIP32 writer is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`. Slice 3 Side Panel row workflow is Current. Runtime portable bundle export is being implemented in Slice 3 and remains pending independent acceptance.
 
 Milestone 8 defines one explicit local ZIP bundle export for one selected persisted generated version. It builds on the accepted Milestone 7A exact-source export boundary and keeps the product focused on portable component source reuse.
 
@@ -12,11 +12,11 @@ Milestones 1 through 7 remain Completed. Milestone 8 must not be marked Complete
 
 ## 2. Product Definition
 
-The user expands one generated-version row in Saved Capture Detail and explicitly chooses a future `Export bundle` action. The selected version may be a validated V1 entry, V2 Revision entry, or V2 Regeneration entry. The browser downloads one ZIP file from the trusted Side Panel.
+The user expands one generated-version row in Saved Capture Detail and explicitly chooses an `Export bundle` action. The selected version may be a validated V1 entry, V2 Revision entry, or V2 Regeneration entry. The trusted Side Panel initiates one local browser ZIP download.
 
 There is no automatic bundle export after generation, revision, regeneration, comparison, Preview, local `.tsx` export, fake/development GitHub export, refresh, reopen, capture switch, or navigation.
 
-Milestone 8 architecture does not implement runtime behavior, UI, tests, dependencies, Manifest changes, CSP changes, IndexedDB changes, backend routes, generated-version contract changes, or download validation.
+Milestone 8 Slice 3 connects the accepted pure Bundle V1 writer to one explicit trusted Side Panel download action. It does not add dependencies, Manifest changes, CSP changes, IndexedDB writes, backend routes, generated-version contract changes, real Chromium filesystem/download-artifact validation, or final hardening.
 
 ## 3. Bundle V1 Contents
 
@@ -211,7 +211,7 @@ Missing, altered, invalid, unsafe, stale, or wrong-capture entries fail closed a
 
 ## 13. Side Panel State and Download Lifecycle
 
-The future UI should add a row-specific `Export bundle` control only inside expanded generated-version details.
+Slice 3 adds a row-specific `Export bundle` control only inside expanded generated-version details.
 
 Row-local states:
 
@@ -246,7 +246,7 @@ The ZIP must not include capture metadata, generated-version metadata, source me
 
 ## 15. Accessibility
 
-The future `Export bundle` control must:
+The `Export bundle` control must:
 
 - use a native keyboard-operable button;
 - have a version-specific accessible name;
@@ -307,22 +307,20 @@ Slice 1: Architecture and feasibility. Completed after independent acceptance at
 - Define Bundle V1 contents, exact source rule, JSON contract, README template, ZIP filename, internal paths, deterministic ZIP32 profile, exact numeric limits, archive strategy, privacy boundaries, accessibility, test matrix, and implementation slices.
 - No runtime behavior.
 
-Slice 2: Pure bundle contracts and deterministic archive writer.
+Slice 2: Pure bundle contracts and deterministic archive writer. Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`.
 
-- Current.
 - Add no runtime UI.
 - Implement bounded Bundle V1 helpers, canonical JSON builder, README builder, internal path validation, ZIP filename derivation, ZIP/IEEE CRC-32, Store-only ZIP32 writer, exact limits, and deterministic contract tests.
 
-Slice 3: Side Panel row workflow.
+Slice 3: Side Panel row workflow. Current.
 
-- Not started.
 - Add row-specific explicit `Export bundle` action.
 - Reread authoritative IndexedDB generated-version entry.
 - Enforce displayed-entry equality and `sourceCaptureId` ownership.
 - Generate Blob/object URL/anchor download.
 - Handle row-local states and lifecycle cleanup.
 
-Slice 4: Hardening and acceptance closeout.
+Slice 4: Hardening and acceptance closeout. Not started.
 
 - Add artifact-inspection tests, Chromium download validation if required, stale-state hardening, coexistence regression, accessibility regression, documentation status updates, and final validation reporting.
 
@@ -332,4 +330,4 @@ Milestone 8 architecture and later Bundle V1 implementation exclude runtime beha
 
 ## 20. Acceptance Status
 
-Milestone 8 is Current. Slice 2 remains pending independent acceptance. Runtime Side Panel bundle export is not implemented and no runtime download validation has occurred.
+Milestone 8 is Current. Slice 3 remains pending independent acceptance. Runtime Side Panel bundle export is being implemented in Slice 3. Real Chromium filesystem/download-artifact validation and final hardening remain Slice 4 work and are not completed.
