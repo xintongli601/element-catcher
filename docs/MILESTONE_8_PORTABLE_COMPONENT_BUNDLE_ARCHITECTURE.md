@@ -2,13 +2,13 @@
 
 ## 1. Status and Scope
 
-Status: Current. Slice 1 architecture and feasibility is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`. Slice 2 pure contracts and ZIP32 writer is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`. Slice 3 Side Panel row workflow is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`. Slice 4 lifecycle hardening and final acceptance is Current and pending independent acceptance.
+Status: Completed. Slice 1 architecture and feasibility is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`. Slice 2 pure contracts and ZIP32 writer is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`. Slice 3 Side Panel row workflow is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`. Slice 4 lifecycle hardening and final acceptance is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
 
 Milestone 8 defines one explicit local ZIP bundle export for one selected persisted generated version. It builds on the accepted Milestone 7A exact-source export boundary and keeps the product focused on portable component source reuse.
 
 The bundle is a portable component source bundle. It is not an npm package, runnable application, publishing workflow, production-ready scaffold, dependency-complete project, or compile guarantee.
 
-Milestones 1 through 7 remain Completed. Milestone 8 must not be marked Completed until later implementation and accepted validation are completed.
+Milestones 1 through 8 are Completed. Milestone 8 is closed only for the explicitly bounded Bundle V1 capability described here.
 
 ## 2. Product Definition
 
@@ -16,7 +16,7 @@ The user expands one generated-version row in Saved Capture Detail and explicitl
 
 There is no automatic bundle export after generation, revision, regeneration, comparison, Preview, local `.tsx` export, fake/development GitHub export, refresh, reopen, capture switch, or navigation.
 
-Milestone 8 Slice 3 connected the accepted pure Bundle V1 writer to one explicit trusted Side Panel download action. It added no dependencies, Manifest changes, CSP changes, IndexedDB writes, backend routes, generated-version contract changes, real Chromium filesystem/download-artifact validation, or final hardening. Slice 4 adds lifecycle hardening coverage and real Chromium download-artifact validation definitions without adding a new implementation slice.
+Milestone 8 Slice 3 connected the accepted pure Bundle V1 writer to one explicit trusted Side Panel download action. It added no dependencies, Manifest changes, CSP changes, IndexedDB writes, backend routes, or generated-version contract changes. Slice 4 completed lifecycle hardening, accessibility/status coverage, real Chromium downloaded-artifact validation, export coexistence regressions, backend regression validation, and production dependency audit for the bounded Bundle V1 capability.
 
 ## 3. Bundle V1 Contents
 
@@ -179,7 +179,7 @@ If any entry path, entry byte length, total uncompressed byte length, final ZIP 
 
 ## 11. Archive Strategy Decision
 
-Recommended later implementation strategy: a bounded internal uncompressed ZIP writer dedicated to Bundle V1.
+Accepted implementation strategy: a bounded internal uncompressed ZIP writer dedicated to Bundle V1.
 
 Why this is preferred:
 
@@ -232,7 +232,7 @@ State rules:
 - Temporary anchors are removed even when initiation fails.
 - The UI may state that browser download initiation occurred. It must not claim final filesystem write success.
 
-The target mechanism remains the trusted Side Panel Blob/object-URL/temporary-anchor download path. `chrome.downloads` permission is not approved unless later implementation proves the existing mechanism is technically insufficient, not merely inconvenient.
+The target mechanism remains the trusted Side Panel Blob/object-URL/temporary-anchor download path. `chrome.downloads` permission is not approved for the accepted Bundle V1 implementation.
 
 ## 14. Privacy and Secret Boundaries
 
@@ -271,9 +271,9 @@ Bundle export is independent from:
 
 Bundle export must not close, open, reorder, reset, or mutate these workflows. It must not automatically run after any of them.
 
-## 17. Test Matrix for Later Implementation
+## 17. Historical Test Matrix for Implementation
 
-Architecture acceptance does not run runtime validation. Later implementation should include deterministic tests for:
+Historical Slice 1 architecture acceptance did not run runtime validation. The later accepted implementation covered deterministic tests for:
 
 - Bundle V1 exact entry list and entry order.
 - ZIP filename derivation and unsafe-name fail-closed behavior.
@@ -320,14 +320,20 @@ Slice 3: Side Panel row workflow. Completed and accepted at `a2aac799fa5e6ef9c49
 - Generate Blob/object URL/anchor download.
 - Handle row-local states and lifecycle cleanup.
 
-Slice 4: Hardening and acceptance closeout. Current and pending independent acceptance.
+Slice 4: Hardening and acceptance closeout. Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
 
-- Add artifact-inspection tests, real Chromium download validation scenarios, one-shot failure/retry coverage, stale-state hardening, object-URL and temporary-anchor lifecycle coverage, read-only/local-only privacy probes, coexistence regression, accessibility regression, documentation status updates, and final validation reporting.
+- Added artifact-inspection tests, real Chromium download validation scenarios, one-shot failure/retry coverage, stale-state hardening, object-URL and temporary-anchor lifecycle coverage, read-only/local-only privacy probes, coexistence regression, accessibility regression, documentation status updates, and final validation reporting.
 
 ## 19. Explicit Exclusions
 
-Milestone 8 architecture and later Bundle V1 implementation exclude runtime behavior in the architecture slice, multiple components, multiple captures, project generation, npm package generation, runnable application scaffolding, `package.json`, Tailwind configuration, build configuration, lockfiles, dependency inference, generated-source parsing, generated-source compilation, generated-source execution, README generation from AI output, screenshot export, `CaptureRecord` export, backend/provider/OpenAI/GitHub requests, source-page/content-script/service-worker requests, IndexedDB writes, Preview iframe creation, File System Access API, `chrome.downloads` permission unless technically required by later proof, real GitHub integration, publishing, deployment, Figma, cloud sync, collaboration, and additional frameworks.
+Milestone 8 Bundle V1 excludes multiple components, multiple captures, project generation, npm package generation, runnable application scaffolding, `package.json`, Tailwind configuration, build configuration, lockfiles, dependency inference, generated-source parsing, generated-source compilation, generated-source execution, README generation from AI output, screenshot export, `CaptureRecord` export, backend/provider/OpenAI/GitHub requests, source-page/content-script/service-worker requests, IndexedDB writes, Preview iframe creation, File System Access API, `chrome.downloads` permission, real GitHub integration, publishing, deployment, Figma, cloud sync, collaboration, and additional frameworks. Runtime behavior was also excluded from the historical Slice 1 architecture-only scope.
 
 ## 20. Acceptance Status
 
-Milestone 8 is Current. Slice 1, Slice 2, and Slice 3 are completed and accepted. Runtime Side Panel bundle export is implemented. Slice 4 lifecycle hardening and real Chromium download-artifact validation remain pending user validation and independent acceptance, so final Milestone 8 closeout has not occurred.
+Milestone 8 is Completed. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
+
+The accepted Milestone 8 result implements one explicit local browser ZIP download for one selected persisted generated version. Supported entry types are V1, V2 Revision, and V2 Regeneration. Bundle V1 contains exactly `README.md`, `element-catcher.json`, and `src/<ComponentName>.tsx`; source bytes exactly equal `new TextEncoder().encode(authoritativeEntry.value.code)`; `element-catcher.json` is deterministic canonical JSON; the README is a deterministic fixed warning; and archive creation uses the bounded internal Store-only ZIP32 writer. The Side Panel action is row-local, explicit, local-only, source-only, read-only, and guarded by authoritative IndexedDB reread, exact displayed-entry equality, and `sourceCaptureId` ownership.
+
+Accepted validation for `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`: production build passed; focused keyboard/accessibility/status test `1 passed`; hardening suite pass 1 `14 passed`; hardening suite pass 2 `14 passed`; Milestone 8 focused suites `29 passed`; Milestone 7A/7B export coexistence regressions `29 passed`; backend tests `15 passed`; full Playwright regression `283 passed` and `1 existing documented skip`; `npm audit --omit=dev` reported `0 vulnerabilities`; HEAD and `origin/main` both resolved to `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`; and the working tree was clean after push. The one skip was the existing real loopback generation-flow test and was not a Milestone 8 failure.
+
+Milestone 8 is closed only for this explicitly bounded Bundle V1 capability. Bundle V1 is not an npm package, runnable application, dependency-complete project, production-ready scaffold, compile guarantee, publishing or deployment workflow, multi-component export, or multi-capture export. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository or branch creation, pull requests, GitHub Actions/workflows, releases, deployments, GitHub Pages, Figma export, cloud sync, collaboration, and general package/project export remain unimplemented and future or out of scope. The accepted validation is not a production security proof, universal browser compatibility proof, arbitrary generated-code safety proof, generated-source compilation guarantee, rendering correctness guarantee, production-readiness claim, real OpenAI acceptance traffic claim, or real GitHub integration claim.

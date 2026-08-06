@@ -8,7 +8,7 @@ The product direction is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
 ```
 
-Milestones 1 through 7 are completed. Milestone 8 is current for portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, and Slice 3 Side Panel row workflow are completed and accepted; Slice 4 lifecycle hardening and final acceptance remain current. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 8 are completed. Milestone 8 is completed for the bounded portable component source bundle export: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -46,6 +46,7 @@ Milestones 1 through 7 are completed. Milestone 8 is current for portable compon
 - Keep current GitHub behavior limited to deterministic fake/development transport. There is no real GitHub account connection, OAuth exchange, token persistence, real `api.github.com` call, production GitHub write, repository or branch creation, PR, workflow, Action, release, deployment, Pages, package, ZIP, or multi-file export.
 - Export one explicitly selected persisted generated version from an expanded Saved Capture Detail row through `Export bundle`.
 - Download one local Bundle V1 ZIP containing exactly `README.md`, `element-catcher.json`, and `src/<ComponentName>.tsx`, with exact persisted source bytes, canonical safe JSON, and the deterministic README warning template.
+- Support V1, V2 Revision, and V2 Regeneration bundle export through authoritative IndexedDB reread, exact displayed-entry equality, `sourceCaptureId` ownership, local-only/source-only/read-only behavior, real Chromium downloaded-artifact validation, and lifecycle, accessibility, stale, failure/retry, duplicate, object URL, privacy, and coexistence hardening.
 
 ## Local-First and AI Boundary
 
@@ -146,7 +147,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Milestones 1-5: Completed.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Parent Milestone 7 is accepted based only on those completed 7A and 7B capabilities.
-- Milestone 8: Current. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, and Slice 3 Side Panel row workflow are Completed and accepted. Slice 4 lifecycle hardening and final acceptance are Current.
+- Milestone 8: Completed. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
 
 ## Intentionally Unimplemented
 
@@ -156,7 +157,6 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Screenshot-pixel, rendered-output, cross-capture, three-way, or multi-version comparison.
 - Comparison scoring, winner selection, merging, or editing.
 - Export beyond the narrow Milestone 7A local single-version `.tsx` source-export path, deterministic Milestone 7B fake/development GitHub workflow, and Milestone 8 single-version Bundle V1 ZIP path.
-- Final accepted Milestone 8 closeout before Slice 4 validation is completed and independently accepted.
 - npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
 - Multi-file export.
 - Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository creation, branch creation, pull requests, workflow creation, Actions execution, releases, deployments, GitHub Pages, background sync, protected operational controls, and credential storage.
