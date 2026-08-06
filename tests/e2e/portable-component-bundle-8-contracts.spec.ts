@@ -65,21 +65,11 @@ test.describe("Milestone 8 Slice 2 portable component bundle contracts", () => {
       expect(inspected.bytes(sourcePath)).toEqual(encoder.encode(entry.value.code));
 
       const text = decoder.decode(result.value.bytes);
-      for (const forbidden of [
-        entry.id,
-        entry.sourceCaptureId,
-        "sourceCaptureId",
-        "sourceReviewFingerprint",
-        "sourceGeneratedVersionId",
-        "provider metadata sentinel",
-        "backend metadata sentinel",
-        "GitHub metadata sentinel",
-        "https://example.test/source",
-        "private notes sentinel",
-        "tag sentinel",
-        "2026-07-18T09:00:00.000Z",
-        "secret-token-sentinel"
-      ]) {
+      const entryJson = JSON.stringify(entry);
+      const sensitiveValues = collectSensitiveValues(entry);
+      expect(sensitiveValues).toHaveLength(entryHasOperation(entry) ? (entry.operation.kind === "revision" ? 15 : 13) : 9);
+      for (const forbidden of sensitiveValues) {
+        expect(entryJson).toContain(forbidden);
         expect(text).not.toContain(forbidden);
       }
     }
@@ -354,6 +344,49 @@ function findSignature(bytes: Uint8Array, signature: number) {
     }
   }
   return false;
+}
+
+function collectSensitiveValues(entry: GeneratedComponentVersionEntryV1 | GeneratedComponentVersionEntryV2) {
+  const values = [
+    entry.id,
+    entry.sourceCaptureId,
+    entry.sourceCaptureSavedAt,
+    entry.createdAt,
+    entry.sourceReviewFingerprint,
+    entry.value.summary,
+    entry.value.approximationNotes
+  ];
+
+  const metadata = entry.value.metadata;
+  if (metadata !== undefined) {
+    if (metadata.providerLabel !== undefined) {
+      values.push(metadata.providerLabel);
+    }
+    if (metadata.providerModelLabel !== undefined) {
+      values.push(metadata.providerModelLabel);
+    }
+  }
+
+  if (entryHasOperation(entry)) {
+    values.push(
+      entry.operation.logicalAttemptId,
+      entry.operation.reviewAttemptFingerprint,
+      entry.operation.sourceGeneratedVersionId,
+      entry.operation.sourceGeneratedVersionFingerprint
+    );
+
+    if (entry.operation.kind === "revision") {
+      values.push(entry.operation.instruction, entry.operation.instructionFingerprint);
+    }
+  }
+
+  return values;
+}
+
+function entryHasOperation(
+  entry: GeneratedComponentVersionEntryV1 | GeneratedComponentVersionEntryV2
+): entry is GeneratedComponentVersionEntryV2 {
+  return "operation" in entry;
 }
 
 function createV1(componentName: string, code: string): GeneratedComponentVersionEntryV1 {

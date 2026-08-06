@@ -17,6 +17,12 @@ export type PortableComponentBundleErrorCode =
   | "final_zip_too_large"
   | "zip32_numeric_overflow";
 
+export type PortableComponentBundleFailure = {
+  ok: false;
+  code: PortableComponentBundleErrorCode;
+  message: string;
+};
+
 export type PortableComponentBundleResult =
   | {
       ok: true;
@@ -26,11 +32,7 @@ export type PortableComponentBundleResult =
         blobType: typeof PORTABLE_COMPONENT_BUNDLE_BLOB_TYPE;
       };
     }
-  | {
-      ok: false;
-      code: PortableComponentBundleErrorCode;
-      message: string;
-    };
+  | PortableComponentBundleFailure;
 
 const ZIP32_STORE_METHOD = 0;
 const ZIP32_GENERAL_PURPOSE_FLAGS = 0x0800;
@@ -81,6 +83,8 @@ type PendingEntry = Readonly<{
   crc32: number;
 }>;
 
+type InternalResult<T> = { ok: true; value: T } | PortableComponentBundleFailure;
+
 export function createPortableComponentBundle(entry: GeneratedComponentVersionEntry): PortableComponentBundleResult {
   const sourceFilename = createGeneratedSourceExportFilename(entry.value.componentName);
   if (!sourceFilename.ok) {
@@ -98,16 +102,13 @@ export function createPortableComponentBundle(entry: GeneratedComponentVersionEn
     return bundleError("source_too_large", "Generated source is too large for portable bundle export.");
   }
 
-  const manifestResult = createBundleManifest(entry.value.componentName, sourcePath);
-  if (!manifestResult.ok) {
-    return manifestResult;
-  }
+  const manifestText = createBundleManifest(entry.value.componentName, sourcePath);
 
   const readmeEntry = createPendingEntry(README_PATH, encoder.encode(PORTABLE_COMPONENT_BUNDLE_README));
   if (!readmeEntry.ok) {
     return readmeEntry;
   }
-  const manifestEntry = createPendingEntry(MANIFEST_PATH, encoder.encode(manifestResult.value));
+  const manifestEntry = createPendingEntry(MANIFEST_PATH, encoder.encode(manifestText));
   if (!manifestEntry.ok) {
     return manifestEntry;
   }
@@ -140,21 +141,18 @@ export function createPortableComponentBundle(entry: GeneratedComponentVersionEn
   };
 }
 
-function createBundleManifest(componentName: string, entryPath: string): PortableComponentBundleResult | { ok: true; value: string } {
-  return {
-    ok: true,
-    value: `{
+function createBundleManifest(componentName: string, entryPath: string) {
+  return `{
   "formatVersion": 1,
   "framework": "react",
   "styling": "tailwind",
   "componentName": ${JSON.stringify(componentName)},
   "entryPath": ${JSON.stringify(entryPath)}
 }
-`
-  };
+`;
 }
 
-function createPendingEntry(path: string, bytes: Uint8Array): PortableComponentBundleResult | { ok: true; value: PendingEntry } {
+function createPendingEntry(path: string, bytes: Uint8Array): InternalResult<PendingEntry> {
   if (!isSafeInternalPath(path)) {
     return bundleError("unsafe_filename", "Portable bundle entry path is not safe.");
   }
@@ -173,7 +171,7 @@ function createPendingEntry(path: string, bytes: Uint8Array): PortableComponentB
   };
 }
 
-function writePortableBundleZip(pendingEntries: PendingEntry[]): PortableComponentBundleResult | { ok: true; value: Uint8Array } {
+function writePortableBundleZip(pendingEntries: PendingEntry[]): InternalResult<Uint8Array> {
   if (pendingEntries.length !== PORTABLE_COMPONENT_BUNDLE_FILE_COUNT) {
     return bundleError("zip32_numeric_overflow", "Portable bundle ZIP entry count is invalid.");
   }
@@ -316,6 +314,6 @@ function fitsZip32(value: number) {
   return Number.isSafeInteger(value) && value >= 0 && value <= ZIP32_FIELD_MAX_UINT32;
 }
 
-function bundleError(code: PortableComponentBundleErrorCode, message: string): PortableComponentBundleResult {
+function bundleError(code: PortableComponentBundleErrorCode, message: string): PortableComponentBundleFailure {
   return { ok: false, code, message };
 }
