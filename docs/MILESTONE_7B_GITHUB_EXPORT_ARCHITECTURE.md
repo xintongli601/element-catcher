@@ -461,7 +461,7 @@ Completed Milestone 7B deterministic coverage includes:
 
 Historical accepted Slice 3 validation reported: focused GitHub create/update test passed; focused invalid-path/conflict/navigation test passed; complete GitHub focused suite 8 passed; Milestone 7A regression 9 passed; Preview, Comparison, and Revision coexistence regression 59 passed; backend suite 15 passed; build passed; content-script validation passed; `npm audit --omit=dev` reported 0 vulnerabilities.
 
-Slice 4 adds the keyboard/accessibility regression above. Final Slice 4 local validation remains pending until the user runs the supplied Terminal command block; this document does not fabricate a passing result for that new test.
+Slice 4 added the keyboard/accessibility regression above. Final local validation was later completed and accepted. These results are historical local validation evidence, not GitHub Actions evidence. Milestone 7B remains completed only for the explicitly bounded deterministic fake/development GitHub export scope; real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes remain unimplemented.
 
 Real GitHub writes are not required in ordinary CI because committed tests must not require secrets. A future separately scoped production GitHub phase must cover protected-environment or manual validation for real authorized create and update paths before any production GitHub write capability is claimed.
 
