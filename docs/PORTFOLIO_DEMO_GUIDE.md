@@ -161,7 +161,7 @@ Deterministic fake/development GitHub workflow:
 5. Review the frozen create/update summary.
 6. Explicitly confirm the fake/development write.
 
-Expected visible outcome: deterministic fake/development mode can show a verified fake single-file create/update success. Normal runtime remains fail-closed and not configured for real GitHub.
+Expected visible outcome: deterministic fake/development mode can show a verified fake single-file create/update success, with Review and Success states labeled as development/fake only and not production GitHub integration. Normal runtime remains fail-closed and explicitly states that real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 Never claim real GitHub integration. Element Catcher does not implement real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository creation, branch creation, pull requests, workflows, Actions, releases, deployments, or GitHub Pages.
 
@@ -178,6 +178,8 @@ README.md
 element-catcher.json
 src/<ComponentName>.tsx
 ```
+
+The visible download status should state that Bundle V1 is local source-only and is not a runnable or dependency-complete project.
 
 Bundle V1 is source-only. It is not an npm package, runnable application, dependency-complete project, production-ready scaffold, compile guarantee, publishing workflow, or deployment workflow.
 

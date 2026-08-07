@@ -12,6 +12,23 @@ import { createDeterministicFakeGitHubTransport } from "../../.backend-dist/back
 import type { GeneratedComponentVersionEntry, GeneratedComponentVersionEntryV1 } from "../../extension/src/shared/generated-version-contract";
 
 test.describe("Milestone 7B Slice 3 GitHub export Side Panel workflow", () => {
+  test("normal runtime GitHub export remains fail-closed and explicit about missing real integration", async ({ sidePanelPage }) => {
+    const { target, createEntry } = await seedGitHubVersions(sidePanelPage);
+    await sidePanelPage.reload();
+    await openCapture(sidePanelPage, target);
+    const githubRequests = trackGitHubRequests(sidePanelPage);
+    const createRow = await expandVersion(sidePanelPage, createEntry);
+
+    await createRow.getByRole("button", { name: githubLabel(createEntry) }).click();
+
+    await expect(sidePanelPage.getByRole("alert")).toHaveText(
+      "GitHub export is not configured in normal runtime. Real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented. Deterministic fake/development export is available only through an explicitly configured local development gateway."
+    );
+    await expect(sidePanelPage.getByRole("heading", { name: "GitHub export Review" })).toHaveCount(0);
+    await expect(sidePanelPage.getByRole("heading", { name: "GitHub export succeeded" })).toHaveCount(0);
+    expect(githubRequests()).toEqual([]);
+  });
+
   test("creates and updates one GitHub file from explicit row Review without local writes or iframes", async ({ sidePanelPage, extensionId }) => {
     const server = await startFakeGateway(extensionId);
     try {
@@ -122,6 +139,7 @@ test.describe("Milestone 7B Slice 3 GitHub export Side Panel workflow", () => {
       await expectGitHubReviewField(review, "Source byte count", String(new TextEncoder().encode(createEntry.value.code).byteLength));
       await expectGitHubReviewField(review, "Remote blob SHA", "None");
       await expectGitHubReviewField(review, "Remote commit", "One remote commit will be created.");
+      await expectDevelopmentOnlyNote(review);
       await expect(review.locator("input, select, textarea")).toHaveCount(0);
 
       const cancelButton = review.getByRole("button", { name: "Cancel GitHub export" });
@@ -136,6 +154,7 @@ test.describe("Milestone 7B Slice 3 GitHub export Side Panel workflow", () => {
       await confirmButton.focus();
       await sidePanelPage.keyboard.press("Enter");
       const success = await getGitHubSuccess(sidePanelPage);
+      await expectDevelopmentOnlyNote(success);
       await expectSuccessField(success, "Repository", "octocat/hello-world");
       await expectSuccessField(success, "Branch", "main");
       await expectSuccessField(success, "Target path", "components/KeyboardCard.tsx");
@@ -183,11 +202,13 @@ async function completeGitHubExport(
   await expectGitHubReviewField(review, "Source byte count", String(new TextEncoder().encode(entry.value.code).byteLength));
   await expectGitHubReviewField(review, "Remote blob SHA", expected.remoteBlob);
   await expectGitHubReviewField(review, "Remote commit", "One remote commit will be created.");
+  await expectDevelopmentOnlyNote(review);
   await expect(review.getByRole("button", { name: "Confirm GitHub write" })).toBeVisible();
   await expect(review.locator("input, select, textarea")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "GitHub export succeeded" })).toHaveCount(0);
   await review.getByRole("button", { name: "Confirm GitHub write" }).click();
   const success = await getGitHubSuccess(page);
+  await expectDevelopmentOnlyNote(success);
   await expectSuccessField(success, "Repository", "octocat/hello-world");
   await expectSuccessField(success, "Branch", "main");
   await expectSuccessField(success, "Target path", expected.path);
@@ -218,6 +239,10 @@ async function getGitHubSuccess(page: Page) {
 
 async function expectSuccessField(success: Locator, label: string, value: string) {
   await expectField(success, label, value);
+}
+
+async function expectDevelopmentOnlyNote(container: Locator) {
+  await expect(container.getByText("Development/fake GitHub export only. This is not production GitHub integration")).toBeVisible();
 }
 
 async function expectField(container: Locator, label: string, value: string) {

@@ -63,7 +63,7 @@ Element Catcher v0.1 is a portfolio-ready local v0.1 demonstration. It is local-
 ### Manual Compatibility Coverage
 
 - Browser and operating-system compatibility coverage is not complete.
-- Milestone 9 Slice 2 manual Chrome smoke execution is Not started and must not be treated as passed.
+- Milestone 9 Slice 2 is Current, but real manual Chrome smoke execution remains pending user execution and must not be treated as passed.
 
 ### Security Review
 

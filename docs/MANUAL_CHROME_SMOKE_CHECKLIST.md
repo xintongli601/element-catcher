@@ -92,11 +92,11 @@ This checklist is for Milestone 9 Slice 2 execution on a real unpacked Chrome ex
 - Confirm a browser download is initiated.
 - Inspect the downloaded `.tsx` file and confirm it contains exact generated source only.
 - Review `Export to GitHub` wording.
-- Confirm normal runtime is fail-closed and not configured for real GitHub.
-- Confirm any deterministic fake/development GitHub workflow is labeled as fake/development only.
+- Confirm normal runtime is fail-closed, says GitHub export is not configured in normal runtime, and states that real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+- Confirm any deterministic fake/development GitHub Review and Success states are labeled as fake/development only and not production GitHub integration.
 - Confirm no real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, or production GitHub write is claimed.
 - Choose `Export bundle`.
-- Confirm a browser ZIP download is initiated.
+- Confirm a browser ZIP download is initiated and the visible status says Bundle V1 is local source-only and not runnable or dependency-complete.
 - Inspect ZIP contents.
 - Confirm Bundle V1 contains exactly `README.md`, `element-catcher.json`, and `src/<ComponentName>.tsx`.
 - Confirm Bundle V1 is source-only and does not include dependencies, `package.json`, Tailwind configuration, build configuration, lockfiles, screenshots, CaptureRecord JSON, or deployment files.

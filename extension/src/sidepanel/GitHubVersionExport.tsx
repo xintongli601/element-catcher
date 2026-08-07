@@ -23,6 +23,10 @@ declare global {
 }
 
 const LOOPBACK_ORIGIN = "http://127.0.0.1:8787";
+const GITHUB_NOT_CONFIGURED_MESSAGE =
+  "GitHub export is not configured in normal runtime. Real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented. Deterministic fake/development export is available only through an explicitly configured local development gateway.";
+const GITHUB_DEVELOPMENT_ONLY_NOTE =
+  "Development/fake GitHub export only. This is not production GitHub integration and does not use real GitHub authorization, OAuth, token storage, or production GitHub writes.";
 
 type TransportConfig =
   | { endpointCategory: "backend-unconfigured"; transport?: undefined }
@@ -96,7 +100,7 @@ export function GitHubVersionExport({
     }
     const config = resolveGitHubTransportConfig();
     if (config.endpointCategory === "backend-unconfigured") {
-      setState({ status: "authorization-required", message: "GitHub export gateway is not configured." });
+      setState({ status: "authorization-required", message: GITHUB_NOT_CONFIGURED_MESSAGE });
       return;
     }
     const owner = begin(ownerRef, tokenRef);
@@ -145,7 +149,7 @@ export function GitHubVersionExport({
     }
     const config = resolveGitHubTransportConfig();
     if (config.endpointCategory === "backend-unconfigured") {
-      setState({ status: "authorization-required", message: "GitHub export gateway is not configured." });
+      setState({ status: "authorization-required", message: GITHUB_NOT_CONFIGURED_MESSAGE });
       return;
     }
     const base = { ...state, selectedRepository, branches: [], selectedBranch: undefined };
@@ -204,7 +208,7 @@ export function GitHubVersionExport({
     }
     const config = resolveGitHubTransportConfig();
     if (config.endpointCategory === "backend-unconfigured") {
-      setState({ status: "authorization-required", message: "GitHub export gateway is not configured." });
+      setState({ status: "authorization-required", message: GITHUB_NOT_CONFIGURED_MESSAGE });
       return;
     }
     const owner = begin(ownerRef, tokenRef);
@@ -278,7 +282,7 @@ export function GitHubVersionExport({
     const config = resolveGitHubTransportConfig();
     if (config.endpointCategory === "backend-unconfigured") {
       writeInFlightRef.current = false;
-      setState({ status: "authorization-required", message: "GitHub export gateway is not configured." });
+      setState({ status: "authorization-required", message: GITHUB_NOT_CONFIGURED_MESSAGE });
       return;
     }
     const owner = begin(ownerRef, tokenRef);
@@ -451,6 +455,7 @@ function GitHubReviewPanel({
   return (
     <section className="github-review" aria-labelledby={`github-review-${review.publicAttemptId}`}>
       <h4 id={`github-review-${review.publicAttemptId}`}>GitHub export Review</h4>
+      <p className="empty-note">{GITHUB_DEVELOPMENT_ONLY_NOTE}</p>
       <dl className="preview-metadata">
         <Metadata label="Account" value={review.account.login} />
         <Metadata label="Repository" value={review.repository.fullName} />
@@ -481,6 +486,7 @@ function Success({ result }: { result: GitHubExportSuccessResultV1 }) {
   return (
     <section className="save-state save-state-success" role="status" aria-labelledby={`github-export-success-${result.commitSha}`}>
       <h4 id={`github-export-success-${result.commitSha}`}>GitHub export succeeded</h4>
+      <p>{GITHUB_DEVELOPMENT_ONLY_NOTE}</p>
       <dl className="preview-metadata">
         <Metadata label="Repository" value={result.repository.fullName} />
         <Metadata label="Branch" value={result.branch.name} />

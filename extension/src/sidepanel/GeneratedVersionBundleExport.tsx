@@ -289,7 +289,7 @@ function getStatusText(state: BundleExportState) {
     case "preparing":
       return "Preparing bundle export...";
     case "initiated":
-      return `Browser download initiated for ${state.filename}.`;
+      return `Browser download initiated for ${state.filename}. Bundle V1 is local source-only and is not a runnable or dependency-complete project.`;
     case "stale":
       return "Generated version changed. Refresh or reopen the generated-version list before exporting.";
     case "failed":

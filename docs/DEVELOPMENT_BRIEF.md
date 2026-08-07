@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 8 and the Current Milestone 9 portfolio/demo readiness documentation package.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 8 and the Current Milestone 9 portfolio/demo readiness work.
 
 Current implementation order:
 
@@ -19,11 +19,11 @@ Milestone 7A: Completed
 Milestone 7B: Completed
 Milestone 8: Completed
 Milestone 9: Current
-Milestone 9 Slice 1: Current
-Milestone 9 Slice 2: Not started
+Milestone 9 Slice 1: Completed and accepted at 13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33
+Milestone 9 Slice 2: Current
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Current for portfolio/demo readiness documentation and reviewer path work only. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Current for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Current, with focused reviewer-facing runtime clarity and local automated validation completed locally. Real manual Chrome smoke execution and final independent acceptance remain Pending, so Milestone 9 is not Completed. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -68,7 +68,7 @@ The `CaptureRecord` remains the immutable source capture. Generated versions hav
 - Execute only accepted Previewable Subset V1 render plans in the isolated Milestone 6C sandbox.
 - Keep revised and regenerated source inert until the user explicitly chooses Preview.
 - Avoid unnecessary dependencies and permissions.
-- Keep Milestone 9 documentation-only until separately accepted runtime clarity work exists.
+- Keep Milestone 9 bounded to reviewer readiness. Slice 2 runtime clarity work must not expand product capability, and manual Chrome smoke remains pending until a real user-executed run is recorded.
 
 ## 4. Module Responsibilities
 
@@ -413,14 +413,14 @@ Accepted implementation strategy: a bounded internal uncompressed ZIP writer for
 
 ### 4.17 Portfolio and Demo Readiness
 
-Milestone 9 is Current for documentation that helps an external reviewer understand and repeat the accepted local v0.1 demonstration. Slice 1 is documentation-only and creates:
+Milestone 9 is Current for documentation and runtime clarity that help an external reviewer understand and repeat the accepted local v0.1 demonstration. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; it created:
 
 - `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`;
 - `docs/PORTFOLIO_DEMO_GUIDE.md`;
 - `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`;
 - `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
 
-Slice 1 makes no runtime behavior, permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration change. It claims no new validation result. Slice 2 remains Not started and is the first place manual Chrome smoke evidence may be recorded after execution.
+Slice 1 made no runtime behavior, permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration change and claimed no new validation result. Slice 2 is Current. Its focused reviewer-facing runtime clarity implementation and local automated validation are completed locally; real manual Chrome smoke execution and final independent acceptance remain Pending. Slice 2 must not be described as Completed until those remaining steps are recorded and accepted.
 
 ## 5. Security and Privacy Boundaries
 

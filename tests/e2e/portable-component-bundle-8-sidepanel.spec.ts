@@ -54,7 +54,9 @@ test.describe("Milestone 8 Slice 3 portable component bundle Side Panel workflow
 
     await expectDownload(sidePanelPage, 1, { filename: "BundleBaseCard.zip" });
     expect(await readRereadCount(sidePanelPage)).toBe(1);
-    await expect(sidePanelPage.getByRole("status").filter({ hasText: "Browser download initiated for BundleBaseCard.zip." })).toBeVisible();
+    await expect(sidePanelPage.getByRole("status")).toContainText(
+      "Browser download initiated for BundleBaseCard.zip. Bundle V1 is local source-only and is not a runnable or dependency-complete project."
+    );
     await expect(sidePanelPage.getByText("saved successfully")).toHaveCount(0);
     await expect(sidePanelPage.locator('a[download="BundleBaseCard.zip"]')).toHaveCount(0);
     await expect.poll(async () => (await getObjectUrlSnapshot(sidePanelPage)).revokeCount).toBeGreaterThan(beforeUrls.revokeCount);

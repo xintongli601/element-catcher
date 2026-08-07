@@ -20,14 +20,14 @@ Milestone 9 is documentation and reviewer-readiness work over the already accept
 
 Slice status:
 
-- Slice 1 - Documentation package and reviewer path: Current.
-- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Not started.
+- Slice 1 - Documentation package and reviewer path: Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`.
+- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Current.
 
 Do not create more slices for Milestone 9.
 
-Slice 1 is documentation-only. It creates the reviewer-facing documentation package and aligns existing high-level docs with Milestone 9 status. It introduces no runtime behavior changes.
+Slice 1 was documentation-only. It created the reviewer-facing documentation package and aligned existing high-level docs with Milestone 9 status. It introduced no runtime behavior changes.
 
-Slice 2 remains Not started. Proposed Slice 2 scope is limited to reviewer-facing runtime clarity, manual Chrome smoke execution, evidence capture, and closeout documentation if separately implemented and accepted. Slice 2 must not be described as implemented until that work actually exists and has accepted evidence.
+Slice 2 is Current. The local runtime clarity implementation and automated validation are completed locally. Real manual Chrome smoke execution remains pending user execution, and final independent acceptance remains Pending. Slice 2 and Milestone 9 must not be described as Completed until those remaining acceptance steps are actually complete.
 
 ## 3. Reviewer Personas
 
@@ -58,7 +58,9 @@ Evidence types:
 - Automated local evidence: command output from locally executed build, test, or inspection commands.
 - GitHub Actions evidence: remote CI results produced by GitHub Actions and linked to a specific commit or run.
 
-Slice 1 claims no new validation result. It records documentation changes only.
+Slice 1 claimed no new validation result. It recorded documentation changes only.
+
+Slice 2 automated local evidence may be claimed only for commands actually run locally. It is not manual Chrome evidence, GitHub Actions evidence, production-readiness evidence, or Chrome Web Store readiness evidence.
 
 Historical evidence must remain tied to the milestone, slice, commit, and local context that originally produced it. It must not be relabeled as newly executed evidence, GitHub Actions evidence, universal browser compatibility, security proof, production readiness, or Chrome Web Store readiness.
 
@@ -91,7 +93,7 @@ Milestone 9 explicitly preserves these existing boundaries:
 
 ## 7. Explicit Exclusions
 
-Milestone 9 Slice 1 does not change:
+Milestone 9 Slice 1 did not change:
 
 - runtime behavior;
 - permissions;
@@ -105,25 +107,53 @@ Milestone 9 Slice 1 does not change:
 
 Milestone 9 does not add any later roadmap direction.
 
-## 8. Slice 1 Acceptance Criteria
+## 8. Slice 2 Current Local Status
 
-Slice 1 is accepted only when:
+Current local Slice 2 status:
+
+- Runtime clarity implementation: Completed locally for focused reviewer-facing clarity only.
+- Automated validation: Completed locally after the required command validation.
+- Real manual Chrome smoke: Pending user execution on a real unpacked Chrome extension.
+- Final independent acceptance: Pending.
+- Milestone 9: Current, not Completed.
+- Slice 2: Current, not Completed.
+
+Runtime clarity audit result:
+
+- Initial Side Panel readiness, supported/unsupported page capture, content-script unreachable/reload guidance, generation backend unavailable states, and revision/regeneration unavailable backend states were already explicit enough and were not changed.
+- Normal runtime GitHub export now fails closed with explicit wording that real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+- Deterministic fake/development GitHub Review and Success states now label themselves as development/fake only and not production GitHub integration.
+- Bundle V1 download initiation wording now states that the bundle is local source-only and is not runnable or dependency-complete.
+
+Slice 2 automated local validation completed:
+
+- `npm run build`: passed.
+- `npx playwright test tests/e2e/github-export-7b-sidepanel.spec.ts tests/e2e/portable-component-bundle-8-sidepanel.spec.ts`: 12 passed after the production extension build.
+- `npx playwright test`: 284 passed and 1 existing documented skip.
+- `npm run test:backend`: 15 passed.
+- `npm audit --omit=dev`: found 0 vulnerabilities.
+
+These are local automated results only. They do not replace the pending manual Chrome smoke checklist and are not GitHub Actions evidence.
+
+## 9. Slice 1 Acceptance Criteria
+
+Slice 1 was accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33` when:
 
 - this Milestone 9 architecture/readiness document exists;
 - the portfolio demo guide exists;
 - the manual Chrome smoke checklist exists and is clearly labeled for Slice 2 execution;
 - the Chrome Web Store readiness gaps inventory exists and is clearly not a readiness claim or submission plan;
 - README, PRD, Development Brief, and Roadmap consistently state that Milestones 1 through 8 are Completed and Milestone 9 is Current for portfolio/demo readiness;
-- Slice 2 remains Not started;
+- Slice 2 remained Not started at Slice 1 acceptance time;
 - no new runtime capability is claimed;
 - no new validation result is claimed;
 - real GitHub integration remains explicitly unimplemented;
 - Bundle V1 remains source-only and non-runnable;
 - only allowed documentation files are changed.
 
-## 9. Proposed Slice 2 Scope
+## 10. Slice 2 Scope
 
-Slice 2 may later cover:
+Slice 2 covers:
 
 - reviewer-facing UI wording clarity where accepted capability already exists;
 - execution of the manual Chrome smoke checklist on a real unpacked Chrome extension;
@@ -132,7 +162,7 @@ Slice 2 may later cover:
 
 Slice 2 must not introduce production GitHub integration, Chrome Web Store submission, production hosted backend, cloud sync, collaboration, account system, package/project generation, publishing, deployment, or any new product capability unless separately scoped and accepted.
 
-## 10. Final Milestone 9 Acceptance Criteria
+## 11. Final Milestone 9 Acceptance Criteria
 
 Milestone 9 is complete only when:
 

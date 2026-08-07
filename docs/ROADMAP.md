@@ -1172,8 +1172,8 @@ Milestone status summary:
 
 - Milestones 1 through 8 remain Completed.
 - Milestone 9 is Current.
-- Slice 1 - Documentation package and reviewer path: Current.
-- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Not started.
+- Slice 1 - Documentation package and reviewer path: Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`.
+- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Current.
 
 Included scope:
 
@@ -1182,12 +1182,15 @@ Included scope:
 - Manual Chrome smoke checklist to be executed in Slice 2.
 - Chrome Web Store readiness gap inventory.
 - Consistency updates in high-level project documents.
+- Focused reviewer-facing runtime clarity for accepted GitHub export and Bundle V1 boundaries.
+- Local automated validation for the implemented Slice 2 clarity changes.
 
 Explicitly excluded scope:
 
-- Runtime behavior changes.
+- New runtime capability.
 - Permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration changes.
 - New validation result claims in Slice 1.
+- Manual Chrome smoke completion claims before a real user-executed run.
 - Chrome Web Store readiness claim or submission.
 - Production hosted backend, account system, cloud sync, collaboration, publishing, deployment, npm package generation, runnable project generation, or production GitHub integration.
 
@@ -1198,4 +1201,4 @@ Milestone 9 documents:
 - `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`
 - `docs/CHROME_WEB_STORE_READINESS_GAPS.md`
 
-Acceptance status: Current. Slice 1 is documentation-only and claims no new runtime behavior or validation result. Slice 2 remains Not started.
+Acceptance status: Current. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Current: reviewer-facing runtime clarity implementation and local automated validation are completed locally, while real manual Chrome smoke execution and final independent acceptance remain Pending. Milestone 9 is not Completed.
