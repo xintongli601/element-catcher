@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 8, including the completed portable component source bundle export.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 8 and the Current Milestone 9 portfolio/demo readiness documentation package.
 
 Current implementation order:
 
@@ -18,9 +18,12 @@ Milestone 7: Completed
 Milestone 7A: Completed
 Milestone 7B: Completed
 Milestone 8: Completed
+Milestone 9: Current
+Milestone 9 Slice 1: Current
+Milestone 9 Slice 2: Not started
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Current for portfolio/demo readiness documentation and reviewer path work only. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -43,6 +46,7 @@ Supported webpage
   -> local generated-source export
   -> deterministic fake/development GitHub export workflow
   -> local portable component bundle export
+  -> portfolio/demo reviewer documentation
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -64,6 +68,7 @@ The `CaptureRecord` remains the immutable source capture. Generated versions hav
 - Execute only accepted Previewable Subset V1 render plans in the isolated Milestone 6C sandbox.
 - Keep revised and regenerated source inert until the user explicitly chooses Preview.
 - Avoid unnecessary dependencies and permissions.
+- Keep Milestone 9 documentation-only until separately accepted runtime clarity work exists.
 
 ## 4. Module Responsibilities
 
@@ -406,6 +411,17 @@ The README uses a deterministic fixed template stating that the source was gener
 
 Accepted implementation strategy: a bounded internal uncompressed ZIP writer for the three-entry Bundle V1 format. This avoids approving a ZIP dependency, keeps supply-chain and bundle-size cost low, avoids compression nondeterminism, and allows deterministic artifact-inspection tests. Reviewed ZIP dependencies and browser compression strategies remain rejected for Bundle V1 unless future separately scoped evidence proves the bounded internal writer insufficient.
 
+### 4.17 Portfolio and Demo Readiness
+
+Milestone 9 is Current for documentation that helps an external reviewer understand and repeat the accepted local v0.1 demonstration. Slice 1 is documentation-only and creates:
+
+- `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`;
+- `docs/PORTFOLIO_DEMO_GUIDE.md`;
+- `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`;
+- `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
+
+Slice 1 makes no runtime behavior, permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration change. It claims no new validation result. Slice 2 remains Not started and is the first place manual Chrome smoke evidence may be recorded after execution.
+
 ## 5. Security and Privacy Boundaries
 
 - Captures remain local by default.
@@ -439,6 +455,7 @@ The current implementation does not include:
 - Runtime export beyond the narrow Milestone 7A local single-version `.tsx` source-export path, deterministic Milestone 7B fake/development GitHub workflow, and Milestone 8 single-version Bundle V1 ZIP path.
 - npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
 - Multi-file export.
+- Chrome Web Store readiness claim or submission.
 - Website publishing.
 - Figma export.
 - Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, protected manual validation, production deployment, and operational controls.

@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 8 are completed. Milestone 8 is Completed for the bounded portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
+Milestones 1 through 8 are completed. Milestone 9 is Current for portfolio/demo readiness documentation and reviewer path work only. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is Completed for the bounded portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 Implemented:
 
@@ -108,7 +108,7 @@ The local backend/proxy is a development/demo topology, not a production multi-u
 Implemented:
 
 ```text
-Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Persist new version -> Compare -> Export .tsx
+Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Compare -> Export
 ```
 
 Implemented details:
@@ -141,6 +141,8 @@ Milestone 7A delivered the first narrow export path: one explicit local `.tsx` e
 Milestone 7B delivers the next narrow handoff as a deterministic fake/development workflow: an explicit `Export to GitHub` action for one selected persisted generated version, one user-selected repository, one existing branch, and one `.tsx` path. The file contents remain exactly persisted `entry.value.code`, the default filename reuses the Milestone 7A filename helper, and every create/update requires a frozen Review and explicit confirmation. Normal runtime remains not-configured for real GitHub; real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production writes are not implemented.
 
 Milestone 8 is Completed. It defines and implements one explicit local ZIP portable component source bundle for one selected persisted generated version. Bundle V1 is not an npm package, runnable application, publishing workflow, production-ready scaffold, dependency-complete project, or compile guarantee.
+
+Milestone 9 is Current for portfolio/demo readiness. Slice 1 is documentation-only and creates the reviewer path, manual Slice 2 checklist, and Chrome Web Store gap inventory without changing runtime behavior or claiming new validation results. Slice 2 remains Not started.
 
 ## 9. Structured Capture Concept
 
@@ -244,6 +246,7 @@ Milestone 8 Bundle V1 defines exactly `README.md`, `element-catcher.json`, and `
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed - accepted based on completed Milestone 7A local exact-source `.tsx` export and completed Milestone 7B deterministic fake/development single-file GitHub export workflow. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, package export, and general multi-file export remain Planned or explicitly out of scope.
 - Milestone 8: Completed - local ZIP portable component source bundle export. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
+- Milestone 9: Current - portfolio/demo readiness documentation and reviewer path. Slice 1 is Current. Slice 2 is Not started. See `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`, `docs/PORTFOLIO_DEMO_GUIDE.md`, `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`, and `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
 
 ## 14. Success Criteria
 
@@ -278,6 +281,7 @@ Element Catcher v0.1 does not include:
 - Comparison scoring, winner selection, merging, or editing.
 - Runtime export beyond the completed narrow Milestone 7A local `.tsx` source-export path, deterministic Milestone 7B fake/development GitHub workflow, and Milestone 8 single-version Bundle V1 ZIP path.
 - npm package export, runnable application scaffolding, dependency inference, Tailwind configuration generation, build configuration generation, and production-ready scaffolding.
+- Chrome Web Store readiness claim or submission.
 - Figma export.
 - Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, protected manual validation, production deployment, and operational controls.
 - Team collaboration.

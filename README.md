@@ -2,13 +2,13 @@
 
 Element Catcher is a local-first Chrome extension for capturing UI inspiration from supported webpages, saving it into a personal Capture Library, organizing it, and rebuilding it as reusable React + Tailwind source code.
 
-The product direction is:
+The accepted local v0.1 demonstration flow is:
 
 ```text
-Capture -> Save -> Organize -> Rebuild -> Preview -> Reuse
+Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Compare -> Export
 ```
 
-Milestones 1 through 8 are completed. Milestone 8 is completed for the bounded portable component source bundle export: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 8 are completed. Milestone 9 is Current for portfolio/demo readiness documentation and reviewer path work only. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is completed for the bounded portable component source bundle export: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -59,6 +59,17 @@ The local proxy is a development/demo topology. It is not a production multi-use
 No real OpenAI request was made during automated acceptance. The provider adapter and loopback path were validated deterministically without committing or exposing a real API secret.
 
 Milestone 6C was accepted on remote baseline `8af49fd68fcdb6169eb9517a8aacadc5e36fe477` (`test: close safe preview security regressions`), retaining the implementation commits `1704b7c7d83fd288dd56bc0f2f4861ee359911c9` (`feat: implement safe generated component preview`) and `291d5b381210cd9a93906724c9e7785e377e7d66` (`fix: complete safe preview lifecycle and styling`). Its reported acceptance validation was two focused preview-suite runs with 38 passing tests each, backend tests with 6 passing tests, full Playwright regression with 146 passing tests and 1 documented loopback skip, `npm audit --omit=dev` with 0 vulnerabilities, no external preview request, and strict sandbox CSP retained. These results document the accepted Milestone 6C baseline; they are not a general security proof.
+
+## Portfolio Demo Readiness
+
+Milestone 9 is Current for documentation that makes the accepted local v0.1 demonstration easier to review without expanding runtime capability.
+
+- Milestone 9 plan: `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`
+- External reviewer guide: `docs/PORTFOLIO_DEMO_GUIDE.md`
+- Slice 2 manual checklist: `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`
+- Chrome Web Store readiness gaps: `docs/CHROME_WEB_STORE_READINESS_GAPS.md`
+
+The manual Chrome smoke checklist is intended for Slice 2 execution and does not mark any item passed. The Chrome Web Store gaps document is not a readiness claim or submission plan.
 
 ## Prerequisites
 
@@ -148,6 +159,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Parent Milestone 7 is accepted based only on those completed 7A and 7B capabilities.
 - Milestone 8: Completed. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
+- Milestone 9: Current for portfolio/demo readiness documentation and reviewer path. Slice 1 is Current. Slice 2 is Not started.
 
 ## Intentionally Unimplemented
 

@@ -1161,3 +1161,41 @@ Acceptance status: Completed. Milestone 8 is accepted only for the bounded Bundl
 Bundle V1 is not an npm package, runnable application, dependency-complete project, production-ready scaffold, compile guarantee, publishing or deployment workflow, multi-component export, or multi-capture export. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository or branch creation, pull requests, GitHub Actions/workflows, releases, deployments, GitHub Pages, Figma export, cloud sync, collaboration, and general package/project export remain unimplemented and future or out of scope. The accepted validation is not a production security proof, universal browser compatibility proof, arbitrary generated-code safety proof, generated-source compilation guarantee, rendering correctness guarantee, production-readiness claim, real OpenAI acceptance traffic claim, or real GitHub integration claim.
 
 Architecture: `docs/MILESTONE_8_PORTABLE_COMPONENT_BUNDLE_ARCHITECTURE.md`.
+
+## Milestone 9 - Portfolio and Demo Readiness
+
+Status: Current
+
+Objective: Make the accepted Element Catcher local v0.1 demonstration understandable, honest, repeatable, and independently reviewable by an external portfolio reviewer without expanding existing product capability.
+
+Milestone status summary:
+
+- Milestones 1 through 8 remain Completed.
+- Milestone 9 is Current.
+- Slice 1 - Documentation package and reviewer path: Current.
+- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Not started.
+
+Included scope:
+
+- Documentation package for the portfolio-ready local v0.1 demonstration.
+- Reviewer guide for the accepted product flow: Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Compare -> Export.
+- Manual Chrome smoke checklist to be executed in Slice 2.
+- Chrome Web Store readiness gap inventory.
+- Consistency updates in high-level project documents.
+
+Explicitly excluded scope:
+
+- Runtime behavior changes.
+- Permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration changes.
+- New validation result claims in Slice 1.
+- Chrome Web Store readiness claim or submission.
+- Production hosted backend, account system, cloud sync, collaboration, publishing, deployment, npm package generation, runnable project generation, or production GitHub integration.
+
+Milestone 9 documents:
+
+- `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`
+- `docs/PORTFOLIO_DEMO_GUIDE.md`
+- `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`
+- `docs/CHROME_WEB_STORE_READINESS_GAPS.md`
+
+Acceptance status: Current. Slice 1 is documentation-only and claims no new runtime behavior or validation result. Slice 2 remains Not started.
