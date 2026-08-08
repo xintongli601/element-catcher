@@ -7,13 +7,16 @@ import {
   SCREENSHOT_ASSET_STORE_NAME,
   createBrowserPngDataUrl,
   createCaptureRecordFixture,
+  readGeneratedVersions,
   readPersistenceCounts,
   readRecordWrapper,
   readScreenshotAssetSnapshot,
+  replaceRecordWrapper,
   replaceScreenshotAssetVariant,
   resetAndSeedSavedCaptures,
   restoreRecordWrapper
 } from "./indexed-db-fixtures";
+import { assembleCaptureRecordV1, serializeCaptureRecordV1 } from "../../extension/src/capture/capture-record-v1";
 import { buildGenerationRequestWithoutDataUrl } from "../../extension/src/generation/projection";
 import {
   validateFullRequest,
@@ -27,6 +30,7 @@ import { GENERATION_LIMITS, PNG_DATA_URL_PREFIX } from "../../extension/src/gene
 import { GenerationError } from "../../extension/src/generation/errors";
 import { isPngByteLengthAllowed } from "../../extension/src/generation/screenshot";
 import { getBase64PayloadLength, predictCompleteRequestBytes } from "../../extension/src/generation/request-size";
+import type { ScreenshotCaptureResult, StructuredCaptureExtraction } from "../../extension/src/shared/capture-schema";
 import type { ComponentGenerationRequestV1, ComponentGenerationResponseV1 } from "../../extension/src/generation/types";
 
 test.describe.configure({ mode: "serial" });
@@ -653,6 +657,45 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     await expect(page.getByLabel(/Data is leaving your device/)).not.toBeChecked();
   });
 
+  test("new capture-shaped saved data reaches backend-unconfigured generation without requests or generated versions", async ({ context, extensionId }) => {
+    const page = await openSidePanelPage(context, extensionId);
+    const seeded = await resetAndSeedSavedCaptures(page, [DEFAULT_CAPTURE_FIXTURES[0]]);
+    const target = seeded[0];
+    const captureRecord = createCaptureShapedRecord(target.record.id, target.record.assets.screenshot);
+
+    await replaceRecordWrapper(page, {
+      id: captureRecord.id,
+      value: serializeCaptureRecordV1(captureRecord),
+      savedAt: target.savedAt
+    });
+    await page.reload();
+
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      const url = request.url();
+      if (url.startsWith("http://") || url.startsWith("https://")) {
+        requests.push(url);
+      }
+    });
+
+    await openCapture(page, "dashboard-card");
+    await page.getByRole("button", { name: "Generate component" }).click();
+    await expect(page.getByRole("heading", { name: "Review data being sent" })).toBeVisible();
+    await expect(page.getByText("Backend not configured")).toBeVisible();
+    await expect(page.getByText("The saved capture could not be prepared for generation.")).toHaveCount(0);
+    await page.getByLabel(/Data is leaving your device/).check();
+    await page.getByRole("button", { name: "Send to AI and generate" }).click();
+    await expect(page.getByText("AI generation backend integration is not configured yet.")).toBeVisible();
+    await expect.poll(() => getMockCallCount(page)).toBe(0);
+    expect(requests).toEqual([]);
+    expect(await readGeneratedVersions(page, captureRecord.id)).toEqual([]);
+    expect(await readPersistenceCounts(page)).toMatchObject({
+      captureRecords: 1,
+      screenshotAssets: 1,
+      generatedComponentVersions: 0
+    });
+  });
+
   for (const scenario of ["malformed-response", "timeout", "rate-limit", "provider-rejected"] as const) {
     test(`retry after ${scenario} rebuilds review and requires fresh consent`, async ({ context, extensionId }) => {
       await installMockHarness(context, scenario);
@@ -811,6 +854,140 @@ async function installBase64Counter(context: Parameters<typeof openSidePanelPage
 
 async function getBase64Count(page: Parameters<typeof resetAndSeedSavedCaptures>[0]) {
   return page.evaluate(() => ((window as unknown as { __EC_BTOA_COUNT__?: () => number }).__EC_BTOA_COUNT__?.() ?? 0));
+}
+
+function createCaptureShapedRecord(
+  id: string,
+  screenshot: {
+    width: number;
+    height: number;
+    byteLength?: number;
+    crop: ScreenshotCaptureResult["crop"];
+  }
+) {
+  if (!screenshot.byteLength) {
+    throw new Error("Seeded screenshot byteLength is required for capture-shaped generation regression.");
+  }
+
+  const boundedStyle = "x".repeat(GENERATION_LIMITS.computedStyleCodePoints);
+  const boundedAttribute = "a".repeat(GENERATION_LIMITS.attributeValueCodePoints);
+  const extraction: StructuredCaptureExtraction = {
+    source: {
+      url: "https://private.example.test/account/dashboard?token=must-not-transmit",
+      pageTitle: "Private Dashboard"
+    },
+    environment: {
+      viewport: {
+        width: 1280,
+        height: 800
+      },
+      devicePixelRatio: 1
+    },
+    element: {
+      tagName: "article",
+      semanticRole: "region",
+      rect: {
+        x: 24,
+        y: 32,
+        width: screenshot.width,
+        height: screenshot.height,
+        top: 32,
+        right: 24 + screenshot.width,
+        bottom: 32 + screenshot.height,
+        left: 24
+      }
+    },
+    dom: {
+      sanitizedSnapshot: {
+        tagName: "article",
+        attributes: {
+          role: "region",
+          "aria-label": boundedAttribute,
+          "data-testid": boundedAttribute
+        },
+        textPreview: "Private dashboard card",
+        children: [
+          {
+            tagName: "h2",
+            attributes: {},
+            textPreview: "Dashboard metric",
+            children: []
+          }
+        ]
+      },
+      childSummary: [
+        {
+          tagName: "h2",
+          semanticRole: "heading",
+          textPreview: "Dashboard metric",
+          childCount: 0
+        }
+      ]
+    },
+    styles: {
+      computed: {
+        display: "flex",
+        boxSizing: "border-box",
+        width: `${screenshot.width}px`,
+        height: `${screenshot.height}px`,
+        fontFamily: boundedStyle,
+        boxShadow: boundedStyle,
+        color: "rgb(17, 24, 39)",
+        backgroundColor: "rgb(255, 255, 255)",
+        padding: {
+          top: "12px",
+          right: "12px",
+          bottom: "12px",
+          left: "12px"
+        }
+      }
+    },
+    summaries: {
+      componentType: "dashboard-card",
+      typography: {
+        primaryFont: "Inter",
+        weights: ["400", "600"]
+      },
+      colors: {
+        foreground: "rgb(17, 24, 39)",
+        background: "rgb(255, 255, 255)"
+      },
+      layout: {
+        display: "flex",
+        direction: "row",
+        density: "comfortable"
+      },
+      spacing: {
+        padding: {
+          top: "12px",
+          right: "12px",
+          bottom: "12px",
+          left: "12px"
+        }
+      }
+    }
+  };
+
+  const screenshotCapture: ScreenshotCaptureResult = {
+    dataUrl: "data:image/png;base64,unused-by-assembler",
+    mediaType: "image/png",
+    width: screenshot.width,
+    height: screenshot.height,
+    byteLength: screenshot.byteLength,
+    crop: screenshot.crop,
+    sourceWidth: screenshot.width,
+    sourceHeight: screenshot.height,
+    scaleX: 1,
+    scaleY: 1,
+    wasClipped: false
+  };
+
+  return assembleCaptureRecordV1({
+    extraction,
+    screenshotCapture,
+    id,
+    createdAt: "2026-07-18T08:00:00.000Z"
+  });
 }
 
 function withBefore(request: ReturnType<typeof buildGenerationRequestWithoutDataUrl>, before: Record<string, unknown>) {

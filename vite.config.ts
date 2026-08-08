@@ -61,6 +61,7 @@ export default defineConfig(({ mode }) => {
     build: {
       outDir: distDir,
       emptyOutDir: !isContentBuild,
+      modulePreload: false,
       rollupOptions: isContentBuild
         ? {
             input: resolve(rootDir, "src/content/index.ts"),

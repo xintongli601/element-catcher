@@ -83,7 +83,8 @@ async function sendSelectionCommand(command: SidePanelCommand) {
   if (activeTab.url && !isSupportedPageUrl(activeTab.url)) {
     return {
       ok: false,
-      message: "Element selection is only available on ordinary http and https webpages."
+      message:
+        "Element Catcher can capture regular webpages you can access in Chrome, including many authenticated or private pages. Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured."
     } satisfies SelectionCommandResponse;
   }
 
@@ -96,7 +97,7 @@ async function sendSelectionCommand(command: SidePanelCommand) {
     return {
       ok: false,
       message:
-        "Element Catcher could not reach this page. Reload the webpage and try again, or use an ordinary webpage where extensions can run."
+        "Element Catcher can capture regular webpages you can access in Chrome, including many authenticated or private pages. Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured."
     } satisfies SelectionCommandResponse;
   }
 }
@@ -190,7 +191,9 @@ async function validateScreenshotSender(
   }
 
   if (!isSupportedPageUrl(senderUrl) || !isSupportedPageUrl(message.extraction.source.url)) {
-    throw new Error("Screenshot capture is only available on ordinary http and https webpages.");
+    throw new Error(
+      "Element Catcher can capture regular webpages you can access in Chrome, including many authenticated or private pages. Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured."
+    );
   }
 
   if (!senderUrl || !areSameDocumentUrls(senderUrl, message.extraction.source.url)) {

@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 8 and the Current Milestone 9 portfolio/demo readiness work.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 9, including the completed Milestone 9 portfolio/demo readiness work.
 
 Current implementation order:
 
@@ -18,12 +18,12 @@ Milestone 7: Completed
 Milestone 7A: Completed
 Milestone 7B: Completed
 Milestone 8: Completed
-Milestone 9: Current
+Milestone 9: Completed
 Milestone 9 Slice 1: Completed and accepted at 13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33
-Milestone 9 Slice 2: Current
+Milestone 9 Slice 2: Completed
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Current for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Current, with focused reviewer-facing runtime clarity and local automated validation completed locally. Real manual Chrome smoke execution and final independent acceptance remain Pending, so Milestone 9 is not Completed. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Completed based on focused reviewer-facing runtime clarity, local automated validation, and real Chrome manual smoke evidence confirmed by the user. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -68,7 +68,7 @@ The `CaptureRecord` remains the immutable source capture. Generated versions hav
 - Execute only accepted Previewable Subset V1 render plans in the isolated Milestone 6C sandbox.
 - Keep revised and regenerated source inert until the user explicitly chooses Preview.
 - Avoid unnecessary dependencies and permissions.
-- Keep Milestone 9 bounded to reviewer readiness. Slice 2 runtime clarity work must not expand product capability, and manual Chrome smoke remains pending until a real user-executed run is recorded.
+- Keep Milestone 9 bounded to reviewer readiness. Slice 2 runtime clarity work did not expand product capability, and real Chrome manual smoke evidence is recorded only as user-confirmed manual evidence.
 
 ## 4. Module Responsibilities
 
@@ -100,6 +100,7 @@ The background service worker coordinates privileged extension actions:
 - Configure side panel open behavior.
 - Route selection commands between the side panel and active tab.
 - Guard unsupported pages.
+- Keep regular webpages the user can access in Chrome, including many authenticated or private pages, distinct from Chrome-protected browser surfaces where content scripts cannot run.
 - Capture the current visible tab through `chrome.tabs.captureVisibleTab`.
 - Keep privileged Chrome APIs out of content scripts.
 
@@ -413,14 +414,14 @@ Accepted implementation strategy: a bounded internal uncompressed ZIP writer for
 
 ### 4.17 Portfolio and Demo Readiness
 
-Milestone 9 is Current for documentation and runtime clarity that help an external reviewer understand and repeat the accepted local v0.1 demonstration. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; it created:
+Milestone 9 is Completed for documentation and runtime clarity that help an external reviewer understand and repeat the accepted local v0.1 demonstration. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; it created:
 
 - `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`;
 - `docs/PORTFOLIO_DEMO_GUIDE.md`;
 - `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`;
 - `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
 
-Slice 1 made no runtime behavior, permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration change and claimed no new validation result. Slice 2 is Current. Its focused reviewer-facing runtime clarity implementation and local automated validation are completed locally; real manual Chrome smoke execution and final independent acceptance remain Pending. Slice 2 must not be described as Completed until those remaining steps are recorded and accepted.
+Slice 1 made no runtime behavior, permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration change and claimed no new validation result. Slice 2 is Completed. Its focused reviewer-facing runtime clarity implementation, modulepreload build fix, generation-preparation fix for newly saved captures, local automated validation, real Chrome manual smoke execution, and final closeout acceptance are recorded. Generated-version-only GitHub and Bundle paths retain automated evidence when no configured provider/generated version is available for manual execution.
 
 ## 5. Security and Privacy Boundaries
 

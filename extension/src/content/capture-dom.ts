@@ -11,7 +11,7 @@ const MAX_SNAPSHOT_DEPTH = 4;
 const MAX_CHILDREN_PER_NODE = 20;
 const MAX_TOTAL_NODES = 120;
 const MAX_TEXT_PREVIEW_LENGTH = 160;
-const MAX_ATTRIBUTE_VALUE_LENGTH = 200;
+const MAX_ATTRIBUTE_VALUE_LENGTH = 120;
 const MAX_CLASS_NAMES = 20;
 
 const DROPPED_TAG_NAMES = new Set(["script", "style", "noscript", "template", "object", "embed"]);

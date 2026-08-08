@@ -1,6 +1,8 @@
 # Manual Chrome Smoke Checklist
 
-This checklist is for Milestone 9 Slice 2 execution on a real unpacked Chrome extension. No item is marked passed by this document. Do not treat this checklist as completed evidence until a reviewer records an actual run.
+This checklist records Milestone 9 Slice 2 execution on a real unpacked Chrome extension. The final real Chrome smoke result was confirmed by the user after the final implementation build.
+
+The earlier real Chrome run found a reload blocker because Chrome recorded Side Panel modulepreload entries as extension Errors-page preload warnings/errors. After the local build fix, the final user-confirmed rerun passed without modulepreload recurrence.
 
 ## Evidence Fields
 
@@ -14,6 +16,18 @@ This checklist is for Milestone 9 Slice 2 execution on a real unpacked Chrome ex
 - Overall result: not run / pass / fail / blocked
 - Notes:
 
+## Final Recorded Manual Evidence
+
+- Overall result: pass, confirmed by the user.
+- Extension reload and Errors page: no new modulepreload errors, no new `preview-protocol.js` preload mismatch, no new `client.js` preload mismatch, and no new preload-unused errors.
+- Authenticated/private ordinary HTTPS webpage capture: capture mode, hover, selection, confirmation, and save worked. This validates the intended product distinction between authenticated/private regular webpages and browser-protected surfaces, not universal compatibility with every private site.
+- Browser-protected page boundary: `chrome://settings` remained unsupported, and reviewer-facing messaging correctly explains that many authenticated/private regular webpages can be captured while Chrome-protected surfaces cannot.
+- Newly saved capture generation preparation: the previous "The saved capture could not be prepared for generation." failure is resolved; newly captured/saved data now reaches "AI generation backend integration is not configured yet."; backend-unconfigured behavior remains fail-closed; no generated version is fabricated.
+- Library metadata, search, and persistence passed manual smoke.
+- Side Panel console: no new red runtime errors.
+- Service Worker console and final extension Errors check: no new red runtime errors and no reappearance of modulepreload errors.
+- Generated-version-only GitHub and Bundle paths were not claimed as final manual Chrome coverage when no configured provider/generated version was available; their final evidence remains automated.
+
 ## Build and Load
 
 - Run dependency installation if the local checkout has not already installed dependencies.
@@ -22,6 +36,7 @@ This checklist is for Milestone 9 Slice 2 execution on a real unpacked Chrome ex
 - Enable Developer mode.
 - Load the repository `dist/` directory as an unpacked extension.
 - Confirm the extension card has no red errors.
+- Confirm the extension Errors page does not record Side Panel modulepreload or cross-world extension resource mismatch entries for `/assets/preview-protocol.js`, `/assets/client.js`, or other Side Panel chunks.
 - Inspect the extension card details for unexpected warnings.
 - Open the Side Panel.
 - Inspect the Side Panel console for unexpected errors.
@@ -39,6 +54,8 @@ This checklist is for Milestone 9 Slice 2 execution on a real unpacked Chrome ex
 - Confirm screenshot preview appears.
 - Confirm capture metadata appears.
 - Save the capture.
+- Open an authenticated/private ordinary webpage that the reviewer can access in Chrome, where safe to test.
+- Confirm the UI can enter capture mode and select a normal element without implying universal private-site compatibility.
 
 ## Persistence and Library
 
@@ -105,10 +122,10 @@ This checklist is for Milestone 9 Slice 2 execution on a real unpacked Chrome ex
 
 - Open `chrome://extensions` or another restricted Chrome page.
 - Attempt capture.
-- Confirm the UI reports unsupported or unavailable selection safely.
+- Confirm the UI reports that regular webpages the user can access in Chrome, including many authenticated or private pages, are supported while Chrome-protected pages such as `chrome://` and the Chrome Web Store cannot be captured.
 - Open a Chrome Web Store page.
 - Attempt capture.
-- Confirm the UI reports unsupported or unavailable selection safely.
+- Confirm the UI reports unsupported selection without implying authenticated/private ordinary webpages are unsupported.
 
 ## Final Review
 

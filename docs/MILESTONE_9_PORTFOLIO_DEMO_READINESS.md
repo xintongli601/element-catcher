@@ -2,7 +2,7 @@
 
 ## 1. Status and Goal
 
-Status: Current.
+Status: Completed.
 
 Milestone 9 makes the accepted Element Catcher local v0.1 demonstration understandable, honest, repeatable, and independently reviewable by an external portfolio reviewer without expanding existing product capability.
 
@@ -21,13 +21,13 @@ Milestone 9 is documentation and reviewer-readiness work over the already accept
 Slice status:
 
 - Slice 1 - Documentation package and reviewer path: Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`.
-- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Current.
+- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Completed.
 
 Do not create more slices for Milestone 9.
 
 Slice 1 was documentation-only. It created the reviewer-facing documentation package and aligned existing high-level docs with Milestone 9 status. It introduced no runtime behavior changes.
 
-Slice 2 is Current. The local runtime clarity implementation and automated validation are completed locally. Real manual Chrome smoke execution remains pending user execution, and final independent acceptance remains Pending. Slice 2 and Milestone 9 must not be described as Completed until those remaining acceptance steps are actually complete.
+Slice 2 is Completed. The local runtime clarity implementation, modulepreload build fix, generation-preparation fix for newly saved captures, automated validation, real Chrome manual smoke execution, and final closeout acceptance are complete.
 
 ## 3. Reviewer Personas
 
@@ -46,7 +46,7 @@ A reviewer should be able to:
 - Understand the optional configured generation demonstration and the unavailable-backend behavior.
 - Observe the accepted product flow from capture through export where local data and configuration allow it.
 - Distinguish implemented local v0.1 behavior from excluded production or store-readiness claims.
-- Review the manual Chrome smoke checklist that Slice 2 is expected to execute.
+- Review the manual Chrome smoke checklist and final user-confirmed Slice 2 manual Chrome evidence.
 - Confirm that evidence claims are labeled as historical local validation, new manual validation, or GitHub Actions evidence only when such evidence actually exists.
 
 ## 5. Evidence Model
@@ -61,6 +61,8 @@ Evidence types:
 Slice 1 claimed no new validation result. It recorded documentation changes only.
 
 Slice 2 automated local evidence may be claimed only for commands actually run locally. It is not manual Chrome evidence, GitHub Actions evidence, production-readiness evidence, or Chrome Web Store readiness evidence.
+
+Slice 2 real Chrome manual evidence may be claimed only as user-confirmed manual evidence from a real unpacked Chrome extension run. It is not automated testing, GitHub Actions evidence, production-readiness evidence, universal private-site compatibility evidence, or Chrome Web Store readiness evidence.
 
 Historical evidence must remain tied to the milestone, slice, commit, and local context that originally produced it. It must not be relabeled as newly executed evidence, GitHub Actions evidence, universal browser compatibility, security proof, production readiness, or Chrome Web Store readiness.
 
@@ -107,33 +109,55 @@ Milestone 9 Slice 1 did not change:
 
 Milestone 9 does not add any later roadmap direction.
 
-## 8. Slice 2 Current Local Status
+## 8. Slice 2 Final Closeout Status
 
-Current local Slice 2 status:
+Final local Slice 2 status:
 
-- Runtime clarity implementation: Completed locally for focused reviewer-facing clarity only.
-- Automated validation: Completed locally after the required command validation.
-- Real manual Chrome smoke: Pending user execution on a real unpacked Chrome extension.
-- Final independent acceptance: Pending.
-- Milestone 9: Current, not Completed.
-- Slice 2: Current, not Completed.
+- Runtime clarity implementation: Completed for focused reviewer-facing clarity only.
+- Modulepreload build fix for the observed real Chrome reload blocker: Completed.
+- Generation preparation fix for newly saved real captures: Completed.
+- Private/authenticated ordinary webpage positioning clarification: Completed.
+- Automated validation: Completed after the final implementation changes.
+- Real Chrome manual smoke: Completed and confirmed by the user after the final implementation build.
+- Final closeout acceptance: Completed.
+- Milestone 9: Completed.
+- Slice 2: Completed.
 
 Runtime clarity audit result:
 
-- Initial Side Panel readiness, supported/unsupported page capture, content-script unreachable/reload guidance, generation backend unavailable states, and revision/regeneration unavailable backend states were already explicit enough and were not changed.
+- Initial Side Panel readiness, content-script unreachable/reload guidance, generation backend unavailable states, and revision/regeneration unavailable backend states were already explicit enough and were not changed.
+- Unsupported-page wording now clarifies that regular webpages the user can access in Chrome, including many authenticated or private pages, are intended supported targets, while Chrome-protected pages such as `chrome://` and the Chrome Web Store cannot be captured.
 - Normal runtime GitHub export now fails closed with explicit wording that real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 - Deterministic fake/development GitHub Review and Success states now label themselves as development/fake only and not production GitHub integration.
 - Bundle V1 download initiation wording now states that the bundle is local source-only and is not runnable or dependency-complete.
+- Real Chrome manual smoke found a build-output blocker: generated `dist/src/sidepanel/index.html` included Vite/Rollup HTML modulepreload links for Side Panel dependency chunks such as `/assets/preview-protocol.js` and `/assets/client.js`, which Chrome reported as cross-world extension resource mismatch preload warnings/errors.
+- The local build fix disables Vite modulepreload generation for the extension build output. The Side Panel keeps the ordinary ESM module script and stylesheet entries, and required JavaScript chunks continue to load through normal ESM imports.
+- Real Chrome manual smoke found a generation preparation blocker: newly saved captures failed before reaching the backend-unconfigured generation state. Root-cause investigation found real capture producer strings could exceed the bounded generation projection limits while still passing CaptureRecord persistence. The local fix bounds captured attribute/style strings at the producer boundary so newly saved capture-shaped data can be prepared for generation and then fail closed at backend-unconfigured when no backend is configured.
 
-Slice 2 automated local validation completed:
+Slice 2 final automated local validation completed:
 
 - `npm run build`: passed.
-- `npx playwright test tests/e2e/github-export-7b-sidepanel.spec.ts tests/e2e/portable-component-bundle-8-sidepanel.spec.ts`: 12 passed after the production extension build.
-- `npx playwright test`: 284 passed and 1 existing documented skip.
+- `dist/src/sidepanel/index.html`: contains no `rel="modulepreload"`, retains `<script type="module" crossorigin src="/assets/sidepanel.js"></script>`, retains `<link rel="stylesheet" crossorigin href="/assets/sidepanel.css">`, and contains no external URL.
+- Content-script build validation: passed.
+- Focused regression: 33 passed, 0 failed.
+- Full Playwright: 288 total, 287 passed, 1 existing documented skip, 0 failed.
 - `npm run test:backend`: 15 passed.
 - `npm audit --omit=dev`: found 0 vulnerabilities.
+- `git diff --check`: passed.
 
-These are local automated results only. They do not replace the pending manual Chrome smoke checklist and are not GitHub Actions evidence.
+These are local automated results only. They are not GitHub Actions evidence.
+
+Slice 2 final real Chrome manual evidence confirmed by the user:
+
+- Extension reload and Errors page: no new modulepreload errors, no new `preview-protocol.js` preload mismatch, no new `client.js` preload mismatch, and no new preload-unused errors.
+- Authenticated/private ordinary HTTPS webpage capture: capture mode, hover, selection, confirmation, and save worked. This validates the intended distinction between authenticated/private regular webpages and browser-protected surfaces, not universal compatibility with every private site.
+- Browser-protected page boundary: `chrome://settings` remained unsupported, and reviewer-facing messaging correctly explains that many authenticated/private regular webpages can be captured while Chrome-protected surfaces cannot.
+- Newly saved capture generation preparation: the previous "The saved capture could not be prepared for generation." failure is resolved; newly captured/saved data reaches "AI generation backend integration is not configured yet."; backend-unconfigured behavior remains fail-closed; no generated version is fabricated.
+- Library metadata, search, and persistence passed manual smoke.
+- Side Panel console: no new red runtime errors.
+- Service Worker console and final extension Errors check: no new red runtime errors and no modulepreload recurrence.
+
+Generated-version-only GitHub and Bundle paths were not claimed as final manual Chrome coverage when no configured provider/generated version was available; their final evidence remains automated.
 
 ## 9. Slice 1 Acceptance Criteria
 

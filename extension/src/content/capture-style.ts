@@ -14,7 +14,7 @@ import { assertJsonCompatible } from "../shared/json";
 import { createDomCaptureExtraction } from "./capture-dom";
 import { getSemanticRole } from "./semantic-role";
 
-const MAX_STYLE_VALUE_LENGTH = 500;
+const MAX_STYLE_VALUE_LENGTH = 160;
 const MAX_PSEUDO_CONTENT_LENGTH = 160;
 const MAX_SAMPLED_ELEMENTS = 60;
 const MAX_TYPOGRAPHY_SCALE = 8;

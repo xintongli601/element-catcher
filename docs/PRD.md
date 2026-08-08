@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 8 are completed. Milestone 9 is Current for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Current, with focused reviewer-facing runtime clarity and local automated validation completed locally. Real manual Chrome smoke execution and final independent acceptance remain Pending, so Milestone 9 is not Completed. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is Completed for the bounded portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
+Milestones 1 through 9 are completed for the bounded local-first v0.1 portfolio/demo readiness scope. Milestone 9 Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Completed based on focused reviewer-facing runtime clarity, local automated validation, and real Chrome manual smoke evidence confirmed by the user. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is Completed for the bounded portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 Implemented:
 
@@ -72,7 +72,7 @@ The differentiation is the workflow:
 
 ## 6. Supported Page Limitations
 
-Element Catcher can capture from supported webpages currently visible in the user's browser, including many login-only, intranet, permissioned, dynamic, and localhost pages.
+Element Catcher can capture from supported regular webpages currently visible in the user's browser, including many authenticated, login-only, intranet, permissioned, dynamic, private, and localhost pages that the user can already access in Chrome.
 
 It must not claim to work on every browser page. Known limitations include:
 
@@ -142,7 +142,7 @@ Milestone 7B delivers the next narrow handoff as a deterministic fake/developmen
 
 Milestone 8 is Completed. It defines and implements one explicit local ZIP portable component source bundle for one selected persisted generated version. Bundle V1 is not an npm package, runnable application, publishing workflow, production-ready scaffold, dependency-complete project, or compile guarantee.
 
-Milestone 9 is Current for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33` for the documentation package, reviewer path, manual Slice 2 checklist, and Chrome Web Store gap inventory. Slice 2 is Current: focused reviewer-facing runtime clarity implementation and local automated validation are completed locally, while real manual Chrome smoke execution and final independent acceptance remain Pending.
+Milestone 9 is Completed for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33` for the documentation package, reviewer path, manual Slice 2 checklist, and Chrome Web Store gap inventory. Slice 2 is Completed based on focused reviewer-facing runtime clarity implementation, the Side Panel modulepreload build fix, the newly saved capture generation-preparation fix, local automated validation, and real Chrome manual smoke evidence confirmed by the user. Generated-version-only GitHub and Bundle paths retain automated evidence when no configured provider/generated version is available for manual execution.
 
 ## 9. Structured Capture Concept
 
@@ -246,7 +246,7 @@ Milestone 8 Bundle V1 defines exactly `README.md`, `element-catcher.json`, and `
 - Milestone 6: Completed - isolated preview and version management. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed - accepted based on completed Milestone 7A local exact-source `.tsx` export and completed Milestone 7B deterministic fake/development single-file GitHub export workflow. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, package export, and general multi-file export remain Planned or explicitly out of scope.
 - Milestone 8: Completed - local ZIP portable component source bundle export. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
-- Milestone 9: Current - portfolio/demo readiness documentation and reviewer path. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Current; runtime clarity implementation and local automated validation are completed locally, while real manual Chrome smoke execution and final independent acceptance remain Pending. See `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`, `docs/PORTFOLIO_DEMO_GUIDE.md`, `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`, and `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
+- Milestone 9: Completed - portfolio/demo readiness documentation and reviewer path. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Completed based on runtime clarity implementation, local automated validation, real Chrome manual smoke evidence confirmed by the user, and final closeout acceptance. See `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`, `docs/PORTFOLIO_DEMO_GUIDE.md`, `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`, and `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
 
 ## 14. Success Criteria
 

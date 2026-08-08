@@ -8,7 +8,7 @@ The accepted local v0.1 demonstration flow is:
 Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Compare -> Export
 ```
 
-Milestones 1 through 8 are completed. Milestone 9 is Current for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Current, with focused reviewer-facing runtime clarity and local automated validation completed locally. Real manual Chrome smoke execution and final independent acceptance remain Pending, so Milestone 9 is not Completed. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is completed for the bounded portable component source bundle export: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
+Milestones 1 through 9 are completed for the bounded local-first v0.1 portfolio/demo readiness scope. Milestone 9 Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Completed based on focused reviewer-facing runtime clarity, the Side Panel modulepreload build fix, the newly saved capture generation-preparation fix, authenticated/private regular webpage messaging clarification, completed local automated validation, and real Chrome manual smoke evidence confirmed by the user. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is completed for the bounded portable component source bundle export: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 7 is completed based on accepted Milestone 7A narrow local generated-source export and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow coverage only. Normal runtime remains fail-closed and not configured for real GitHub. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented. Generated code is displayed as source text unless the user explicitly chooses Preview, and only source that passes the Milestone 6C previewable-source gate can be rendered from a data-only render plan in the isolated sandbox.
 
 ## Current Capabilities
 
@@ -62,14 +62,14 @@ Milestone 6C was accepted on remote baseline `8af49fd68fcdb6169eb9517a8aacadc5e3
 
 ## Portfolio Demo Readiness
 
-Milestone 9 is Current for making the accepted local v0.1 demonstration easier to review without expanding runtime capability. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Current; its focused runtime clarity implementation and automated local validation are completed locally, while real manual Chrome smoke execution and final independent acceptance remain Pending.
+Milestone 9 is Completed for making the accepted local v0.1 demonstration easier to review without expanding runtime capability. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Completed based on focused runtime clarity implementation, the modulepreload build fix for the observed real Chrome reload blocker, the generation-preparation fix for newly saved captures, automated local validation, and real Chrome manual smoke evidence confirmed by the user. Generated-version-only GitHub and Bundle paths remain supported by automated evidence when no configured provider/generated version is available for manual execution.
 
 - Milestone 9 plan: `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`
 - External reviewer guide: `docs/PORTFOLIO_DEMO_GUIDE.md`
 - Slice 2 manual checklist: `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`
 - Chrome Web Store readiness gaps: `docs/CHROME_WEB_STORE_READINESS_GAPS.md`
 
-The manual Chrome smoke checklist is intended for real user execution and does not mark any item passed. The Chrome Web Store gaps document is not a readiness claim or submission plan.
+The manual Chrome smoke checklist records final user-executed Milestone 9 Slice 2 Chrome smoke evidence. The Chrome Web Store gaps document is not a readiness claim or submission plan.
 
 ## Prerequisites
 
@@ -147,7 +147,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 ## Supported Page Limitations
 
 - Selection mode is limited to supported `http://` and `https://` webpages where the content script is available.
-- Element Catcher can support many login-only, intranet, permissioned, dynamic, and localhost pages, but it does not work on every visible browser page.
+- Element Catcher can capture regular webpages the user can access in Chrome, including many authenticated, login-only, intranet, permissioned, dynamic, and localhost pages, but it does not work on every visible browser page.
 - Restricted pages such as `chrome://` pages, Chrome Web Store pages, browser-controlled UI, and some extension pages cannot be selected.
 - Cross-origin iframe contents are not accessible to the extension.
 - Closed shadow roots and browser UI cannot be inspected.
@@ -159,7 +159,7 @@ See `docs/ROADMAP.md` for the authoritative milestone status and sequencing.
 - Milestone 6: Completed. Milestone 6A, 6B, 6C, 6D, and 6E are Completed.
 - Milestone 7: Completed. Milestone 7A is Completed for local exact-source `.tsx` export of one selected persisted generated version. Milestone 7B is Completed for deterministic fake/development single-file GitHub export workflow after final local validation and acceptance. Parent Milestone 7 is accepted based only on those completed 7A and 7B capabilities.
 - Milestone 8: Completed. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
-- Milestone 9: Current for portfolio/demo readiness documentation and reviewer path. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Current; runtime clarity implementation and local automated validation are completed locally, while real manual Chrome smoke execution and final independent acceptance remain Pending.
+- Milestone 9: Completed for portfolio/demo readiness documentation and reviewer path. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Completed based on runtime clarity implementation, private/authenticated-page positioning clarification, the modulepreload build fix, generation preparation fix, local automated validation, real Chrome manual smoke evidence confirmed by the user, and final closeout acceptance.
 
 ## Intentionally Unimplemented
 

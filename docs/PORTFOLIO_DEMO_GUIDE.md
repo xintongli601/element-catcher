@@ -4,12 +4,14 @@ This guide is for an external reviewer evaluating the portfolio-ready local v0.1
 
 Element Catcher is not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. The default demo path requires no provider secret and focuses on local extension behavior.
 
+Milestone 9 portfolio/demo readiness is Completed for the bounded local-first v0.1 scope. Final real Chrome manual smoke evidence covered extension reload/errors, authenticated/private regular webpage capture, browser-protected page boundaries, backend-unconfigured generation preparation for newly saved captures, library metadata/search/persistence, Side Panel console, and Service Worker console checks. Generated-version-only GitHub and Bundle paths retain automated evidence when no configured provider/generated version is available for manual execution.
+
 ## 1. Prerequisites
 
 - Node.js 20 or newer.
 - npm.
 - Google Chrome with extension Developer mode enabled.
-- A supported ordinary `http://` or `https://` webpage for capture.
+- A supported ordinary `http://` or `https://` webpage for capture. This may include many authenticated, login-only, private, internal, or localhost pages the user can already access in Chrome.
 
 Unsupported capture targets include `chrome://` pages, Chrome Web Store pages, browser-controlled UI, inaccessible cross-origin iframe contents, closed shadow roots, and pages where the content script is blocked or unavailable.
 

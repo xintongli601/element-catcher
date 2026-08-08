@@ -264,6 +264,25 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     expect(await readPersistenceCounts(sidePanelPage)).toEqual(beforeCounts);
   });
 
+  test("browser-protected surfaces explain private-page support without claiming universal capture", async ({ context, sidePanelPage }) => {
+    const protectedPage = await context.newPage();
+    await protectedPage.goto("chrome://extensions");
+    await protectedPage.bringToFront();
+
+    try {
+      const response = await sidePanelPage.evaluate(() =>
+        chrome.runtime.sendMessage({ type: "EC_START_SELECTION" })
+      );
+      expect(response).toMatchObject({ ok: false });
+      expect(response.message).toContain("Element Catcher can capture regular webpages you can access in Chrome");
+      expect(response.message).toContain("including many authenticated or private pages");
+      expect(response.message).toContain("Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured");
+      expect(response.message).not.toContain("every private page");
+    } finally {
+      await protectedPage.close();
+    }
+  });
+
   test("actual capture/save automation attempt records activeTab gap without production permission changes", async ({ context, extensionId }, testInfo) => {
     const server = await startFixtureServer();
     const page = await openSidePanelPage(context, extensionId);
@@ -295,7 +314,7 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
         });
         await expect(page.locator(".notice")).toContainText(
           safeError
-            ? /ordinary http and https webpages|could not reach this page|No active tab is available/
+            ? /regular webpages you can access in Chrome|could not reach this page|No active tab is available/
             : "Starting selection mode on the active webpage..."
         );
         expect(await readPersistenceCounts(page)).toMatchObject({

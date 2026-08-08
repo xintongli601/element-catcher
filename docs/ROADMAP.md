@@ -1164,33 +1164,36 @@ Architecture: `docs/MILESTONE_8_PORTABLE_COMPONENT_BUNDLE_ARCHITECTURE.md`.
 
 ## Milestone 9 - Portfolio and Demo Readiness
 
-Status: Current
+Status: Completed
 
 Objective: Make the accepted Element Catcher local v0.1 demonstration understandable, honest, repeatable, and independently reviewable by an external portfolio reviewer without expanding existing product capability.
 
 Milestone status summary:
 
 - Milestones 1 through 8 remain Completed.
-- Milestone 9 is Current.
+- Milestone 9 is Completed.
 - Slice 1 - Documentation package and reviewer path: Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`.
-- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Current.
+- Slice 2 - Reviewer-facing runtime clarity, validation, and closeout: Completed.
 
 Included scope:
 
 - Documentation package for the portfolio-ready local v0.1 demonstration.
 - Reviewer guide for the accepted product flow: Capture -> Save -> Organize -> Rebuild -> Preview -> Revise/Regenerate -> Compare -> Export.
-- Manual Chrome smoke checklist to be executed in Slice 2.
+- Manual Chrome smoke checklist and final user-confirmed real Chrome manual evidence.
 - Chrome Web Store readiness gap inventory.
 - Consistency updates in high-level project documents.
 - Focused reviewer-facing runtime clarity for accepted GitHub export and Bundle V1 boundaries.
-- Local automated validation for the implemented Slice 2 clarity changes.
+- Local automated validation for the implemented Slice 2 clarity changes and final fixes.
+- Build-level correction for the real Chrome manual-smoke blocker caused by Side Panel HTML modulepreload links.
+- Generation preparation correction for newly saved capture-shaped data.
+- Product wording clarification that many authenticated/private ordinary webpages are intended supported targets while Chrome-protected pages remain unsupported.
 
 Explicitly excluded scope:
 
 - New runtime capability.
 - Permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration changes.
 - New validation result claims in Slice 1.
-- Manual Chrome smoke completion claims before a real user-executed run.
+- Claims beyond the recorded real Chrome manual smoke evidence.
 - Chrome Web Store readiness claim or submission.
 - Production hosted backend, account system, cloud sync, collaboration, publishing, deployment, npm package generation, runnable project generation, or production GitHub integration.
 
@@ -1201,4 +1204,4 @@ Milestone 9 documents:
 - `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`
 - `docs/CHROME_WEB_STORE_READINESS_GAPS.md`
 
-Acceptance status: Current. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Current: reviewer-facing runtime clarity implementation and local automated validation are completed locally, while real manual Chrome smoke execution and final independent acceptance remain Pending. Milestone 9 is not Completed.
+Acceptance status: Completed. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Completed: reviewer-facing runtime clarity implementation, the modulepreload build fix for the observed real Chrome reload blocker, generation preparation fix, private/authenticated-page positioning clarification, local automated validation, and real Chrome manual smoke evidence confirmed by the user are recorded. Milestone 9 is Completed as Portfolio / Demo Readiness for the bounded local-first v0.1.
