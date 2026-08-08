@@ -49,7 +49,7 @@ Milestone 10 therefore prioritizes recovery paths that do not reload, navigate, 
 
 ## Slice 1 - Session-Preserving Capture Recovery
 
-Status: Local implementation, automated validation, and real-user Chrome manual validation passed; awaiting final independent remote acceptance.
+Status: Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`.
 
 Slice 1 addresses a specific recoverable case:
 
@@ -140,7 +140,7 @@ The automated checks cover implementation invariants that are not directly obser
 - content-script reinjection disposes stale Element Catcher runtime state;
 - built Manifest permissions remain exactly `activeTab`, `scripting`, and `sidePanel`, with no host-permission broadening.
 
-The manual Chrome results below were confirmed by the real user during local Chrome validation. They are evidence for M10 Slice 1 local/manual readiness, not formal remote acceptance.
+The manual Chrome results below were confirmed by the real user during local Chrome validation. Together with the automated evidence, they were accepted for M10 Slice 1 at `b0ed05823c530b2b0632c5db3bdb189459719f0d`.
 
 | Area | Scenario | Expected result | Status |
 | --- | --- | --- | --- |
@@ -172,4 +172,4 @@ Additional user-confirmed manual evidence:
 
 ## Current Status
 
-M10 Slice 1 implementation is present locally and covered by focused automated checks, final full Playwright validation, and real-user Chrome manual validation. It remains awaiting final independent remote acceptance and must not be marked formally accepted until that independent inspection is complete. Milestone 10 remains Current.
+M10 Slice 1 implementation is complete and accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation. Milestone 10 remains Current.
