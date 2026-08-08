@@ -8,6 +8,14 @@ import { getElementTextPreview, toSerializableRect } from "./capture-dom";
 import { createStructuredCaptureExtraction } from "./capture-style";
 import { getSemanticRole } from "./semantic-role";
 
+const contentRuntimeKey = "__ELEMENT_CATCHER_CONTENT_RUNTIME__";
+
+type ContentRuntimeGlobal = typeof globalThis & {
+  [contentRuntimeKey]?: {
+    dispose: () => void;
+  };
+};
+
 let isSelectionActive = false;
 let highlightedElement: Element | null = null;
 let lockedElement: Element | null = null;
@@ -23,7 +31,18 @@ type ViewportIntersection = {
   height: number;
 };
 
-chrome.runtime.onMessage.addListener((message: unknown) => {
+const contentRuntimeGlobal = globalThis as ContentRuntimeGlobal;
+contentRuntimeGlobal[contentRuntimeKey]?.dispose();
+contentRuntimeGlobal[contentRuntimeKey] = {
+  dispose() {
+    cleanupSelectionMode();
+    chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
+  }
+};
+
+chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+
+function handleRuntimeMessage(message: unknown) {
   if (!isExtensionMessage(message)) {
     return false;
   }
@@ -54,7 +73,7 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
   }
 
   return false;
-});
+}
 
 function startSelectionMode() {
   if (isSelectionActive) {

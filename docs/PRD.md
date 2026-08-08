@@ -12,7 +12,7 @@ The product is not a full CSS inspector, full-page cloning tool, publishing plat
 
 ## 2. Current Product State
 
-Milestones 1 through 9 are completed for the bounded local-first v0.1 portfolio/demo readiness scope. Milestone 9 Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Completed based on focused reviewer-facing runtime clarity, local automated validation, and real Chrome manual smoke evidence confirmed by the user. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is Completed for the bounded portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
+Milestones 1 through 9 are completed for the bounded local-first v0.1 portfolio/demo readiness scope. Milestone 10 is Current for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched. Milestone 10 Slice 1 implements bounded Start Capture recovery for supported ordinary webpages when the content runtime is unavailable, and remains pending independent/manual acceptance. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Milestone 8 is Completed for the bounded portable component source bundle export. Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST requests, and production GitHub writes are not implemented.
 
 Implemented:
 
@@ -38,6 +38,7 @@ Implemented:
 - Local single-version exact-source `.tsx` export for one explicitly selected persisted generated version.
 - Deterministic fake/development single-file GitHub export workflow for one explicitly selected persisted generated version, with strict contracts, repository and existing-branch selection, validated path and commit message, frozen Review, explicit create/update confirmation, stale/conflict handling, duplicate suppression, and semantic Review/Success states.
 - Local Bundle V1 ZIP export for one explicitly selected persisted generated version, containing exactly deterministic README, canonical `element-catcher.json`, and exact source bytes at `src/<ComponentName>.tsx`.
+- Bounded M10 Slice 1 Start Capture recovery for supported ordinary webpages when Chrome permits active-tab script injection; pending independent/manual acceptance.
 
 ## 3. Problem Statement
 
@@ -82,7 +83,7 @@ It must not claim to work on every browser page. Known limitations include:
 - Extension pages where content scripts cannot run.
 - Inaccessible cross-origin iframe contents.
 - Closed shadow roots.
-- Pages where the extension content script is blocked, unavailable, or not reloaded.
+- Pages where the extension content script is blocked and Chrome does not permit bounded active-tab recovery.
 
 The product must not bypass access controls or capture content the user cannot already view.
 
@@ -247,6 +248,7 @@ Milestone 8 Bundle V1 defines exactly `README.md`, `element-catcher.json`, and `
 - Milestone 7: Completed - accepted based on completed Milestone 7A local exact-source `.tsx` export and completed Milestone 7B deterministic fake/development single-file GitHub export workflow. Real production GitHub integration remains future work. Figma, cloud sync, collaboration, publishing, additional frameworks, package export, and general multi-file export remain Planned or explicitly out of scope.
 - Milestone 8: Completed - local ZIP portable component source bundle export. Slice 1 is Completed and accepted at `c06b3c10d7bfa2ee772126f137833c836aea0dd3`; Slice 2 is Completed and accepted at `167d2a96f91261b0af4422541b3b9978e7563692`; Slice 3 is Completed and accepted at `a2aac799fa5e6ef9c493520973d8421afc80c430`; Slice 4 is Completed and accepted at `e1d9237653aee1076bf8ebcdad63d0bca94b21a3`.
 - Milestone 9: Completed - portfolio/demo readiness documentation and reviewer path. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Completed based on runtime clarity implementation, local automated validation, real Chrome manual smoke evidence confirmed by the user, and final closeout acceptance. See `docs/MILESTONE_9_PORTFOLIO_DEMO_READINESS.md`, `docs/PORTFOLIO_DEMO_GUIDE.md`, `docs/MANUAL_CHROME_SMOKE_CHECKLIST.md`, and `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
+- Milestone 10: Current - private/session-state capture reliability. Slice 1 implementation is pending independent/manual acceptance and must not be marked Completed until real Chrome acceptance confirms the recovery behavior. See `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.
 
 ## 14. Success Criteria
 

@@ -62,6 +62,12 @@ type ContentCommand =
   | ContentRefineChildRequest
   | ContentConfirmSelectionRequest;
 
+const protectedPageMessage =
+  "Element Catcher can capture regular webpages you can access in Chrome, including many authenticated or private pages. Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured.";
+
+const startRecoveryAccessMessage =
+  "Element Catcher could not reconnect to this tab. Click the Element Catcher toolbar icon on this tab, then try Start Capture again.";
+
 async function configureSidePanelActionBehavior() {
   try {
     await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: false });
@@ -83,8 +89,7 @@ async function sendSelectionCommand(command: SidePanelCommand) {
   if (activeTab.url && !isSupportedPageUrl(activeTab.url)) {
     return {
       ok: false,
-      message:
-        "Element Catcher can capture regular webpages you can access in Chrome, including many authenticated or private pages. Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured."
+      message: protectedPageMessage
     } satisfies SelectionCommandResponse;
   }
 
@@ -93,17 +98,70 @@ async function sendSelectionCommand(command: SidePanelCommand) {
   try {
     await chrome.tabs.sendMessage(activeTab.id, contentMessage);
     return { ok: true } satisfies SelectionCommandResponse;
-  } catch {
+  } catch (error) {
+    if (command !== "EC_START_SELECTION" || !isMissingContentRuntimeError(error)) {
+      return {
+        ok: false,
+        message: protectedPageMessage
+      } satisfies SelectionCommandResponse;
+    }
+  }
+
+  try {
+    await injectContentScriptForStartRecovery(activeTab.id);
+    await chrome.tabs.sendMessage(activeTab.id, contentMessage);
+    return { ok: true } satisfies SelectionCommandResponse;
+  } catch (error) {
     return {
       ok: false,
-      message:
-        "Element Catcher can capture regular webpages you can access in Chrome, including many authenticated or private pages. Chrome-protected pages such as chrome:// and the Chrome Web Store cannot be captured."
+      message: isProtectedInjectionError(error) ? protectedPageMessage : startRecoveryAccessMessage
     } satisfies SelectionCommandResponse;
   }
 }
 
 function isSupportedPageUrl(url: string | undefined) {
-  return Boolean(url && (url.startsWith("http://") || url.startsWith("https://")));
+  return Boolean(url && (url.startsWith("http://") || url.startsWith("https://")) && !isChromeWebStoreUrl(url));
+}
+
+async function injectContentScriptForStartRecovery(tabId: number) {
+  await chrome.scripting.executeScript({
+    target: {
+      tabId,
+      allFrames: false
+    },
+    files: ["content/content-script.js"]
+  });
+}
+
+function isMissingContentRuntimeError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    message.includes("Could not establish connection") ||
+    message.includes("Receiving end does not exist")
+  );
+}
+
+function isProtectedInjectionError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+
+  return (
+    message.includes("Cannot access a chrome:// URL") ||
+    message.includes("The extensions gallery cannot be scripted") ||
+    message.includes("Cannot access contents of the page")
+  );
+}
+
+function isChromeWebStoreUrl(url: string) {
+  try {
+    const parsedUrl = new URL(url);
+    return (
+      parsedUrl.hostname === "chromewebstore.google.com" ||
+      (parsedUrl.hostname === "chrome.google.com" && parsedUrl.pathname.startsWith("/webstore"))
+    );
+  } catch {
+    return false;
+  }
 }
 
 function areSameDocumentUrls(first: string, second: string) {

@@ -1205,3 +1205,44 @@ Milestone 9 documents:
 - `docs/CHROME_WEB_STORE_READINESS_GAPS.md`
 
 Acceptance status: Completed. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`. Slice 2 is Completed: reviewer-facing runtime clarity implementation, the modulepreload build fix for the observed real Chrome reload blocker, generation preparation fix, private/authenticated-page positioning clarification, local automated validation, and real Chrome manual smoke evidence confirmed by the user are recorded. Milestone 9 is Completed as Portfolio / Demo Readiness for the bounded local-first v0.1.
+
+## Milestone 10 - Private Session Capture
+
+Status: Current
+
+Objective: Improve browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched.
+
+Milestone status summary:
+
+- Milestones 1 through 9 remain Completed.
+- Milestone 10 is Current.
+- Slice 1 - Session-preserving capture recovery: implementation pending independent/manual acceptance.
+
+Included scope:
+
+- Treat many authenticated, private, login-only, intranet-style, stateful SPA, permission-specific, and localhost ordinary webpages as intended supported targets when Chrome permits extension access and the user can already view the page.
+- Preserve the distinction between supported ordinary webpages and Chrome-protected browser surfaces.
+- Avoid refresh, navigation, tab recreation, remote refetch, form submission, or intentional source-page state changes during capture recovery.
+- Add bounded Start Capture recovery when the active tab is a supported ordinary webpage but the current Element Catcher content runtime is unavailable.
+- Add only the approved `scripting` permission while keeping the existing `activeTab` boundary.
+
+Explicitly excluded scope:
+
+- Bypassing authentication, authorization, firewalls, paywalls, browser restrictions, or site access controls.
+- Universal private-site support claims.
+- Capture from `chrome://`, Chrome Web Store, browser UI, inaccessible extension pages, inaccessible cross-origin iframe contents, or closed shadow roots.
+- `<all_urls>`, `tabs`, new/broader host permissions, `webRequest`, `identity`, `downloads`, CSP weakening, dependency additions, backend changes, AI changes, CaptureRecord schema changes, visual-only capture, GitHub changes, network/cloud features, or credential/cookie/token/session extraction.
+
+Slice 1 architecture:
+
+- Resolve the active tab through the existing side-panel command routing pattern.
+- Apply the supported-page boundary before any injection attempt.
+- Try the existing content-script message path first.
+- If the existing content runtime responds, continue the accepted capture flow with zero `chrome.scripting.executeScript()` calls.
+- If the Start Capture content runtime is missing, inject the packaged `content/content-script.js` into the active tab main frame exactly once, then retry Start Capture exactly once.
+- If injection or retry fails, fail closed with actionable product wording and no raw Chrome exception details.
+- Do not run recovery injection for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated messages.
+
+Current status: Slice 1 implementation is present locally with focused automated checks and build validation. It remains pending independent/manual Chrome acceptance and must not be marked Completed until that acceptance is confirmed.
+
+Architecture: `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.

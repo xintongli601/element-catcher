@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 9, including the completed Milestone 9 portfolio/demo readiness work.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 9 and the current Milestone 10 private/session-state capture work.
 
 Current implementation order:
 
@@ -21,9 +21,11 @@ Milestone 8: Completed
 Milestone 9: Completed
 Milestone 9 Slice 1: Completed and accepted at 13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33
 Milestone 9 Slice 2: Completed
+Milestone 10: Current
+Milestone 10 Slice 1: Implementation pending independent/manual acceptance
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Slice 1 is Completed and accepted at `13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33`; Slice 2 is Completed based on focused reviewer-facing runtime clarity, local automated validation, and real Chrome manual smoke evidence confirmed by the user. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Milestone 10 is Current for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched. Slice 1 implements bounded Start Capture recovery for supported ordinary webpages when the current content runtime is unavailable, and remains pending independent/manual acceptance. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -101,6 +103,7 @@ The background service worker coordinates privileged extension actions:
 - Route selection commands between the side panel and active tab.
 - Guard unsupported pages.
 - Keep regular webpages the user can access in Chrome, including many authenticated or private pages, distinct from Chrome-protected browser surfaces where content scripts cannot run.
+- Recover Start Capture by programmatically injecting the packaged content script at most once only when a supported ordinary active tab is missing the current content runtime and Chrome permits the active-tab grant.
 - Capture the current visible tab through `chrome.tabs.captureVisibleTab`.
 - Keep privileged Chrome APIs out of content scripts.
 
@@ -422,6 +425,16 @@ Milestone 9 is Completed for documentation and runtime clarity that help an exte
 - `docs/CHROME_WEB_STORE_READINESS_GAPS.md`.
 
 Slice 1 made no runtime behavior, permission, dependency, storage, networking, backend, export, generation, preview, or GitHub integration change and claimed no new validation result. Slice 2 is Completed. Its focused reviewer-facing runtime clarity implementation, modulepreload build fix, generation-preparation fix for newly saved captures, local automated validation, real Chrome manual smoke execution, and final closeout acceptance are recorded. Generated-version-only GitHub and Bundle paths retain automated evidence when no configured provider/generated version is available for manual execution.
+
+### 4.18 Private Session Capture
+
+Milestone 10 is Current for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched.
+
+Slice 1 implementation is pending independent/manual acceptance. The background service worker first attempts the existing content-script message path for `EC_START_SELECTION`. If the receiving content runtime is missing, it performs exactly one `chrome.scripting.executeScript()` call for the active tab main frame using `content/content-script.js`, then retries Start Selection exactly once. If the initial message succeeds, no programmatic injection occurs. If injection or retry fails, the workflow fails closed with actionable UX.
+
+Recovery is not used for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated runtime messages. Restricted/browser-protected surfaces remain fail-closed, including `chrome://` pages and Chrome Web Store pages. The implementation must not reload, navigate, recreate tabs, submit forms, alter page history, broaden host permissions, extract credentials, extract cookies, or request persistent all-sites access.
+
+The only approved Manifest permission addition for Slice 1 is `scripting`; `activeTab` remains the temporary user-grant boundary. See `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.
 
 ## 5. Security and Privacy Boundaries
 
