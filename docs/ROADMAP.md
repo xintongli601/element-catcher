@@ -1216,7 +1216,7 @@ Milestone status summary:
 
 - Milestones 1 through 9 remain Completed.
 - Milestone 10 is Current.
-- Slice 1 - Session-preserving capture recovery: implementation pending independent/manual acceptance.
+- Slice 1 - Session-preserving capture recovery: implementation complete; automated validation and required real-user Chrome manual validation passed; final independent remote acceptance pending.
 
 Included scope:
 
@@ -1243,6 +1243,6 @@ Slice 1 architecture:
 - If injection or retry fails, fail closed with actionable product wording and no raw Chrome exception details.
 - Do not run recovery injection for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated messages.
 
-Current status: Slice 1 implementation is present locally with focused automated checks and build validation. It remains pending independent/manual Chrome acceptance and must not be marked Completed until that acceptance is confirmed.
+Current status: Slice 1 implementation is present locally with focused automated checks, final full Playwright validation, and required real-user Chrome manual validation passed. Final independent remote acceptance remains pending, and Slice 1 must not be marked formally Completed until that inspection is complete. Milestone 10 remains Current.
 
 Architecture: `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.

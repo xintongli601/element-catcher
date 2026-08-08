@@ -127,16 +127,27 @@ Slice 1 does not implement:
 - backend, AI, GitHub, export, storage schema, or CaptureRecord changes;
 - production Chrome Web Store readiness.
 
-## Manual Chrome Acceptance Matrix
+## Automated Invariants And Manual Chrome Evidence
 
-These manual results were confirmed by the real user during local Chrome validation. They are evidence for M10 Slice 1 local/manual readiness, not formal remote acceptance.
+The automated checks cover implementation invariants that are not directly observable in manual Chrome use:
+
+- existing content runtime path returns success before any programmatic injection;
+- missing Start Capture runtime path performs one bounded injection call and one retry;
+- injection failure and retry failure do not create a recovery loop;
+- unsupported and browser-protected URL guards prevent recovery injection where applicable;
+- Cancel, Parent, Child, Confirm, screenshot completion, and unrelated messages do not trigger recovery injection;
+- the recovery path does not reload, navigate, recreate tabs, or broaden privileged APIs;
+- content-script reinjection disposes stale Element Catcher runtime state;
+- built Manifest permissions remain exactly `activeTab`, `scripting`, and `sidePanel`, with no host-permission broadening.
+
+The manual Chrome results below were confirmed by the real user during local Chrome validation. They are evidence for M10 Slice 1 local/manual readiness, not formal remote acceptance.
 
 | Area | Scenario | Expected result | Status |
 | --- | --- | --- | --- |
-| Existing runtime | Open supported ordinary webpage, content script already loaded, Start Capture | Existing accepted flow starts; no programmatic injection needed | Passed |
-| Missing runtime recovery | Supported ordinary webpage predates extension reload/install, Start Capture | One injection attempt, one retry, selection starts without page reload | Passed |
+| Existing runtime | Open supported ordinary webpage, content script already loaded, Start Capture | Existing accepted capture flow starts normally | Passed |
+| Missing runtime recovery | Supported ordinary webpage predates extension reload/install, Start Capture | Selection starts after recovery without source-page reload | Passed |
 | Authenticated page | Logged-in ordinary HTTPS app with stateful UI, Start Capture after runtime recovery case | Current UI state remains; selection flow starts if Chrome permits access | Passed |
-| Localhost | `http://127.0.0.1/*` or ordinary localhost development page | Selection starts or recovers within existing permission boundary | Passed |
+| Localhost | `http://127.0.0.1/*` or ordinary localhost development page | Intended supported ordinary-webpage scenario where Chrome permissions allow it | Not run in this Slice 1 manual gate |
 | Missing activeTab grant | Switch to an old tab after opening Side Panel, then Start Capture | Safe actionable failure telling user to click the toolbar icon on this tab and retry | Passed |
 | Chrome protected page | `chrome://settings` page | Fail closed with the product message distinguishing capturable authenticated/private ordinary webpages from Chrome-protected surfaces | Passed |
 | Chrome Web Store | Chrome Web Store page | Fail closed with the product message distinguishing capturable authenticated/private ordinary webpages from Chrome-protected surfaces | Passed |
