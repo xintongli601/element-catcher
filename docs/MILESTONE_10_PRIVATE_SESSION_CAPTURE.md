@@ -1,6 +1,6 @@
 # Milestone 10 - Private Session Capture
 
-Status: Current
+Status: Completed / Accepted
 
 ## Objective
 
@@ -170,13 +170,13 @@ Additional user-confirmed manual evidence:
 - Extension Errors page was clean.
 - Screenshots confirmed that both `chrome://settings` and Chrome Web Store fail closed with the correct product message distinguishing many authenticated/private ordinary webpages that Element Catcher can capture from Chrome-protected browser surfaces that it cannot capture.
 
-## Current Status
+## Slice 1 Current Status
 
-M10 Slice 1 implementation is complete and accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation. Milestone 10 remains Current.
+M10 Slice 1 implementation is complete and accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation.
 
 ## Slice 2 - Browser-Session Trust And Privacy UX
 
-Status: Implementation complete; local automated validation passed; required real-user Chrome manual validation passed; final independent remote acceptance pending.
+Status: Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`.
 
 Slice 2 records the browser-session trust model in product-facing Side Panel UI without expanding capture capability. It explains that Element Catcher captures from the page currently open in Chrome, can work with many authenticated or private ordinary webpages the user can already access, and does not remotely re-fetch the source page.
 
@@ -251,4 +251,18 @@ Manual reviewer path:
 
 ## Slice 2 Current Status
 
-M10 Slice 2 implementation is complete with local automated validation passed and required real-user Chrome manual validation passed. Final independent remote acceptance remains pending. Milestone 10 remains Current.
+M10 Slice 2 implementation is complete and accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`. Accepted evidence includes focused Playwright validation with `4 passed / 0 failed / 0 skipped / 0 did not run`, final full Playwright validation with `299 passed / 0 failed / 1 skipped / 0 did not run`, `npm run build:extension` passed, and required real-user Chrome manual validation passed.
+
+## Milestone 10 Closeout
+
+Milestone 10 - Private Session Capture is Completed / Accepted based on the bounded combination of Slice 1 and Slice 2.
+
+Slice 1 - Session-Preserving Capture Recovery is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. It provides browser-session-preserving Start Capture recovery, no source-page reload requirement in the accepted recovery scenario, bounded `activeTab` + `scripting` recovery, and fail-closed behavior for protected Chrome surfaces.
+
+Slice 2 - Browser-Session Trust And Privacy UX is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`. It provides browser-session positioning in the Side Panel, Capture Preview browser-session provenance, no remote source-page re-fetch explanation, local capture/save boundary, separate consent-gated AI transmission boundary, preserved exact outbound Review, exclusion of browser session/cookies/browser storage/login credentials/source-page access from the AI boundary as implemented, explicit screenshot-as-transmitted-content identification, and the preserved sensitive-content warning.
+
+Milestone 10 completion does not mean universal private-site compatibility, authentication detection, private-page detection, bypassing login/firewalls/access controls, Chrome-protected page capture, cross-origin iframe access, closed shadow-root access, visual-only fallback, permanent all-sites permission, production readiness, Chrome Web Store readiness, production SaaS, or production backend deployment.
+
+The accepted product claim is narrower: Element Catcher captures UI directly from supported ordinary webpages in the browser session the user already has access to, including many authenticated/private/stateful pages when Chrome permits extension access, without requiring the source page to be publicly reachable or remotely re-fetched for capture. Capture/save remains local-first. AI generation remains a separate reviewed and explicit consent-gated data transmission step.
+
+No Slice 3 is created for Milestone 10. No Milestone 11 is approved or started.

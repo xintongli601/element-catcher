@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 9 and the current Milestone 10 private/session-state capture work.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 10, including the accepted Milestone 10 private/session-state capture work.
 
 Current implementation order:
 
@@ -21,12 +21,14 @@ Milestone 8: Completed
 Milestone 9: Completed
 Milestone 9 Slice 1: Completed and accepted at 13fa1fdb1d0ff36cd2aa305336b0d7302bd8ab33
 Milestone 9 Slice 2: Completed
-Milestone 10: Current
+Milestone 10: Completed / Accepted
 Milestone 10 Slice 1: Completed / Accepted at b0ed05823c530b2b0632c5db3bdb189459719f0d
-Milestone 10 Slice 2: Implementation complete; local automated validation passed; required real-user Chrome manual validation passed; final independent remote acceptance pending
+Milestone 10 Slice 2: Completed / Accepted at 5b6a0b81c75a2c7c354a630620ec62e784a9bc99
+Milestone 10 Slice 3: Not created
+Milestone 11: Not approved or started
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Milestone 10 is Current for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched. Slice 1 implements bounded Start Capture recovery for supported ordinary webpages when the current content runtime is unavailable and is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Slice 2 implementation is complete with local automated validation passed and required real-user Chrome manual validation passed; final independent remote acceptance remains pending. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Milestone 10 is Completed / Accepted for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched. Slice 1 implements bounded Start Capture recovery for supported ordinary webpages when the current content runtime is unavailable and is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99` for browser-session trust and privacy UX. No Slice 3 was created for Milestone 10, and no Milestone 11 is approved or started. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -429,11 +431,13 @@ Slice 1 made no runtime behavior, permission, dependency, storage, networking, b
 
 ### 4.18 Private Session Capture
 
-Milestone 10 is Current for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched.
+Milestone 10 is Completed / Accepted for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched.
 
 Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes completed implementation, automated validation with final full Playwright evidence of `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation passed. The background service worker first attempts the existing content-script message path for `EC_START_SELECTION`. If the receiving content runtime is missing, automated checks verify that it performs exactly one `chrome.scripting.executeScript()` call for the active tab main frame using `content/content-script.js`, then retries Start Selection exactly once. If the initial message succeeds, automated checks verify no programmatic injection occurs. If injection or retry fails, the workflow fails closed with actionable UX.
 
-Slice 2 implementation is complete with local automated validation passed and required real-user Chrome manual validation passed; final independent remote acceptance remains pending. It adds Side Panel trust UX that identifies current-browser-session capture, no remote source-page re-fetch, local Capture Preview/save boundaries before AI generation, and the separate explicit AI action boundary. AI Review states that AI receives only the screenshot shown in Review and the structured fields shown in Review, and that the AI backend does not receive the browser session, cookies, browser storage, login credentials, or source-page access.
+Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`. It adds Side Panel trust UX that identifies current-browser-session capture, no remote source-page re-fetch, local Capture Preview/save boundaries before AI generation, and the separate explicit AI action boundary. AI Review states that AI receives only the screenshot shown in Review and the structured fields shown in Review, and that the AI backend does not receive the browser session, cookies, browser storage, login credentials, or source-page access.
+
+Milestone 10 is closed without a Slice 3. No Milestone 11 is approved or started.
 
 Recovery is not used for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated runtime messages. Restricted/browser-protected surfaces remain fail-closed, including `chrome://` pages and Chrome Web Store pages. The implementation must not reload, navigate, recreate tabs, submit forms, alter page history, broaden host permissions, extract credentials, extract cookies, or request persistent all-sites access.
 
