@@ -1217,6 +1217,7 @@ Milestone status summary:
 - Milestones 1 through 9 remain Completed.
 - Milestone 10 is Current.
 - Slice 1 - Session-preserving capture recovery: Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`.
+- Slice 2 - Browser-session trust and privacy UX: Implementation complete; local automated validation passed; required real-user Chrome manual validation passed; final independent remote acceptance pending.
 
 Included scope:
 
@@ -1224,6 +1225,7 @@ Included scope:
 - Preserve the distinction between supported ordinary webpages and Chrome-protected browser surfaces.
 - Avoid refresh, navigation, tab recreation, remote refetch, form submission, or intentional source-page state changes during capture recovery.
 - Add bounded Start Capture recovery when the active tab is a supported ordinary webpage but the current Element Catcher content runtime is unavailable.
+- Add Side Panel trust UX that makes current-browser-session capture, no remote source-page re-fetch, local capture/save boundaries, and the separate explicit AI sending boundary clear.
 - Add only the approved `scripting` permission while keeping the existing `activeTab` boundary.
 
 Explicitly excluded scope:
@@ -1243,6 +1245,6 @@ Slice 1 architecture:
 - If injection or retry fails, fail closed with actionable product wording and no raw Chrome exception details.
 - Do not run recovery injection for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated messages.
 
-Current status: Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes completed implementation, focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation passed. Milestone 10 remains Current.
+Current status: Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes completed implementation, focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation passed. Slice 2 implementation is complete with local automated validation passed and required real-user Chrome manual validation passed; final independent remote acceptance remains pending. Milestone 10 remains Current.
 
 Architecture: `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.

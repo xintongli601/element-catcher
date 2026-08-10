@@ -407,7 +407,7 @@ export function App() {
         <p className="eyebrow">Chrome Extension MVP</p>
         <h1>Element Catcher</h1>
         <p className="description">
-          Capture visible UI inspiration from webpages and prepare it for reusable component generation.
+          Capture UI from the page open in Chrome, including many authenticated or private ordinary pages you can already access. Element Catcher uses your current browser session instead of remotely re-fetching the source page.
         </p>
         <div className="actions">
           <button

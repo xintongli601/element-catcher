@@ -173,3 +173,82 @@ Additional user-confirmed manual evidence:
 ## Current Status
 
 M10 Slice 1 implementation is complete and accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Accepted evidence includes focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation. Milestone 10 remains Current.
+
+## Slice 2 - Browser-Session Trust And Privacy UX
+
+Status: Implementation complete; local automated validation passed; required real-user Chrome manual validation passed; final independent remote acceptance pending.
+
+Slice 2 records the browser-session trust model in product-facing Side Panel UI without expanding capture capability. It explains that Element Catcher captures from the page currently open in Chrome, can work with many authenticated or private ordinary webpages the user can already access, and does not remotely re-fetch the source page.
+
+The Capture Preview provenance area must be visible for newly created previews and reopened saved captures. It records:
+
+- Capture method: Current browser session.
+- Source access: captured directly from the page open in Chrome; no remote page re-fetch was used.
+- Local save boundary: before AI generation, the capture and screenshot remain local extension data.
+
+The Generation Review top-level summary must separate local capture/save from AI transmission:
+
+- capture and save are local extension actions;
+- sending to AI is a separate explicit action;
+- AI receives only the screenshot shown in Review and the structured fields shown in Review;
+- the AI backend does not receive the browser session, cookies, browser storage, login credentials, or access to the source webpage.
+
+Slice 2 preserves the existing warning that screenshots may contain private or confidential visible content and preserves the explicit consent gate before AI transmission. It must not imply that AI generation is local-only, that visible private content can never leave the device, or that provider/backend data handling is universally private.
+
+Truthful wording constraints:
+
+- Do not claim universal private-site compatibility.
+- Do not claim bypass of authentication, firewalls, paywalls, authorization, Chrome restrictions, or site access controls.
+- Do not label an individual capture as authenticated or private based only on source URL, page title, or user metadata.
+- Do not claim competitors universally lack private-page capture.
+- Do not claim Chrome-protected page capture.
+
+Slice 2 non-goals:
+
+- no Manifest permission changes;
+- no host-permission broadening;
+- no `CaptureRecord` schema changes;
+- no dependency, backend, CSP, package, build, storage, or test-harness expansion;
+- no cookie, credential, token, browser-storage, session-storage, or authentication-state extraction;
+- no source-page refetch, navigation, reload, visual-only fallback, or new product capability.
+
+Acceptance criteria:
+
+- Side Panel intro concisely explains current-browser-session capture and no remote source-page re-fetch.
+- Capture Preview provenance is visible for unsaved previews and saved/reopened captures without adding fields to `CaptureRecord v1`.
+- Generation Review visibly distinguishes local capture/save from explicit AI sending and identifies the exact AI boundary.
+- The consent checkbox continues to gate the Send action.
+- Automated checks preserve the existing outbound projection exclusion contract, including source URL, page title, capture identifiers, screenshot storage key, cookies, browser storage, login credentials, and source-page access.
+- Built Manifest permissions remain `activeTab`, `scripting`, and `sidePanel`; host permissions remain only `http://127.0.0.1/*`.
+
+Local automated validation evidence:
+
+- `git diff --check`: passed.
+- Focused Playwright: `4 passed / 0 failed / 0 skipped / 0 did not run`.
+- `npm run build:extension`: passed.
+- Final full Playwright: `299 passed / 0 failed / 1 skipped / 0 did not run`.
+- Backend tests were not run because backend files were unchanged.
+
+Required real-user Chrome manual evidence:
+
+- Side Panel positioning passed. The Side Panel communicates that Element Catcher captures UI from the page open in Chrome, includes many authenticated/private ordinary webpages already accessible to the user in the intended supported class, and uses the current browser session instead of remotely re-fetching the source page. The wording does not claim universal private-site compatibility or authentication/private-page detection.
+- Capture Preview provenance passed. A saved Capture Preview visibly showed `Browser-session provenance`, `Capture method: Current browser session`, source access explaining direct browser-page capture with no remote source-page re-fetch, and the local save boundary explaining that before AI generation the capture and screenshot remain local extension data. The provenance remained visible after Save and Library reopen.
+- Authenticated ordinary webpage validation passed. An ordinary authenticated HTTPS application was captured successfully, while the UI used generic browser-session provenance and did not falsely label the capture as authenticated, private, authentication detected, or private page detected. No sensitive user content from the tested site is recorded here.
+- AI Generation Review passed. Review clearly distinguishes local capture/save from separate explicit AI transmission. It explains that the AI backend does not receive or grant browser session, cookies, browser storage, login credentials, or access to the source webpage. The screenshot preview remains visible as data that will be sent; exact outbound Review, decoded image metadata, structured outbound fields, and exclusion information remain visible. The existing sensitive-content warning remains present and still tells users not to send passwords, payment data, private messages, confidential business content, personal identifiers, or protected material. Consent remains required before Send is enabled.
+- Product wording consistency passed. The observed flow consistently communicates that capture and save are local, while AI generation is a separate consent-gated transmission step. No contradictory `everything always stays local` claim was observed.
+- Runtime hygiene passed. Side Panel Console, Service Worker Console, and the extension Errors page were clean.
+
+No real AI provider request was executed or required for Slice 2.
+
+Manual reviewer path:
+
+1. Load the built extension in Chrome.
+2. Open a supported ordinary page the reviewer can already access.
+3. Start Capture, lock an element, Confirm, and verify the unsaved Capture Preview provenance.
+4. Save the capture, reopen it from the Library, and verify the saved Capture Preview provenance remains visible.
+5. Open AI generation Review and verify the local capture/save vs AI-send boundary, screenshot visibility, exact structured-field review, and disabled Send button before consent.
+6. Confirm restricted surfaces still fail closed and no Chrome-protected page capture is claimed.
+
+## Slice 2 Current Status
+
+M10 Slice 2 implementation is complete with local automated validation passed and required real-user Chrome manual validation passed. Final independent remote acceptance remains pending. Milestone 10 remains Current.

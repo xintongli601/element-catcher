@@ -299,6 +299,53 @@ h2 {
   gap: 12px;
 }
 
+.trust-panel {
+  display: grid;
+  gap: 8px;
+  border-left: 3px solid #0f766e;
+  padding: 10px 12px;
+  background: #f0fdfa;
+  color: #134e4a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.trust-panel h3,
+.trust-panel h5 {
+  margin: 0;
+  color: #0f3f3c;
+  font-size: 13px;
+}
+
+.trust-panel ul,
+.trust-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.trust-panel ul {
+  padding-left: 18px;
+}
+
+.trust-list {
+  padding: 0;
+}
+
+.trust-list div {
+  display: grid;
+  gap: 2px;
+}
+
+.trust-list dt {
+  font-weight: 700;
+}
+
+.trust-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .generation-review-image {
   width: 100%;
   max-height: 280px;

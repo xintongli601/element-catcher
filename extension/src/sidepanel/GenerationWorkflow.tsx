@@ -299,6 +299,17 @@ function ReviewDataView({
     <section className="generation-review" aria-labelledby="generation-review-heading">
       <h4 id="generation-review-heading">Review data being sent</h4>
       <p className="generation-note">Displayed values are the exact outbound projection. Excluded content is not sent.</p>
+      <section className="trust-panel generation-trust-panel" aria-labelledby="generation-trust-heading">
+        <h5 id="generation-trust-heading">Local capture and AI boundary</h5>
+        <ul>
+          <li>Capture and save are local extension actions.</li>
+          <li>Sending to AI is a separate explicit action.</li>
+          <li>AI receives only the screenshot shown in Review and the structured fields shown in Review.</li>
+          <li>
+            The AI backend does not receive your browser session, cookies, browser storage, login credentials, or access to the source webpage.
+          </li>
+        </ul>
+      </section>
       {message ? (
         <p className="save-state save-state-failed" role="alert">
           {message}
@@ -354,8 +365,11 @@ function ReviewDataView({
           "screenshot storage key",
           "IndexedDB wrapper",
           "generated versions",
+          "browser session",
           "browser storage",
           "cookies",
+          "login credentials",
+          "source webpage access",
           "hidden DOM",
           "raw outerHTML"
         ]}

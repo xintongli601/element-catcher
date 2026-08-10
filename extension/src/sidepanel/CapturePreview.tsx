@@ -39,6 +39,21 @@ export function CapturePreview({
         <p className="preview-image-placeholder">{imageUnavailableText}</p>
       )}
 
+      <section className="trust-panel" aria-labelledby={`${record.id}-provenance-heading`}>
+        <h3 id={`${record.id}-provenance-heading`}>Browser-session provenance</h3>
+        <dl className="trust-list">
+          <PreviewItem label="Capture method" value="Current browser session" />
+          <PreviewItem
+            label="Source access"
+            value="Captured directly from the page open in Chrome; no remote page re-fetch was used."
+          />
+          <PreviewItem
+            label="Local save boundary"
+            value="Before AI generation, the capture and screenshot remain local extension data."
+          />
+        </dl>
+      </section>
+
       <dl className="preview-metadata">
         <PreviewItem label="Page title" value={boundText(record.source.pageTitle)} />
         <PreviewItem label="Source" value={formatSourceLocation(record.source.url)} />
