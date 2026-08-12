@@ -41,14 +41,16 @@ export type SeededCapture = {
 };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
-export const ELEMENT_CATCHER_DATABASE_VERSION = 3;
+export const ELEMENT_CATCHER_DATABASE_VERSION = 4;
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
 export const GENERATED_COMPONENT_VERSION_STORE_NAME = "generatedComponentVersions";
 export const INTERACTION_PAIR_STORE_NAME = "interactionPairs";
+export const INTERACTION_RECONSTRUCTION_STORE_NAME = "interactionReconstructions";
 export const CURRENT_OBJECT_STORE_NAMES = [
   CAPTURE_RECORD_STORE_NAME,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
+  INTERACTION_RECONSTRUCTION_STORE_NAME,
   INTERACTION_PAIR_STORE_NAME,
   SCREENSHOT_ASSET_STORE_NAME
 ].sort();
@@ -144,6 +146,10 @@ export async function readAllScreenshotAssetSnapshots(page: Page) {
 
 export async function readGeneratedVersions(page: Page, sourceCaptureId?: string) {
   return runDatabaseOperation<{ sourceCaptureId?: string }, unknown[]>(page, "readGeneratedVersions", { sourceCaptureId });
+}
+
+export async function readInteractionReconstructions(page: Page) {
+  return runDatabaseOperation<Record<string, never>, unknown[]>(page, "readInteractionReconstructions", {});
 }
 
 export async function readGeneratedVersionKeys(page: Page, sourceCaptureId?: string) {
@@ -406,6 +412,7 @@ type PersistenceCounts = {
   captureRecords: number;
   screenshotAssets: number;
   generatedComponentVersions: number;
+  interactionReconstructions: number;
 };
 
 type ScreenshotAssetSnapshot = {
@@ -439,7 +446,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         captureRecordStoreName,
         screenshotAssetStoreName,
         generatedComponentVersionStoreName,
-        interactionPairStoreName
+        interactionPairStoreName,
+        interactionReconstructionStoreName
       } = constants;
 
       const operations: Record<string, (value: unknown) => Promise<unknown>> = {
@@ -506,7 +514,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
               stores: Array.from(database.objectStoreNames).sort(),
               captureRecords: await countStore(database, captureRecordStoreName),
               screenshotAssets: await countStore(database, screenshotAssetStoreName),
-              generatedComponentVersions: await countStore(database, generatedComponentVersionStoreName)
+              generatedComponentVersions: await countStore(database, generatedComponentVersionStoreName),
+              interactionReconstructions: await countStore(database, interactionReconstructionStoreName)
             };
           } finally {
             database.close();
@@ -625,6 +634,15 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
               return await getAllValues(database, generatedComponentVersionStoreName);
             }
             return await getAllValuesByIndex(database, generatedComponentVersionStoreName, "sourceCaptureId", sourceCaptureId);
+          } finally {
+            database.close();
+          }
+        },
+        readInteractionReconstructions: async () => {
+          const database = await openDatabase();
+
+          try {
+            return await getAllValues(database, interactionReconstructionStoreName);
           } finally {
             database.close();
           }
@@ -1064,6 +1082,10 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
               if (!database.objectStoreNames.contains(interactionPairStoreName)) {
                 database.createObjectStore(interactionPairStoreName, { keyPath: "id" });
               }
+              if (!database.objectStoreNames.contains(interactionReconstructionStoreName)) {
+                const store = database.createObjectStore(interactionReconstructionStoreName, { keyPath: "id" });
+                store.createIndex("sourceInteractionPairId", "sourceInteractionPairId", { unique: false });
+              }
             } catch (error) {
               try {
                 request.transaction?.abort();
@@ -1094,11 +1116,12 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
       }
 
       async function clearStores(database: IDBDatabase) {
-        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName, generatedComponentVersionStoreName, interactionPairStoreName], "readwrite");
+        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName, generatedComponentVersionStoreName, interactionPairStoreName, interactionReconstructionStoreName], "readwrite");
         transaction.objectStore(captureRecordStoreName).clear();
         transaction.objectStore(screenshotAssetStoreName).clear();
         transaction.objectStore(generatedComponentVersionStoreName).clear();
         transaction.objectStore(interactionPairStoreName).clear();
+        transaction.objectStore(interactionReconstructionStoreName).clear();
         await transactionComplete(transaction);
       }
 
@@ -1256,7 +1279,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
         screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME,
         generatedComponentVersionStoreName: GENERATED_COMPONENT_VERSION_STORE_NAME,
-        interactionPairStoreName: INTERACTION_PAIR_STORE_NAME
+        interactionPairStoreName: INTERACTION_PAIR_STORE_NAME,
+        interactionReconstructionStoreName: INTERACTION_RECONSTRUCTION_STORE_NAME
       }
     }
   );

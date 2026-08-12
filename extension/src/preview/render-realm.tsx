@@ -11,7 +11,16 @@ import {
   type PreviewRenderPlanV2,
   type PreviewRenderSuccessV2
 } from "../shared/preview-protocol";
-import { canonicalStringify, normalizeDiagnostics, sha256Hex, validatePreviewRenderPlan, type PreviewRenderNodeV1, type RenderFailureCategory } from "../shared/preview-policy";
+import {
+  canonicalStringify,
+  normalizeDiagnostics,
+  sha256Hex,
+  validateInteractivePreviewPlanV1,
+  validatePreviewRenderPlan,
+  type InteractivePreviewPlanV1,
+  type PreviewRenderNodeV1,
+  type RenderFailureCategory
+} from "../shared/preview-policy";
 import "./render-realm.css";
 import "./preview-utilities.css";
 
@@ -80,7 +89,9 @@ async function renderPlan(message: PreviewRenderPlanV2) {
   nextOperationToken += 1;
   const operationToken = session.operationToken;
   try {
-    const plan = validatePreviewRenderPlan(message.renderPlan);
+    const plan = isInteractivePreviewPlan(message.renderPlan)
+      ? validateInteractivePreviewPlanV1(message.renderPlan)
+      : validatePreviewRenderPlan(message.renderPlan);
     if (plan.sourceSha256 !== message.sourceSha256) throw new Error("Render source hash mismatch.");
     const expectedHash = await sha256Hex(canonicalStringify(plan));
     if (!isCurrentRenderingOperation(session, operationToken)) return;
@@ -89,7 +100,7 @@ async function renderPlan(message: PreviewRenderPlanV2) {
     if (!container) throw new Error("Preview render root is missing.");
     root = createRoot(container);
     flushSync(() => {
-      root?.render(renderNode(plan.root));
+      root?.render(isInteractivePreviewPlan(plan) ? <InteractivePreview plan={plan} /> : renderNode(plan.root));
     });
     if (!isCurrentRenderingOperation(session, operationToken)) {
       root?.unmount();
@@ -111,10 +122,46 @@ async function renderPlan(message: PreviewRenderPlanV2) {
   }
 }
 
+function InteractivePreview({ plan }: { plan: InteractivePreviewPlanV1 }) {
+  const [active, setActive] = React.useState(false);
+  const showActive = plan.trigger === "hover" || plan.trigger === "focus" ? active : active;
+  const activateClick = () => {
+    if (plan.trigger === "click" || plan.trigger === "toggle") {
+      setActive((current) => !current);
+    }
+  };
+  return (
+    <div
+      role="group"
+      aria-label={`${plan.componentName} interactive preview`}
+      onMouseEnter={plan.trigger === "hover" ? () => setActive(true) : undefined}
+      onMouseLeave={plan.trigger === "hover" ? () => setActive(false) : undefined}
+      onFocus={plan.trigger === "focus" ? () => setActive(true) : undefined}
+      onBlur={plan.trigger === "focus" ? () => setActive(false) : undefined}
+      onClick={activateClick}
+      tabIndex={plan.trigger === "focus" ? 0 : undefined}
+    >
+      {renderNode(plan.rest)}
+      {showActive ? (
+        <React.Fragment>
+          {renderNode(plan.reaction)}
+          {plan.additionalReactions.map((node, index) => (
+            <React.Fragment key={index}>{renderNode(node)}</React.Fragment>
+          ))}
+        </React.Fragment>
+      ) : null}
+    </div>
+  );
+}
+
 function renderNode(node: PreviewRenderNodeV1): React.ReactNode {
   if (node.kind === "text") return node.value;
   if (node.kind === "fragment") return <React.Fragment>{node.children.map((child, index) => <React.Fragment key={index}>{renderNode(child)}</React.Fragment>)}</React.Fragment>;
   return React.createElement(node.tag, node.props, ...node.children.map(renderNode));
+}
+
+function isInteractivePreviewPlan(value: unknown): value is InteractivePreviewPlanV1 {
+  return Boolean(value && typeof value === "object" && "rest" in value && "reaction" in value && "trigger" in value);
 }
 
 function postFailure(category: RenderFailureCategory, error: unknown) {

@@ -92,7 +92,8 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length - 1,
       screenshotAssets: seeded.length - 1,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
   });
 

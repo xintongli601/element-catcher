@@ -31,7 +31,8 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length,
       screenshotAssets: seeded.length,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
   });
 

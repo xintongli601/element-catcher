@@ -148,6 +148,19 @@ export type PreviewRenderPlanV1 = {
   warnings: string[];
 };
 
+export type InteractivePreviewTriggerV1 = "click" | "toggle" | "hover" | "focus";
+
+export type InteractivePreviewPlanV1 = {
+  contractVersion: 1;
+  componentName: string;
+  sourceSha256: string;
+  trigger: InteractivePreviewTriggerV1;
+  rest: PreviewRenderNodeV1;
+  reaction: PreviewRenderNodeV1;
+  additionalReactions: PreviewRenderNodeV1[];
+  warnings: string[];
+};
+
 export class PreviewPolicyError extends Error {
   constructor(
     readonly category: PlanFailureCategory | RenderFailureCategory | "schema",
@@ -224,6 +237,53 @@ export function validatePreviewRenderPlan(value: unknown, expectedComponentName?
   const cleanPlan = { contractVersion: 1 as const, componentName, sourceSha256, root, warnings };
   if (encoder.encode(canonicalStringify(cleanPlan)).byteLength > PREVIEW_LIMITS.serializedPlanBytes) {
     throw new PreviewPolicyError("limit", "Render plan is too large.");
+  }
+  return cleanPlan;
+}
+
+export function validateInteractivePreviewPlanV1(value: unknown, expectedComponentName?: string): InteractivePreviewPlanV1 {
+  assertPlainData(value, PREVIEW_LIMITS.planDepth + 4, PREVIEW_LIMITS.planNodes * 10);
+  assertExactObjectKeys(value, ["additionalReactions", "componentName", "contractVersion", "reaction", "rest", "sourceSha256", "trigger", "warnings"]);
+  const plan = value as InteractivePreviewPlanV1;
+  if (plan.contractVersion !== 1) {
+    throw new PreviewPolicyError("schema", "Unsupported interactive preview plan version.");
+  }
+  const componentName = validateComponentName(plan.componentName);
+  if (expectedComponentName && componentName !== expectedComponentName) {
+    throw new PreviewPolicyError("policy", "Interactive plan componentName does not match the selected reconstruction.");
+  }
+  const sourceSha256 = validateSha256(plan.sourceSha256, "sourceSha256");
+  if (!["click", "toggle", "hover", "focus"].includes(plan.trigger)) {
+    throw new PreviewPolicyError("policy", "Interactive trigger is not previewable.");
+  }
+  const counters = { nodes: 0, totalText: 0 };
+  const rest = validateNode(plan.rest, 0, counters);
+  const reaction = validateNode(plan.reaction, 0, counters);
+  if (!Array.isArray(plan.additionalReactions) || plan.additionalReactions.length > 4) {
+    throw new PreviewPolicyError("limit", "Additional interactive reactions exceed preview limits.");
+  }
+  const additionalReactions = plan.additionalReactions.map((node) => validateNode(node, 0, counters));
+  if (!Array.isArray(plan.warnings) || plan.warnings.length > PREVIEW_LIMITS.warnings) {
+    throw new PreviewPolicyError("policy", "Plan warnings are not previewable.");
+  }
+  const warnings = plan.warnings.map((warning) => {
+    if (typeof warning !== "string" || countCodePoints(warning) > PREVIEW_LIMITS.warningCodePoints || hasControlCharacters(warning)) {
+      throw new PreviewPolicyError("policy", "Plan warning is not previewable.");
+    }
+    return normalizeText(warning);
+  });
+  const cleanPlan = {
+    contractVersion: 1 as const,
+    componentName,
+    sourceSha256,
+    trigger: plan.trigger,
+    rest,
+    reaction,
+    additionalReactions,
+    warnings
+  };
+  if (encoder.encode(canonicalStringify(cleanPlan)).byteLength > PREVIEW_LIMITS.serializedPlanBytes) {
+    throw new PreviewPolicyError("limit", "Interactive render plan is too large.");
   }
   return cleanPlan;
 }

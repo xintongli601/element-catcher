@@ -373,7 +373,7 @@ test.describe("Milestone 6D identities and pending V2 builders", () => {
 });
 
 test.describe("Milestone 6D slice boundary regression", () => {
-  test("does not introduce backend route, UI wiring, storage migration, preview changes, or real OpenAI request path", () => {
+  test("does not introduce backend route, UI wiring, generated-version V2 storage coupling, preview-host changes, or real OpenAI request path", () => {
     const root = process.cwd();
     const backendApp = readFileSync(join(root, "backend/src/app.ts"), "utf8");
     const sidePanel = readFileSync(join(root, "extension/src/sidepanel/GenerationWorkflow.tsx"), "utf8");
@@ -382,7 +382,7 @@ test.describe("Milestone 6D slice boundary regression", () => {
     expect(backendApp).not.toContain("/v1/revise-component");
     expect(sidePanel).not.toContain("revision-contract");
     expect(indexedDb).not.toContain("GeneratedComponentVersionEntryV2");
-    expect(indexedDb).toContain("ELEMENT_CATCHER_DATABASE_VERSION = 3");
+    expect(indexedDb).toContain("ELEMENT_CATCHER_DATABASE_VERSION = 4");
     expect(previewHost).not.toContain("revision-contract");
   });
 });

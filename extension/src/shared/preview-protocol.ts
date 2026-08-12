@@ -7,6 +7,7 @@ import {
   assertExactObjectKeys,
   assertPlainData,
   type DisposeReason,
+  type InteractivePreviewPlanV1,
   type PlanFailureCategory,
   type PreviewRenderPlanV1,
   type RenderFailureCategory
@@ -83,7 +84,7 @@ export type PreviewRenderPlanV2 = {
   sessionNonce: string;
   sourceSha256: string;
   planSha256: string;
-  renderPlan: PreviewRenderPlanV1;
+  renderPlan: PreviewRenderPlanV1 | InteractivePreviewPlanV1;
 };
 
 export type PreviewRenderSuccessV2 = {

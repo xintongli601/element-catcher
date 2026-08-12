@@ -1219,7 +1219,8 @@ Milestone status summary:
 - Slice 1 - Session-preserving capture recovery: Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`.
 - Slice 2 - Browser-session trust and privacy UX: Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`.
 - Slice 3: Not created.
-- Milestone 11: Local implementation complete for bounded user-assisted Interaction Capture V1; pending independent ChatGPT final acceptance. Slice 1 is Completed / Accepted at `23ff038b2e02a9f8bb3b08824a2f52180175b1df`; Slice 2 adds Trigger / Before -> Interaction -> Primary Reaction plus optional Additional Reactions and Minimal Hover Capture Assist. M12 is not started.
+- Milestone 11: Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf` for bounded user-assisted Interaction Capture V1, including Trigger / Before -> Interaction -> Primary Reaction plus optional Additional Reactions and Minimal Hover Capture Assist.
+- Milestone 12: Completed locally for bounded Interactive Reconstruction from complete Interaction Pairs.
 
 Included scope:
 
@@ -1247,11 +1248,11 @@ Slice 1 architecture:
 - If injection or retry fails, fail closed with actionable product wording and no raw Chrome exception details.
 - Do not run recovery injection for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated messages.
 
-Acceptance status: Completed / Accepted. Milestone 10 is accepted based on the bounded combination of Slice 1 and Slice 2. Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`; accepted evidence includes completed implementation, focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation passed. Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`; accepted evidence includes focused Playwright validation with `4 passed / 0 failed / 0 skipped / 0 did not run`, final full Playwright validation with `299 passed / 0 failed / 1 skipped / 0 did not run`, `npm run build:extension` passed, and required real-user Chrome manual validation passed. No real AI provider request was required or claimed for Slice 2. No Slice 3 is created. Milestone 11 is now Current.
+Acceptance status: Completed / Accepted. Milestone 10 is accepted based on the bounded combination of Slice 1 and Slice 2. Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`; accepted evidence includes completed implementation, focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation passed. Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`; accepted evidence includes focused Playwright validation with `4 passed / 0 failed / 0 skipped / 0 did not run`, final full Playwright validation with `299 passed / 0 failed / 1 skipped / 0 did not run`, `npm run build:extension` passed, and required real-user Chrome manual validation passed. No real AI provider request was required or claimed for Slice 2. No Slice 3 is created. Milestones 11 and 12 are now complete.
 
 ## Milestone 11 - Interaction Capture V1
 
-Status: Local implementation complete; pending independent ChatGPT final acceptance
+Status: Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`
 
 Objective: Reach a complete interactive-reconstruction product quickly by relating user-captured visible UI surfaces rather than attempting automatic interaction recording or source-site JavaScript extraction.
 
@@ -1276,14 +1277,43 @@ Exclusions:
 - No automatic interaction recording, mutation tracing, event-listener scraping, framework introspection, automatic overlay discovery, portal ownership inference, network observation, multi-step state machine, drag/drop, scroll, keyboard macro, animation timeline, AI interaction generation, generated interaction code, or interactive generated-code preview.
 - No backend/provider/GitHub changes, Manifest permission changes, new browser permissions, CSP weakening, dependency additions, cookies, credentials, browser storage, authentication state, source JavaScript, network traffic, or app state manager reads.
 
-Local validation status: complete, pending independent ChatGPT final acceptance. Evidence includes `git diff --check` PASS, focused M11 Playwright `10 passed / 0 failed / 0 skipped / 0 did not run`, relevant persistence/library/capture/version-comparison Playwright regression `140 passed / 0 failed / 0 skipped / 0 did not run`, `npm run build:extension` PASS, and final full Playwright `309 passed / 0 failed / 1 skipped / 0 did not run`. Backend tests are not required because backend files are unchanged.
+Local validation status: complete. M11 is Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`. Evidence includes `git diff --check` PASS, focused M11 Playwright `10 passed / 0 failed / 0 skipped / 0 did not run`, relevant persistence/library/capture/version-comparison Playwright regression `140 passed / 0 failed / 0 skipped / 0 did not run`, `npm run build:extension` PASS, and final full Playwright `309 passed / 0 failed / 1 skipped / 0 did not run`. Backend tests are not required because backend files are unchanged.
 
 Known limitation: if an Interaction Pair is already loaded in the current Side Panel session and one of its referenced captures is deleted, the pair view may not refresh immediately. Reopening the Side Panel causes the references to be re-resolved correctly and the missing source is shown as unavailable. This is accepted as non-blocking Slice 1 behavior because persisted data remains correct, reopening resolves the missing reference correctly, the UI fails closed, and no source data is fabricated.
 
-M11 Slice 1 is formally accepted. M11 final local implementation remains pending independent ChatGPT final acceptance. M12 is not started.
+M11 final local implementation is formally accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`. M12 begins after this baseline and is tracked separately.
 
 Architecture: `docs/MILESTONE_11_INTERACTION_CAPTURE.md`.
 
 Milestone 10 completion does not mean universal private-site compatibility, authentication detection, private-page detection, bypassing login/firewalls/access controls, Chrome-protected page capture, cross-origin iframe access, closed shadow-root access, visual-only fallback, permanent all-sites permission, production readiness, Chrome Web Store readiness, production SaaS, or production backend deployment. The accepted claim is narrower: Element Catcher captures UI directly from supported ordinary webpages in the browser session the user already has access to, including many authenticated/private/stateful pages when Chrome permits extension access, without requiring the source page to be publicly reachable or remotely re-fetched for capture. Capture/save remains local-first, and AI generation remains a separate reviewed and explicit consent-gated data transmission step.
+
+## Milestone 12 - Interactive Reconstruction
+
+Status: Local implementation complete
+
+Objective: Rebuild a complete `InteractionPairV1` into a reusable bounded React + Tailwind interactive component while preserving local-first privacy, explicit review/consent, and safe preview isolation.
+
+Implemented scope:
+
+- Open an Interaction Pair and start Interactive Reconstruction only when every referenced capture is available.
+- Prepare a privacy-preserving `InteractionReconstructionRequestWithoutDataUrlsV1` projection with Trigger / Before, Primary Reaction, and optional Additional Reactions.
+- Review outbound/material data before generation, including clear exclusions for source URL, page title, cookies, browser storage, credentials, and browser session.
+- Require explicit consent before generation.
+- Generate deterministic local React + Tailwind source for click, toggle, hover, and focus behavior.
+- Persist reconstruction entries in a separate `interactionReconstructions` IndexedDB store with `sourceInteractionPairId` indexing.
+- Reopen persisted reconstructions from an Interaction Pair.
+- Preview interaction behavior through `InteractivePreviewPlanV1`, a declarative plan rendered by the existing isolated preview render realm; generated source is displayed and exported but not executed inside Element Catcher.
+- Render simultaneous Additional Reactions with the Primary Reaction when active.
+- Export the exact persisted interactive source as `.tsx`.
+- Delete a reconstruction without deleting source captures or the Interaction Pair.
+
+Exclusions:
+
+- No CaptureRecord v1 schema change.
+- No source-site JavaScript execution, event-listener scraping, framework introspection, network observation, mutation tracing, universal interaction detection, multi-step state machine, drag/drop, scroll, or keyboard macro reconstruction.
+- No backend/provider/GitHub changes, Manifest permission changes, new browser permissions, CSP weakening, dependency additions, cookies, credentials, browser storage, authentication state, source JavaScript, network traffic, or app state manager reads.
+- Revision, comparison, and GitHub export remain scoped to persisted static generated versions.
+
+Local validation status: focused M12 Playwright `5 passed / 0 failed / 0 skipped / 0 did not run`; `npm run build:extension` PASS. Backend tests are not required because backend files and network/provider behavior are unchanged.
 
 Architecture: `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.

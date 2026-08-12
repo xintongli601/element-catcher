@@ -386,7 +386,8 @@ test.describe("Milestone 4C saved capture metadata automated validation", () => 
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length,
       screenshotAssets: seeded.length,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
     await openCapture(sidePanelPage, seeded[1].title);
     await expect(sidePanelPage.getByRole("heading", { name: seeded[1].title })).toBeVisible();

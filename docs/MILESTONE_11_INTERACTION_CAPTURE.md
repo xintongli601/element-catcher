@@ -1,10 +1,10 @@
 # Milestone 11 - Interaction Capture V1
 
-Status: Local implementation complete; pending independent ChatGPT final acceptance
+Status: Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`
 
 Slice 1 status: Completed / Accepted at `23ff038b2e02a9f8bb3b08824a2f52180175b1df`
 
-Slice 2 status: Local implementation complete; pending independent ChatGPT final acceptance
+Slice 2 status: Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`
 
 ## Objective
 
@@ -133,4 +133,4 @@ Current local validation:
 
 Backend tests are not required for M11 because backend files and network/provider behavior are unchanged.
 
-M11 remains pending independent ChatGPT final acceptance and does not imply M12, generated interaction output, universal automatic interaction detection, production readiness, store readiness, SaaS readiness, or universal private-site compatibility.
+M11 is Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf` and does not imply M12, generated interaction output, universal automatic interaction detection, production readiness, store readiness, SaaS readiness, or universal private-site compatibility.

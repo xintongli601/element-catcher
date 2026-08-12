@@ -42,7 +42,8 @@ test.describe("Milestone 5D generated component persistence", () => {
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: before.wrappers.length,
       screenshotAssets: before.assets.length,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
     expect(storeInfo).toEqual({
       keyPath: "id",
@@ -52,7 +53,7 @@ test.describe("Milestone 5D generated component persistence", () => {
     expect(await readAllScreenshotAssetSnapshots(sidePanelPage)).toEqual(before.assets);
   });
 
-  test("database opens at version 3 with exact generated-version and interaction-pair stores and empty migration result", async ({ sidePanelPage }) => {
+  test("database opens at version 4 with exact generated-version, interaction-pair, and reconstruction stores", async ({ sidePanelPage }) => {
     const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
     const counts = await readPersistenceCounts(sidePanelPage);
     const storeInfo = await readGeneratedStoreInfo(sidePanelPage);
@@ -61,7 +62,8 @@ test.describe("Milestone 5D generated component persistence", () => {
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length,
       screenshotAssets: seeded.length,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
     expect(storeInfo).toEqual({
       keyPath: "id",
@@ -849,7 +851,8 @@ test.describe("Milestone 5D generated component persistence", () => {
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: before.wrappers.length,
       screenshotAssets: before.assets.length,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
   });
 

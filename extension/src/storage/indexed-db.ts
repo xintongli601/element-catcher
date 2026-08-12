@@ -13,6 +13,11 @@ import {
   type GeneratedComponentVersionEntryV1
 } from "../shared/generated-version-contract";
 import { REQUESTED_OUTPUT } from "../shared/generation-contract";
+import {
+  INTERACTIVE_RECONSTRUCTION_STORE_NAME,
+  validateInteractionReconstructionEntryV1,
+  type InteractionReconstructionEntryV1
+} from "../shared/interactive-reconstruction-contract";
 import { validateInteractionPairV1, type InteractionPairV1 } from "../shared/interaction-pair-contract";
 import { assertJsonCompatible } from "../shared/json";
 import { createScreenshotStorageKey } from "../shared/screenshot-storage";
@@ -97,10 +102,11 @@ type GeneratedVersionV2DigestMutation =
   | { kind: "pendingSummary"; value: string };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
-export const ELEMENT_CATCHER_DATABASE_VERSION = 3;
+export const ELEMENT_CATCHER_DATABASE_VERSION = 4;
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
 export const INTERACTION_PAIR_STORE_NAME = "interactionPairs";
+export const INTERACTION_RECONSTRUCTION_PAIR_INDEX_NAME = "sourceInteractionPairId";
 export { GENERATED_COMPONENT_VERSION_STORE_NAME };
 export { createScreenshotStorageKey };
 
@@ -121,6 +127,7 @@ export type StoredRecordEntry = {
 };
 
 export type StoredInteractionPairEntry = InteractionPairV1;
+export type StoredInteractionReconstructionEntry = InteractionReconstructionEntryV1;
 
 export type PersistPendingGeneratedComponentVersionV2Input = {
   pendingEntry: GeneratedVersionEntryV2;
@@ -1291,6 +1298,121 @@ export async function deleteInteractionPairEntry(id: string) {
   });
 }
 
+export async function addInteractionReconstructionEntry(entry: StoredInteractionReconstructionEntry) {
+  validateInteractionReconstructionEntryV1(entry);
+  return withDatabase(
+    (database) =>
+      new Promise<StoredInteractionReconstructionEntry>((resolve, reject) => {
+        const transaction = database.transaction(INTERACTIVE_RECONSTRUCTION_STORE_NAME, "readwrite");
+        const store = transaction.objectStore(INTERACTIVE_RECONSTRUCTION_STORE_NAME);
+        let confirmed: StoredInteractionReconstructionEntry | undefined;
+        let requestError: DOMException | null = null;
+        const addRequest = store.add(entry);
+        addRequest.onsuccess = () => {
+          const readBack = store.get(entry.id);
+          readBack.onsuccess = () => {
+            try {
+              validateInteractionReconstructionEntryV1(readBack.result);
+              confirmed = deepFreeze(cloneJson(readBack.result as StoredInteractionReconstructionEntry));
+            } catch (error) {
+              transaction.abort();
+              reject(toPersistenceError(error, "readback"));
+            }
+          };
+          readBack.onerror = () => {
+            requestError = readBack.error;
+          };
+        };
+        addRequest.onerror = (event) => {
+          event.preventDefault();
+          reject(new PersistenceError("persistence-conflict", "Interactive reconstruction id conflicted."));
+        };
+        transaction.onerror = (event) => {
+          const target = event.target;
+          if (!requestError && target instanceof IDBRequest && target.error) {
+            requestError = target.error;
+          }
+        };
+        transaction.oncomplete = () => {
+          if (!confirmed) {
+            reject(new PersistenceError("readback", "Interactive reconstruction read-back did not complete."));
+            return;
+          }
+          resolve(confirmed);
+        };
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+      })
+  );
+}
+
+export async function readInteractionReconstructionEntry(id: string) {
+  return withDatabase(
+    (database) =>
+      new Promise<StoredInteractionReconstructionEntry | undefined>((resolve, reject) => {
+        const transaction = database.transaction(INTERACTIVE_RECONSTRUCTION_STORE_NAME, "readonly");
+        const request = transaction.objectStore(INTERACTIVE_RECONSTRUCTION_STORE_NAME).get(id);
+        let result: StoredInteractionReconstructionEntry | undefined;
+        let requestError: DOMException | null = null;
+        request.onsuccess = () => {
+          if (request.result === undefined) {
+            result = undefined;
+            return;
+          }
+          try {
+            validateInteractionReconstructionEntryV1(request.result);
+            result = deepFreeze(cloneJson(request.result as StoredInteractionReconstructionEntry));
+          } catch (error) {
+            transaction.abort();
+            reject(toPersistenceError(error, "validation"));
+          }
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(result);
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+      })
+  );
+}
+
+export async function listInteractionReconstructionEntriesByPairId(sourceInteractionPairId: string) {
+  return withDatabase(
+    (database) =>
+      new Promise<StoredInteractionReconstructionEntry[]>((resolve, reject) => {
+        const transaction = database.transaction(INTERACTIVE_RECONSTRUCTION_STORE_NAME, "readonly");
+        const request = transaction
+          .objectStore(INTERACTIVE_RECONSTRUCTION_STORE_NAME)
+          .index(INTERACTION_RECONSTRUCTION_PAIR_INDEX_NAME)
+          .getAll(sourceInteractionPairId);
+        let entries: StoredInteractionReconstructionEntry[] = [];
+        let requestError: DOMException | null = null;
+        request.onsuccess = () => {
+          entries = (request.result as unknown[]).flatMap((candidate) => {
+            try {
+              validateInteractionReconstructionEntryV1(candidate);
+              return candidate.sourceInteractionPairId === sourceInteractionPairId ? [deepFreeze(cloneJson(candidate))] : [];
+            } catch {
+              return [];
+            }
+          });
+        };
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => resolve(entries.sort(compareInteractionReconstructionsNewestFirst));
+        transaction.onabort = () => reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+      })
+  );
+}
+
+export async function deleteInteractionReconstructionEntry(id: string) {
+  await withDatabase(async (database) => {
+    const transaction = database.transaction(INTERACTIVE_RECONSTRUCTION_STORE_NAME, "readwrite");
+    transaction.objectStore(INTERACTIVE_RECONSTRUCTION_STORE_NAME).delete(id);
+    await waitForTransaction(transaction, "cleanup");
+  });
+}
+
 export async function getPersistenceDatabaseInfo() {
   return withDatabase((database) => ({
     name: database.name,
@@ -1349,6 +1471,11 @@ function openDatabase() {
 
         if (event.oldVersion < 3 && !database.objectStoreNames.contains(INTERACTION_PAIR_STORE_NAME)) {
           database.createObjectStore(INTERACTION_PAIR_STORE_NAME, { keyPath: "id" });
+        }
+
+        if (event.oldVersion < 4 && !database.objectStoreNames.contains(INTERACTIVE_RECONSTRUCTION_STORE_NAME)) {
+          const store = database.createObjectStore(INTERACTIVE_RECONSTRUCTION_STORE_NAME, { keyPath: "id" });
+          store.createIndex(INTERACTION_RECONSTRUCTION_PAIR_INDEX_NAME, "sourceInteractionPairId", { unique: false });
         }
       } catch (error) {
         upgradeError = new PersistenceError("database-upgrade", undefined, error);
@@ -1981,12 +2108,21 @@ function validateDatabaseSchema(database: IDBDatabase) {
   }
 
   const stores = Array.from(database.objectStoreNames).sort();
-  const expectedStores = [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, INTERACTION_PAIR_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort();
+  const expectedStores = [
+    CAPTURE_RECORD_STORE_NAME,
+    GENERATED_COMPONENT_VERSION_STORE_NAME,
+    INTERACTIVE_RECONSTRUCTION_STORE_NAME,
+    INTERACTION_PAIR_STORE_NAME,
+    SCREENSHOT_ASSET_STORE_NAME
+  ].sort();
   if (JSON.stringify(stores) !== JSON.stringify(expectedStores)) {
     throw new PersistenceError("database-upgrade", "Unexpected local persistence database stores.");
   }
 
-  const transaction = database.transaction([GENERATED_COMPONENT_VERSION_STORE_NAME, INTERACTION_PAIR_STORE_NAME], "readonly");
+  const transaction = database.transaction(
+    [GENERATED_COMPONENT_VERSION_STORE_NAME, INTERACTION_PAIR_STORE_NAME, INTERACTIVE_RECONSTRUCTION_STORE_NAME],
+    "readonly"
+  );
   const store = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
   try {
     validateGeneratedVersionStoreSchema(store);
@@ -2004,6 +2140,22 @@ function validateDatabaseSchema(database: IDBDatabase) {
   if (interactionStore.indexNames.length !== 0) {
     transaction.abort();
     throw new PersistenceError("database-upgrade", "Unexpected interaction-pair indexes.");
+  }
+
+  const reconstructionStore = transaction.objectStore(INTERACTIVE_RECONSTRUCTION_STORE_NAME);
+  if (reconstructionStore.keyPath !== "id") {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected interaction-reconstruction store keyPath.");
+  }
+  const reconstructionIndexes = Array.from(reconstructionStore.indexNames);
+  if (reconstructionIndexes.length !== 1 || reconstructionIndexes[0] !== INTERACTION_RECONSTRUCTION_PAIR_INDEX_NAME) {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected interaction-reconstruction indexes.");
+  }
+  const reconstructionPairIndex = reconstructionStore.index(INTERACTION_RECONSTRUCTION_PAIR_INDEX_NAME);
+  if (reconstructionPairIndex.keyPath !== "sourceInteractionPairId" || reconstructionPairIndex.unique) {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected interaction-reconstruction pair index schema.");
   }
 }
 
@@ -2047,6 +2199,13 @@ function validateScreenshotAsset(asset: StoredScreenshotAsset | undefined): asse
 }
 
 function compareGeneratedVersionsNewestFirst(left: GeneratedComponentVersionEntry, right: GeneratedComponentVersionEntry) {
+  if (left.createdAt !== right.createdAt) {
+    return right.createdAt.localeCompare(left.createdAt);
+  }
+  return left.id.localeCompare(right.id);
+}
+
+function compareInteractionReconstructionsNewestFirst(left: StoredInteractionReconstructionEntry, right: StoredInteractionReconstructionEntry) {
   if (left.createdAt !== right.createdAt) {
     return right.createdAt.localeCompare(left.createdAt);
   }

@@ -567,7 +567,8 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
       stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: 4,
       screenshotAssets: 4,
-      generatedComponentVersions: 0
+      generatedComponentVersions: 0,
+      interactionReconstructions: 0
     });
     await openCapture(reopened, "Beta Pricing Edited");
     await expect(reopened.getByRole("heading", { name: "Beta Pricing Edited" })).toBeVisible();

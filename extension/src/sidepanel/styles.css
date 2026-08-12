@@ -463,6 +463,69 @@ h2 {
   line-height: 1.4;
 }
 
+.interaction-reconstruction-panel {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #c6d0df;
+  border-radius: 8px;
+  padding: 12px;
+  background: #fbfcff;
+}
+
+.interaction-reconstruction-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.interaction-reconstruction-header h4,
+.interaction-reconstruction-detail h5 {
+  margin: 0;
+}
+
+.interaction-reconstruction-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.interaction-reconstruction-item,
+.interaction-reconstruction-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.generated-code-block {
+  max-height: 260px;
+  margin: 0;
+  overflow: auto;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  padding: 10px;
+  background: #0f172a;
+  color: #e5e7eb;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+}
+
+.interactive-preview-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.interactive-preview-frame {
+  width: 100%;
+  min-height: 220px;
+  border: 1px solid #d8dee8;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
 .github-export,
 .github-export-panel,
 .github-review {

@@ -1,8 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  createInteractionReconstructionEntry,
+  prepareInteractionReconstructionReview,
+  type InteractionReconstructionReviewModel
+} from "../generation/interactive-reconstruction";
+import type { InteractionReconstructionEntryV1 } from "../shared/interactive-reconstruction-contract";
 import { INTERACTION_PAIR_TRIGGERS, type InteractionPairCreateInput, type InteractionPairTrigger } from "../shared/interaction-pair-contract";
 import type { SavedCaptureReadModel } from "../storage/capture-save";
+import {
+  deleteInteractionReconstruction,
+  loadInteractionReconstructionById,
+  loadInteractionReconstructionsForPair,
+  saveInteractionReconstruction
+} from "../storage/interactive-reconstruction";
 import type { InteractionPairReadModel } from "../storage/interaction-pair";
 import { boundText, formatTimestamp, getCaptureDisplayTitle } from "./display-format";
+import { InteractivePreviewSandbox } from "./InteractivePreviewSandbox";
 
 type PairSaveState =
   | { status: "idle" }
@@ -280,6 +293,7 @@ function InteractionPairItem({
               <InteractionStatePreview key={reaction.id} label={`Additional Reaction ${index + 1}`} savedCapture={reaction.capture} />
             ))}
           </div>
+          <InteractionReconstructionPanel readModel={readModel} />
           <button className="danger-action compact-action" type="button" onClick={onDelete} disabled={isDeleting}>
             {isDeleting ? "Deleting..." : "Delete Interaction Pair"}
           </button>
@@ -291,6 +305,201 @@ function InteractionPairItem({
         </section>
       ) : null}
     </li>
+  );
+}
+
+type ReconstructionState =
+  | { status: "idle"; entries: InteractionReconstructionEntryV1[] }
+  | { status: "loading" }
+  | { status: "review"; review: InteractionReconstructionReviewModel; consent: boolean; entries: InteractionReconstructionEntryV1[] }
+  | { status: "generating"; review: InteractionReconstructionReviewModel; entries: InteractionReconstructionEntryV1[] }
+  | { status: "deleting"; id: string; entries: InteractionReconstructionEntryV1[] }
+  | { status: "failed"; message: string; entries: InteractionReconstructionEntryV1[] };
+
+function InteractionReconstructionPanel({ readModel }: { readModel: InteractionPairReadModel }) {
+  const [state, setState] = useState<ReconstructionState>({ status: "loading" });
+  const [previewEntryId, setPreviewEntryId] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setState({ status: "loading" });
+    setPreviewEntryId(null);
+    loadInteractionReconstructionsForPair(readModel.pair.id)
+      .then((entries) => {
+        if (!cancelled) {
+          setState({ status: "idle", entries });
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setState({ status: "failed", entries: [], message: error instanceof Error ? error.message : "Interactive reconstructions could not be loaded." });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [readModel.pair.id]);
+
+  const entries = "entries" in state ? state.entries : [];
+  const selectedPreview = entries.find((entry) => entry.id === previewEntryId);
+  const isComplete = !readModel.missingCaptureIds.length;
+
+  const openReview = async () => {
+    try {
+      const review = await prepareInteractionReconstructionReview(readModel);
+      setState({ status: "review", review, consent: false, entries });
+    } catch (error) {
+      setState({ status: "failed", entries, message: error instanceof Error ? error.message : "Interactive reconstruction Review could not be prepared." });
+    }
+  };
+
+  const generate = async (review: InteractionReconstructionReviewModel) => {
+    if (state.status !== "review" || !state.consent) {
+      return;
+    }
+    setState({ status: "generating", review, entries });
+    try {
+      const entry = await saveInteractionReconstruction(await createInteractionReconstructionEntry(review));
+      setState({ status: "idle", entries: [entry, ...entries] });
+      setPreviewEntryId(entry.id);
+    } catch (error) {
+      setState({ status: "failed", entries, message: error instanceof Error ? error.message : "Interactive reconstruction could not be saved." });
+    }
+  };
+
+  const deleteEntry = async (entryId: string) => {
+    if (state.status === "deleting") {
+      return;
+    }
+    setState({ status: "deleting", id: entryId, entries });
+    try {
+      await deleteInteractionReconstruction(entryId);
+      const nextEntries = entries.filter((entry) => entry.id !== entryId);
+      setState({ status: "idle", entries: nextEntries });
+      if (previewEntryId === entryId) {
+        setPreviewEntryId(null);
+      }
+    } catch (error) {
+      setState({ status: "failed", entries, message: error instanceof Error ? error.message : "Interactive reconstruction could not be deleted." });
+    }
+  };
+
+  return (
+    <section className="interaction-reconstruction-panel" aria-labelledby={`interaction-reconstruction-heading-${readModel.pair.id}`}>
+      <div className="interaction-reconstruction-header">
+        <div>
+          <p className="eyebrow">M12</p>
+          <h4 id={`interaction-reconstruction-heading-${readModel.pair.id}`}>Interactive Reconstruction</h4>
+        </div>
+        <button className="primary-action compact-action" type="button" onClick={() => void openReview()} disabled={!isComplete || state.status === "loading" || state.status === "generating"}>
+          Reconstruct interaction
+        </button>
+      </div>
+      {!isComplete ? <p className="empty-note">Reconstruction is unavailable until every referenced capture is available.</p> : null}
+      {state.status === "loading" ? <p className="save-state save-state-saving">Loading interactive reconstructions...</p> : null}
+      {state.status === "review" ? (
+        <div className="generation-review">
+          <h5>Review interaction reconstruction data</h5>
+          <dl className="preview-metadata">
+            <MetadataItem label="Interaction" value={state.review.requestWithoutDataUrls.interaction.trigger} />
+            <MetadataItem label="Surfaces" value={String(state.review.requestWithoutDataUrls.surfaces.length)} />
+            <MetadataItem label="Privacy" value="Source URL, page title, cookies, browser storage, credentials, and browser session excluded." />
+          </dl>
+          <p className="generation-review-copy">Visible screenshot content and bounded capture projections are used only after this consent. This local V1 reconstructs visible UI behavior, not source-site business logic.</p>
+          <label className="consent-row">
+            <input type="checkbox" checked={state.consent} onChange={(event) => setState({ ...state, consent: event.currentTarget.checked })} />
+            <span>I reviewed the interaction reconstruction data and consent to generate this local interactive component.</span>
+          </label>
+          <div className="generation-actions">
+            <button className="primary-action compact-action" type="button" disabled={!state.consent} onClick={() => void generate(state.review)}>
+              Generate interactive reconstruction
+            </button>
+            <button className="secondary-action compact-action" type="button" onClick={() => setState({ status: "idle", entries })}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : null}
+      {state.status === "generating" ? <p className="save-state save-state-saving">Generating local interactive reconstruction...</p> : null}
+      {state.status === "deleting" ? <p className="save-state save-state-saving">Deleting interactive reconstruction...</p> : null}
+      {state.status === "failed" ? <p className="save-state save-state-failed" role="alert">{state.message}</p> : null}
+      {entries.length ? (
+        <ul className="interaction-reconstruction-list" aria-label="Interactive reconstructions">
+          {entries.map((entry) => (
+            <li key={entry.id} className="interaction-reconstruction-item">
+              <button className="library-open-button" type="button" onClick={() => setPreviewEntryId(previewEntryId === entry.id ? null : entry.id)} aria-label={`Open interactive reconstruction: ${entry.value.componentName}`}>
+                <span className="library-item-body">
+                  <span className="library-item-title">{entry.value.componentName}</span>
+                  <span>{entry.value.summary}</span>
+                  <span>Saved {formatTimestamp(entry.createdAt)}</span>
+                </span>
+              </button>
+              {previewEntryId === entry.id ? (
+                <InteractionReconstructionDetail entry={entry} onClosePreview={() => setPreviewEntryId(null)} onDelete={() => void deleteEntry(entry.id)} />
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : state.status === "idle" ? (
+        <p className="empty-note">No interactive reconstructions yet.</p>
+      ) : null}
+    </section>
+  );
+}
+
+function InteractionReconstructionDetail({
+  entry,
+  onClosePreview,
+  onDelete
+}: {
+  entry: InteractionReconstructionEntryV1;
+  onClosePreview: () => void;
+  onDelete: () => void;
+}) {
+  const [exportStatus, setExportStatus] = useState<"idle" | "initiated" | "failed">("idle");
+  const exportSource = async () => {
+    try {
+      const persisted = await loadInteractionReconstructionById(entry.id);
+      if (!persisted || persisted.value.code !== entry.value.code) {
+        throw new Error("Persisted interactive source was not available.");
+      }
+      const blob = new Blob([persisted.value.code], { type: "text/typescript;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${persisted.value.componentName}.tsx`;
+      anchor.style.display = "none";
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      setExportStatus("initiated");
+    } catch {
+      setExportStatus("failed");
+    }
+  };
+  return (
+    <section className="interaction-reconstruction-detail" aria-label={`Interactive reconstruction detail: ${entry.value.componentName}`}>
+      <dl className="preview-metadata">
+        <MetadataItem label="Component" value={entry.value.componentName} />
+        <MetadataItem label="Trigger" value={entry.interactivePreviewPlan.trigger} />
+      </dl>
+      <pre className="generated-code-block">{entry.value.code}</pre>
+      <div className="generation-actions">
+        <button className="secondary-action compact-action" type="button" onClick={exportSource}>
+          Export .tsx
+        </button>
+        <button className="danger-action compact-action" type="button" onClick={onDelete}>
+          Delete reconstruction
+        </button>
+        <button className="secondary-action compact-action" type="button" onClick={onClosePreview}>
+          Close preview
+        </button>
+      </div>
+      {exportStatus === "initiated" ? <p className="save-state save-state-success" role="status">Browser download initiated for {entry.value.componentName}.tsx.</p> : null}
+      {exportStatus === "failed" ? <p className="save-state save-state-failed" role="alert">Could not export interactive source.</p> : null}
+      <InteractivePreviewSandbox entry={entry} onClose={onClosePreview} />
+    </section>
   );
 }
 
