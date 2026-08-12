@@ -29,6 +29,7 @@ export function InteractionPairLibrary({
   const initialBaseId = savedCaptures[0]?.record.id ?? "";
   const [baseCaptureId, setBaseCaptureId] = useState(initialBaseId);
   const [alternateCaptureId, setAlternateCaptureId] = useState(savedCaptures.find((capture) => capture.record.id !== initialBaseId)?.record.id ?? "");
+  const [additionalReactionCaptureIds, setAdditionalReactionCaptureIds] = useState<string[]>([]);
   const [trigger, setTrigger] = useState<InteractionPairTrigger>("click");
   const [title, setTitle] = useState("");
   const [saveState, setSaveState] = useState<PairSaveState>({ status: "idle" });
@@ -54,7 +55,12 @@ export function InteractionPairLibrary({
       }
       return savedCaptures.find((capture) => capture.record.id !== effectiveBaseId)?.record.id ?? "";
     });
-  }, [baseCaptureId, initialBaseId, savedCaptures]);
+    setAdditionalReactionCaptureIds((currentIds) =>
+      currentIds.filter((captureId, index, allIds) => {
+        return captureIds.has(captureId) && captureId !== effectiveBaseId && captureId !== alternateCaptureId && allIds.indexOf(captureId) === index;
+      })
+    );
+  }, [alternateCaptureId, baseCaptureId, initialBaseId, savedCaptures]);
 
   useEffect(() => {
     if (openPairId && interactionPairs.some((readModel) => readModel.pair.id === openPairId)) {
@@ -63,7 +69,16 @@ export function InteractionPairLibrary({
     setOpenPairId(interactionPairs[0]?.pair.id ?? null);
   }, [interactionPairs, openPairId]);
 
-  const canSave = Boolean(savedCaptures.length >= 2 && baseCaptureId && alternateCaptureId && baseCaptureId !== alternateCaptureId && saveState.status !== "saving");
+  const canSave = Boolean(
+    savedCaptures.length >= 2 &&
+      baseCaptureId &&
+      alternateCaptureId &&
+      baseCaptureId !== alternateCaptureId &&
+      additionalReactionCaptureIds.every((captureId, index, allIds) => {
+        return captureId !== baseCaptureId && captureId !== alternateCaptureId && allIds.indexOf(captureId) === index;
+      }) &&
+      saveState.status !== "saving"
+  );
 
   const handleSave = async () => {
     if (!canSave) {
@@ -75,9 +90,11 @@ export function InteractionPairLibrary({
         title,
         baseCaptureId,
         alternateCaptureId,
+        additionalReactionCaptureIds,
         trigger
       });
       setTitle("");
+      setAdditionalReactionCaptureIds([]);
       setSaveState({ status: "saved", message: "Interaction Pair saved locally." });
     } catch (error) {
       setSaveState({
@@ -118,7 +135,7 @@ export function InteractionPairLibrary({
         <h4 id="interaction-pair-builder-heading">Create Interaction Pair</h4>
         <div className="interaction-pair-grid">
           <label className="library-query-field">
-            <span>Base state</span>
+            <span>Trigger / Before</span>
             <select value={baseCaptureId} onChange={(event) => setBaseCaptureId(event.currentTarget.value)}>
               {captureOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -128,7 +145,7 @@ export function InteractionPairLibrary({
             </select>
           </label>
           <label className="library-query-field">
-            <span>Alternate state</span>
+            <span>Primary Reaction</span>
             <select value={alternateCaptureId} onChange={(event) => setAlternateCaptureId(event.currentTarget.value)}>
               {captureOptions.map((option) => (
                 <option key={option.id} value={option.id}>
@@ -138,13 +155,31 @@ export function InteractionPairLibrary({
             </select>
           </label>
           <label className="library-query-field">
-            <span>Trigger</span>
-            <select value={trigger} onChange={(event) => setTrigger(event.currentTarget.value as InteractionPairTrigger)}>
+            <span>Interaction</span>
+            <select aria-label="Interaction trigger" value={trigger} onChange={(event) => setTrigger(event.currentTarget.value as InteractionPairTrigger)}>
               {INTERACTION_PAIR_TRIGGERS.map((option) => (
                 <option key={option} value={option}>
                   {option}
                 </option>
               ))}
+            </select>
+          </label>
+          <label className="library-query-field">
+            <span>Additional Reactions</span>
+            <select
+              multiple
+              value={additionalReactionCaptureIds}
+              onChange={(event) =>
+                setAdditionalReactionCaptureIds(Array.from(event.currentTarget.selectedOptions, (option) => option.value))
+              }
+            >
+              {captureOptions
+                .filter((option) => option.id !== baseCaptureId && option.id !== alternateCaptureId)
+                .map((option) => (
+                  <option key={option.id} value={option.id}>
+                    {option.label}
+                  </option>
+                ))}
             </select>
           </label>
           <label className="library-query-field">
@@ -160,7 +195,7 @@ export function InteractionPairLibrary({
         ) : null}
         {baseCaptureId === alternateCaptureId && savedCaptures.length >= 2 ? (
           <p className="save-state save-state-failed" role="alert">
-            Base and Alternate must be different saved captures.
+            Trigger / Before and Primary Reaction must be different saved captures.
           </p>
         ) : null}
         {saveState.status === "saving" ? <p className="save-state save-state-saving">Saving Interaction Pair...</p> : null}
@@ -210,7 +245,7 @@ function InteractionPairItem({
   onDelete: () => void;
 }) {
   const title = getInteractionPairTitle(readModel);
-  const transitionText = `${readModel.baseCapture ? getCaptureDisplayTitle(readModel.baseCapture.record) : "Missing base state"} --${readModel.pair.trigger}--> ${readModel.alternateCapture ? getCaptureDisplayTitle(readModel.alternateCapture.record) : "Missing alternate state"}`;
+  const transitionText = `${readModel.baseCapture ? getCaptureDisplayTitle(readModel.baseCapture.record) : "Missing trigger / before"} --${readModel.pair.trigger}--> ${readModel.alternateCapture ? getCaptureDisplayTitle(readModel.alternateCapture.record) : "Missing primary reaction"}`;
   const isDeleting = deleteState.status === "deleting" && deleteState.id === readModel.pair.id;
   const deleteFailed = deleteState.status === "failed" && deleteState.id === readModel.pair.id;
 
@@ -229,17 +264,21 @@ function InteractionPairItem({
           <p className="interaction-transition">{transitionText}</p>
           {readModel.missingCaptureIds.length ? (
             <p className="save-state save-state-failed" role="alert">
-              This Interaction Pair is incomplete because a referenced capture is missing. Delete the pair or recreate it from available captures.
+              This Interaction Pair is incomplete because one or more referenced captures are missing. Delete the pair or recreate it from available captures.
             </p>
           ) : null}
           <dl className="preview-metadata">
-            <MetadataItem label="Trigger" value={readModel.pair.trigger} />
-            <MetadataItem label="Base capture" value={readModel.baseCapture ? getCaptureDisplayTitle(readModel.baseCapture.record) : "Missing"} />
-            <MetadataItem label="Alternate capture" value={readModel.alternateCapture ? getCaptureDisplayTitle(readModel.alternateCapture.record) : "Missing"} />
+            <MetadataItem label="Interaction" value={readModel.pair.trigger} />
+            <MetadataItem label="Trigger / Before" value={readModel.baseCapture ? getCaptureDisplayTitle(readModel.baseCapture.record) : "Missing"} />
+            <MetadataItem label="Primary Reaction" value={readModel.alternateCapture ? getCaptureDisplayTitle(readModel.alternateCapture.record) : "Missing"} />
+            <MetadataItem label="Additional Reactions" value={String(readModel.additionalReactionCaptures.length)} />
           </dl>
           <div className="interaction-state-grid">
-            <InteractionStatePreview label="Base state" savedCapture={readModel.baseCapture} />
-            <InteractionStatePreview label="Alternate state" savedCapture={readModel.alternateCapture} />
+            <InteractionStatePreview label="Trigger / Before" savedCapture={readModel.baseCapture} />
+            <InteractionStatePreview label="Primary Reaction" savedCapture={readModel.alternateCapture} />
+            {readModel.additionalReactionCaptures.map((reaction, index) => (
+              <InteractionStatePreview key={reaction.id} label={`Additional Reaction ${index + 1}`} savedCapture={reaction.capture} />
+            ))}
           </div>
           <button className="danger-action compact-action" type="button" onClick={onDelete} disabled={isDeleting}>
             {isDeleting ? "Deleting..." : "Delete Interaction Pair"}

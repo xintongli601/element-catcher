@@ -1119,6 +1119,10 @@ h2 {
   font-weight: 500;
 }
 
+.library-query-field select[multiple] {
+  min-height: 92px;
+}
+
 .library-query-field input:focus-visible,
 .library-query-field select:focus-visible {
   outline: 3px solid #93c5fd;

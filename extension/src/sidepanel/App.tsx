@@ -35,7 +35,7 @@ import { CapturePreview } from "./CapturePreview";
 import { cropScreenshotDataUrl } from "./crop-screenshot";
 import { SavedCaptureDetail, type SavedCaptureDetailState } from "./SavedCaptureDetail";
 
-const activeInstruction = "Hover over an element and click to lock it. Press Esc to cancel.";
+const activeInstruction = "Hover over an element and click to lock it, or press Enter to capture the current hover state. Esc cancels.";
 
 export function App() {
   const [status, setStatus] = useState<SidePanelStatus>("idle");

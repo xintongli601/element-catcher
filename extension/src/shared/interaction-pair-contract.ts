@@ -10,6 +10,7 @@ export type InteractionPairV1 = {
   title?: string;
   baseCaptureId: string;
   alternateCaptureId: string;
+  additionalReactionCaptureIds?: string[];
   trigger: InteractionPairTrigger;
 };
 
@@ -17,6 +18,7 @@ export type InteractionPairCreateInput = {
   title?: string;
   baseCaptureId: string;
   alternateCaptureId: string;
+  additionalReactionCaptureIds?: string[];
   trigger: InteractionPairTrigger;
 };
 
@@ -44,11 +46,12 @@ export function isInteractionPairTrigger(value: unknown): value is InteractionPa
 
 export function validateInteractionPairCreateInput(input: InteractionPairCreateInput) {
   assertPlainObject(input);
-  assertExactKeys(input, ["baseCaptureId", "alternateCaptureId", "trigger"], ["title"]);
-  validateCaptureReference(input.baseCaptureId, "Base capture");
-  validateCaptureReference(input.alternateCaptureId, "Alternate capture");
+  assertExactKeys(input, ["baseCaptureId", "alternateCaptureId", "trigger"], ["title", "additionalReactionCaptureIds"]);
+  validateInteractionReferences(input.baseCaptureId, input.alternateCaptureId, input.additionalReactionCaptureIds);
+  validateCaptureReference(input.baseCaptureId, "Trigger / Before capture");
+  validateCaptureReference(input.alternateCaptureId, "Primary Reaction capture");
   if (input.baseCaptureId === input.alternateCaptureId) {
-    throw new Error("Base and alternate captures must be different.");
+    throw new Error("Trigger / Before and Primary Reaction captures must be different.");
   }
   if (!isInteractionPairTrigger(input.trigger)) {
     throw new Error("Interaction trigger is not supported.");
@@ -61,7 +64,10 @@ export function validateInteractionPairCreateInput(input: InteractionPairCreateI
 export function validateInteractionPairV1(value: unknown): asserts value is InteractionPairV1 {
   assertPlainObject(value);
   const pair = value as InteractionPairV1;
-  assertExactKeys(pair, ["schemaVersion", "id", "createdAt", "baseCaptureId", "alternateCaptureId", "trigger"], ["title"]);
+  assertExactKeys(pair, ["schemaVersion", "id", "createdAt", "baseCaptureId", "alternateCaptureId", "trigger"], [
+    "title",
+    "additionalReactionCaptureIds"
+  ]);
   if (pair.schemaVersion !== INTERACTION_PAIR_SCHEMA_VERSION) {
     throw new Error("Interaction Pair schema version is invalid.");
   }
@@ -76,8 +82,9 @@ export function validateInteractionPairV1(value: unknown): asserts value is Inte
       throw new Error("Interaction Pair title is invalid.");
     }
   }
-  validateCaptureReference(pair.baseCaptureId, "Base capture");
-  validateCaptureReference(pair.alternateCaptureId, "Alternate capture");
+  validateInteractionReferences(pair.baseCaptureId, pair.alternateCaptureId, pair.additionalReactionCaptureIds);
+  validateCaptureReference(pair.baseCaptureId, "Trigger / Before capture");
+  validateCaptureReference(pair.alternateCaptureId, "Primary Reaction capture");
   if (pair.baseCaptureId === pair.alternateCaptureId) {
     throw new Error("Interaction Pair references must be distinct.");
   }
@@ -87,8 +94,10 @@ export function validateInteractionPairV1(value: unknown): asserts value is Inte
 }
 
 export function createInteractionPairV1(input: InteractionPairCreateInput): InteractionPairV1 {
+  const additionalReactionCaptureIds = normalizeAdditionalReactionCaptureIds(input.additionalReactionCaptureIds);
   const normalizedInput: InteractionPairCreateInput = {
     ...input,
+    ...(additionalReactionCaptureIds.length ? { additionalReactionCaptureIds } : {}),
     title: normalizeInteractionPairTitle(input.title)
   };
   validateInteractionPairCreateInput(normalizedInput);
@@ -99,10 +108,38 @@ export function createInteractionPairV1(input: InteractionPairCreateInput): Inte
     ...(normalizedInput.title ? { title: normalizedInput.title } : {}),
     baseCaptureId: normalizedInput.baseCaptureId,
     alternateCaptureId: normalizedInput.alternateCaptureId,
+    ...(additionalReactionCaptureIds.length ? { additionalReactionCaptureIds } : {}),
     trigger: normalizedInput.trigger
   };
   validateInteractionPairV1(pair);
   return pair;
+}
+
+export function normalizeAdditionalReactionCaptureIds(value: string[] | undefined) {
+  return Array.from(new Set(value ?? []));
+}
+
+function validateInteractionReferences(baseCaptureId: string, alternateCaptureId: string, additionalReactionCaptureIds: string[] | undefined) {
+  if (additionalReactionCaptureIds === undefined) {
+    return;
+  }
+  if (!Array.isArray(additionalReactionCaptureIds)) {
+    throw new Error("Additional Reaction captures must be a list.");
+  }
+  const seen = new Set<string>();
+  for (const [index, captureId] of additionalReactionCaptureIds.entries()) {
+    validateCaptureReference(captureId, `Additional Reaction capture ${index + 1}`);
+    if (captureId === baseCaptureId) {
+      throw new Error("Additional Reaction captures cannot duplicate Trigger / Before.");
+    }
+    if (captureId === alternateCaptureId) {
+      throw new Error("Additional Reaction captures cannot duplicate Primary Reaction.");
+    }
+    if (seen.has(captureId)) {
+      throw new Error("Additional Reaction captures must be unique.");
+    }
+    seen.add(captureId);
+  }
 }
 
 function validateCaptureReference(value: unknown, label: string) {

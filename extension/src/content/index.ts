@@ -23,6 +23,7 @@ let descendantPath: Element[] = [];
 let overlayElement: HTMLDivElement | null = null;
 let labelElement: HTMLDivElement | null = null;
 let previousCursor = "";
+let isSelectionCaptureInFlight = false;
 
 type ViewportIntersection = {
   left: number;
@@ -84,6 +85,7 @@ function startSelectionMode() {
   highlightedElement = null;
   lockedElement = null;
   descendantPath = [];
+  isSelectionCaptureInFlight = false;
   previousCursor = document.documentElement.style.cursor;
   document.documentElement.style.cursor = "crosshair";
 
@@ -111,6 +113,12 @@ async function confirmLockedSelection() {
     failSelection("No locked element is available. Start capture again and lock an element before confirming.");
     return;
   }
+
+  if (isSelectionCaptureInFlight) {
+    return;
+  }
+
+  isSelectionCaptureInFlight = true;
 
   if (!validateLockedElement()) {
     return;
@@ -147,6 +155,7 @@ function cleanupSelectionMode() {
   highlightedElement = null;
   lockedElement = null;
   descendantPath = [];
+  isSelectionCaptureInFlight = false;
   document.removeEventListener("pointermove", handlePointerMove, true);
   document.removeEventListener("click", handleSelectionClick, true);
   document.removeEventListener("keydown", handleKeyDown, true);
@@ -192,14 +201,39 @@ function handleSelectionClick(event: MouseEvent) {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
-  if (!isSelectionActive || event.key !== "Escape") {
+  if (!isSelectionActive) {
+    return;
+  }
+
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation();
+    cancelSelectionMode();
+    return;
+  }
+
+  if (event.key !== "Enter") {
     return;
   }
 
   event.preventDefault();
   event.stopPropagation();
   event.stopImmediatePropagation();
-  cancelSelectionMode();
+
+  if (isSelectionCaptureInFlight) {
+    return;
+  }
+
+  if (!lockedElement) {
+    if (!highlightedElement) {
+      return;
+    }
+
+    lockElement(highlightedElement);
+  }
+
+  void confirmLockedSelection();
 }
 
 function lockElement(element: Element) {
@@ -290,6 +324,8 @@ function ensureOverlay() {
     labelElement.style.color = "#ffffff";
     labelElement.style.font = "12px/1.4 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
     labelElement.style.display = "none";
+    labelElement.style.left = "12px";
+    labelElement.style.bottom = "12px";
     document.documentElement.append(labelElement);
   }
 }
@@ -333,11 +369,12 @@ function updateOverlayPosition() {
     overlayElement.style.boxShadow = "0 0 0 2px rgba(255, 255, 255, 0.85)";
   }
 
-  const labelTop = rect.top > 28 ? rect.top - 28 : rect.bottom + 6;
   labelElement.style.display = "block";
-  labelElement.style.left = `${Math.min(Math.max(6, visibleRect.left), Math.max(6, window.innerWidth - 6))}px`;
-  labelElement.style.top = `${Math.min(Math.max(6, labelTop), Math.max(6, window.innerHeight - 28))}px`;
-  labelElement.textContent = `${lockedElement ? "Locked: " : ""}${target.tagName.toLowerCase()} ${Math.round(rect.width)} x ${Math.round(rect.height)}`;
+  labelElement.style.left = "12px";
+  labelElement.style.right = "auto";
+  labelElement.style.top = "auto";
+  labelElement.style.bottom = "12px";
+  labelElement.textContent = `${lockedElement ? "Locked: " : ""}${target.tagName.toLowerCase()} ${Math.round(rect.width)} x ${Math.round(rect.height)} - Enter captures`;
 }
 
 function getVisibleElementRect(element: Element): ViewportIntersection | null {

@@ -2,7 +2,7 @@
 
 ## 1. Objective
 
-Describe the current Element Catcher architecture after completion of Milestones 1 through 10 and the current Milestone 11 Slice 1 two-state interaction capture work.
+Describe the current Element Catcher architecture after completion of Milestones 1 through 10 and the current Milestone 11 user-assisted interaction capture work.
 
 Current implementation order:
 
@@ -25,13 +25,13 @@ Milestone 10: Completed / Accepted
 Milestone 10 Slice 1: Completed / Accepted at b0ed05823c530b2b0632c5db3bdb189459719f0d
 Milestone 10 Slice 2: Completed / Accepted at 5b6a0b81c75a2c7c354a630620ec62e784a9bc99
 Milestone 10 Slice 3: Not created
-Milestone 11: Current
-Milestone 11 Slice 1: Implementation, automated validation, and real Chrome manual workflow validation complete; pending final independent remote acceptance
-Milestone 11 Slice 2: Not started
+Milestone 11: Local implementation complete; pending independent ChatGPT final acceptance
+Milestone 11 Slice 1: Completed / Accepted at 23ff038b2e02a9f8bb3b08824a2f52180175b1df
+Milestone 11 Slice 2: Local implementation complete - Interaction Reaction model and Minimal Hover Capture Assist
 Milestone 12: Not started
 ```
 
-Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Milestone 10 is Completed / Accepted for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched. Slice 1 implements bounded Start Capture recovery for supported ordinary webpages when the current content runtime is unavailable and is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99` for browser-session trust and privacy UX. No Slice 3 was created for Milestone 10. Milestone 11 is Current for bounded Two-State Interaction Capture V1; Slice 1 implements local Interaction Pair V1 persistence and Library workflow, with implementation, automated validation, and required real Chrome manual workflow validation complete, pending final independent remote acceptance by ChatGPT. M11 Slice 2 and M12 are not started. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
+Milestone 6E completed local generated-version comparison and final Milestone 6 integrated regression. Milestone 7 is Completed based on accepted Milestone 7A one narrow local `.tsx` export path and accepted Milestone 7B deterministic fake/development single-file GitHub export workflow. Milestone 8 is Completed: Slice 1 architecture and feasibility, Slice 2 pure Bundle V1 contracts/ZIP32 writer, Slice 3 Side Panel row workflow, and Slice 4 lifecycle hardening and final acceptance are completed and accepted. Milestone 9 is Completed for portfolio/demo readiness. Milestone 10 is Completed / Accepted for browser-native capture of UI state the user already has access to, without requiring the source page to be publicly reachable or remotely re-fetched. Slice 1 implements bounded Start Capture recovery for supported ordinary webpages when the current content runtime is unavailable and is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99` for browser-session trust and privacy UX. No Slice 3 was created for Milestone 10. Milestone 11 is locally implemented for bounded user-assisted Interaction Capture V1, pending independent ChatGPT final acceptance. Slice 1 is Completed / Accepted at `23ff038b2e02a9f8bb3b08824a2f52180175b1df`; Slice 2 adds Trigger / Before -> Interaction -> Primary Reaction plus optional Additional Reactions and Minimal Hover Capture Assist. M12 is not started. Element Catcher is a portfolio-ready local v0.1 demonstration, not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. Real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
 
 ## 2. Current Architecture
 
@@ -55,7 +55,8 @@ Supported webpage
   -> deterministic fake/development GitHub export workflow
   -> local portable component bundle export
   -> portfolio/demo reviewer documentation
-  -> local Interaction Pair V1 persistence
+  -> local Interaction Pair V1 persistence for Trigger / Interaction / Reaction(s)
+  -> minimal page-side Enter quick capture for visible hover states
 ```
 
 The `CaptureRecord` remains the immutable source capture. Generated versions have a separate lifecycle and are linked to the source capture through a generated-version persistence envelope.
@@ -101,7 +102,8 @@ The Side Panel owns the user workflow:
 - Export one explicitly selected persisted generated version's exact stored source as a local `.tsx` file after rereading and validating the entry at export time.
 - Mount the Milestone 7B `Export to GitHub` row action for one selected generated version, one selected repository, one existing branch, one `.tsx` path, and a frozen Review before any fake/development write.
 - Mount the Milestone 8 `Export bundle` row action for one selected generated version and one local Bundle V1 ZIP download.
-- Mount the Milestone 11 Slice 1 Interaction Pair workflow for choosing two existing saved captures, selecting one V1 trigger, saving the pair locally, reopening it, inspecting both screenshots, and deleting it.
+- Mount the Milestone 11 Interaction Pair workflow for choosing Trigger / Before, Primary Reaction, optional Additional Reactions, and one V1 interaction trigger, then saving/reopening/inspecting/deleting the local pair.
+- Surface the Milestone 11 Slice 2 Enter quick-capture instruction while selection mode is active.
 
 ### 4.2 Background Service Worker
 
@@ -124,6 +126,7 @@ The content script handles supported-page interaction:
 - Selection mode.
 - Hover overlay and label.
 - Click-to-lock selection.
+- Enter quick capture of the current highlighted hover state while selection mode is active.
 - Parent/Child refinement.
 - Confirm and cancellation.
 - Overlay cleanup before screenshot capture.
@@ -214,12 +217,14 @@ Search/filter state is session-only and does not write to persistence.
 
 ### 4.7.1 Interaction Pair Library
 
-Milestone 11 Slice 1 adds a local Interaction Pair V1 Library workflow:
+Milestone 11 adds a local Interaction Pair V1 Library workflow:
 
-- Select two distinct existing saved captures as Base and Alternate states.
-- Select exactly one approved trigger: click, toggle, hover, or focus.
+- Select one existing saved capture as Trigger / Before.
+- Select a distinct existing saved capture as Primary Reaction.
+- Optionally select Additional Reactions that are distinct from Trigger / Before and Primary Reaction.
+- Select exactly one approved interaction trigger: click, toggle, hover, or focus.
 - Save a separate interaction-pair record that references captures by stable local IDs.
-- Reopen the pair and inspect both source screenshots, capture metadata, trigger, and a simple `State A --trigger--> State B` transition.
+- Reopen the pair and inspect Trigger / Before, Interaction, Primary Reaction, optional Additional Reactions, and source screenshots.
 - Delete the pair without deleting its source captures.
 - Mark the pair incomplete when a referenced capture is missing rather than duplicating or fabricating source data.
 
@@ -455,7 +460,7 @@ Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`. A
 
 Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`. It adds Side Panel trust UX that identifies current-browser-session capture, no remote source-page re-fetch, local Capture Preview/save boundaries before AI generation, and the separate explicit AI action boundary. AI Review states that AI receives only the screenshot shown in Review and the structured fields shown in Review, and that the AI backend does not receive the browser session, cookies, browser storage, login credentials, or source-page access.
 
-Milestone 10 is closed without a Slice 3. Milestone 11 is now Current for bounded Two-State Interaction Capture V1.
+Milestone 10 is closed without a Slice 3. Milestone 11 is locally implemented for bounded user-assisted Interaction Capture V1 and pending independent ChatGPT final acceptance.
 
 Recovery is not used for Cancel, Parent, Child, Confirm, screenshot completion, or unrelated runtime messages. Restricted/browser-protected surfaces remain fail-closed, including `chrome://` pages and Chrome Web Store pages. The implementation must not reload, navigate, recreate tabs, submit forms, alter page history, broaden host permissions, extract credentials, extract cookies, or request persistent all-sites access.
 

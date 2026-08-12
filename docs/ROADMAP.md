@@ -1219,7 +1219,7 @@ Milestone status summary:
 - Slice 1 - Session-preserving capture recovery: Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`.
 - Slice 2 - Browser-session trust and privacy UX: Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`.
 - Slice 3: Not created.
-- Milestone 11: Current for Two-State Interaction Capture V1. Slice 1 implements local Interaction Pair V1 persistence and Library workflow; implementation, automated validation, and required real Chrome manual workflow validation are complete, pending final independent remote acceptance by ChatGPT. M11 Slice 2 and M12 are not started.
+- Milestone 11: Local implementation complete for bounded user-assisted Interaction Capture V1; pending independent ChatGPT final acceptance. Slice 1 is Completed / Accepted at `23ff038b2e02a9f8bb3b08824a2f52180175b1df`; Slice 2 adds Trigger / Before -> Interaction -> Primary Reaction plus optional Additional Reactions and Minimal Hover Capture Assist. M12 is not started.
 
 Included scope:
 
@@ -1249,34 +1249,38 @@ Slice 1 architecture:
 
 Acceptance status: Completed / Accepted. Milestone 10 is accepted based on the bounded combination of Slice 1 and Slice 2. Slice 1 is Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`; accepted evidence includes completed implementation, focused automated checks, final full Playwright validation with `295 passed / 0 failed / 1 skipped / 0 did not run`, and required real-user Chrome manual validation passed. Slice 2 is Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`; accepted evidence includes focused Playwright validation with `4 passed / 0 failed / 0 skipped / 0 did not run`, final full Playwright validation with `299 passed / 0 failed / 1 skipped / 0 did not run`, `npm run build:extension` passed, and required real-user Chrome manual validation passed. No real AI provider request was required or claimed for Slice 2. No Slice 3 is created. Milestone 11 is now Current.
 
-## Milestone 11 - Two-State Interaction Capture V1
+## Milestone 11 - Interaction Capture V1
 
-Status: Current
+Status: Local implementation complete; pending independent ChatGPT final acceptance
 
-Objective: Reach a complete interactive-reconstruction product quickly by pairing two observed saved UI states rather than attempting automatic interaction recording or source-site JavaScript extraction.
+Objective: Reach a complete interactive-reconstruction product quickly by relating user-captured visible UI surfaces rather than attempting automatic interaction recording or source-site JavaScript extraction.
 
-Slice 1 scope:
+Implemented scope:
 
-- Select one existing saved capture as Base state.
-- Select a different existing saved capture as Alternate state.
-- Select exactly one bounded V1 trigger: click, toggle, hover, or focus.
+- Select one existing saved capture as Trigger / Before.
+- Select a different existing saved capture as Primary Reaction.
+- Optionally select Additional Reactions that are distinct from Trigger / Before and Primary Reaction.
+- Select exactly one bounded V1 interaction trigger: click, toggle, hover, or focus.
 - Optionally provide a short title.
 - Save the Interaction Pair locally in a separate V1 model that references existing saved captures by stable local IDs.
-- Reopen the saved pair and inspect both source screenshots, source capture metadata, selected trigger, and a simple `State A --trigger--> State B` explanation.
+- Reopen the saved pair and inspect Trigger / Before, Interaction, Primary Reaction, optional Additional Reactions, and screenshots.
 - Delete the pair without deleting its source captures.
 - Fail safely as incomplete if a referenced capture is missing.
+- Preserve old two-state Interaction Pair records without `additionalReactionCaptureIds`.
+- Use Enter during active selection to capture the current highlighted hover state through the existing CaptureRecord v1 pipeline.
+- Keep the page-side HUD fixed at viewport bottom-left with `pointer-events: none`.
 
-Slice 1 exclusions:
+Exclusions:
 
 - No CaptureRecord v1 schema change.
-- No automatic interaction recording, event-listener scraping, framework introspection, network observation, multi-step state machine, drag/drop, scroll, keyboard macro, animation timeline, AI interaction generation, generated interaction code, or interactive generated-code preview.
+- No automatic interaction recording, mutation tracing, event-listener scraping, framework introspection, automatic overlay discovery, portal ownership inference, network observation, multi-step state machine, drag/drop, scroll, keyboard macro, animation timeline, AI interaction generation, generated interaction code, or interactive generated-code preview.
 - No backend/provider/GitHub changes, Manifest permission changes, new browser permissions, CSP weakening, dependency additions, cookies, credentials, browser storage, authentication state, source JavaScript, network traffic, or app state manager reads.
 
-Acceptance status: Implementation, automated validation, and required real Chrome manual workflow validation are complete, pending final independent remote acceptance by ChatGPT. Automated evidence includes `git diff --check` PASS, focused M11 tests `4 passed / 0 failed / 0 skipped / 0 did not run`, repaired Milestone 6E version-comparison test `1 passed / 0 failed / 0 skipped / 0 did not run`, relevant persistence/library/version-comparison regression `146 passed / 0 failed / 0 skipped / 0 did not run`, final `npm run build:extension` PASS, and final full Playwright `303 passed / 0 failed / 1 skipped / 0 did not run`. Backend tests were not run because backend files were unchanged and outside Slice 1 scope. Real Chrome manual workflow validation passed for creating `Account Dropdown - Closed click interaction` from Base `Account Dropdown - Closed` and Alternate `Account Dropdown - Open`, reopening the saved pair after Side Panel close/reopen, inspecting both screenshots and trigger `click`, deleting the pair without deleting source captures, and re-resolving a missing referenced capture as incomplete after Side Panel reopen. Side Panel Console, Service Worker Console, and extension Errors page were not manually checked in this closeout and were explicitly waived by the reviewer because build, focused tests, relevant regressions, full Playwright, and the required real Chrome interaction workflow all passed.
+Local validation status: complete, pending independent ChatGPT final acceptance. Evidence includes `git diff --check` PASS, focused M11 Playwright `10 passed / 0 failed / 0 skipped / 0 did not run`, relevant persistence/library/capture/version-comparison Playwright regression `140 passed / 0 failed / 0 skipped / 0 did not run`, `npm run build:extension` PASS, and final full Playwright `309 passed / 0 failed / 1 skipped / 0 did not run`. Backend tests are not required because backend files are unchanged.
 
 Known limitation: if an Interaction Pair is already loaded in the current Side Panel session and one of its referenced captures is deleted, the pair view may not refresh immediately. Reopening the Side Panel causes the references to be re-resolved correctly and the missing source is shown as unavailable. This is accepted as non-blocking Slice 1 behavior because persisted data remains correct, reopening resolves the missing reference correctly, the UI fails closed, and no source data is fabricated.
 
-M11 Slice 1 is not formally accepted in this local closeout. Milestone 11 remains Current. M11 Slice 2 and M12 are not started.
+M11 Slice 1 is formally accepted. M11 final local implementation remains pending independent ChatGPT final acceptance. M12 is not started.
 
 Architecture: `docs/MILESTONE_11_INTERACTION_CAPTURE.md`.
 
