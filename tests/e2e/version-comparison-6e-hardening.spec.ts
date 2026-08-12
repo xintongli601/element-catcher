@@ -1,7 +1,7 @@
 import { expect, openSidePanelPage, test } from "./extension-fixture";
 import {
   ELEMENT_CATCHER_DATABASE_VERSION,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   putGeneratedVersion,
   readGeneratedVersions,
   readPersistenceCounts,
@@ -422,7 +422,7 @@ test.describe("Milestone 6E Slice 3 version comparison hardening", () => {
 
     expect(await readPersistenceCounts(sidePanelPage)).toMatchObject({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: ["captureRecords", GENERATED_COMPONENT_VERSION_STORE_NAME, "screenshotAssets"]
+      stores: CURRENT_OBJECT_STORE_NAMES
     });
     expect(await readGeneratedStoreInfo(sidePanelPage)).toEqual({
       keyPath: "id",
@@ -666,8 +666,8 @@ async function installDeferredRevisionRoute(page: Page) {
 
 async function deleteGeneratedVersion(page: Page, id: string) {
   await page.evaluate(
-    async ({ generatedVersionId }) => {
-      const request = indexedDB.open("element-catcher-local-persistence", 2);
+    async ({ databaseVersion, generatedVersionId }) => {
+      const request = indexedDB.open("element-catcher-local-persistence", databaseVersion);
       const database = await new Promise<IDBDatabase>((resolve, reject) => {
         request.onerror = () => reject(request.error);
         request.onupgradeneeded = () => reject(new Error("Unexpected database upgrade during generated version deletion."));
@@ -686,7 +686,7 @@ async function deleteGeneratedVersion(page: Page, id: string) {
         database.close();
       }
     },
-    { generatedVersionId: id }
+    { databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION, generatedVersionId: id }
   );
 }
 

@@ -8,6 +8,7 @@ import {
   deleteRecordEntry,
   ELEMENT_CATCHER_DATABASE_VERSION,
   getPersistenceDatabaseInfo,
+  INTERACTION_PAIR_STORE_NAME,
   readRecordEntry,
   readScreenshotAsset,
   SCREENSHOT_ASSET_STORE_NAME,
@@ -88,7 +89,8 @@ function verifyDatabaseInfo(databaseInfo: { version: number; stores: string[] })
   if (
     databaseInfo.version !== ELEMENT_CATCHER_DATABASE_VERSION ||
     !databaseInfo.stores.includes(SCREENSHOT_ASSET_STORE_NAME) ||
-    !databaseInfo.stores.includes(CAPTURE_RECORD_STORE_NAME)
+    !databaseInfo.stores.includes(CAPTURE_RECORD_STORE_NAME) ||
+    !databaseInfo.stores.includes(INTERACTION_PAIR_STORE_NAME)
   ) {
     throw new PersistenceError("database-open", "Local persistence database structure did not match.");
   }

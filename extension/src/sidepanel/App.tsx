@@ -26,6 +26,8 @@ import {
   type DeletedSavedCaptureResult,
   type SavedCaptureReadModel
 } from "../storage/capture-save";
+import { deleteInteractionPair, loadInteractionPairLibrary, saveInteractionPair } from "../storage/interaction-pair";
+import type { InteractionPairCreateInput } from "../shared/interaction-pair-contract";
 import type { LibraryMetadataInput } from "../library/library-metadata";
 import { getSafePersistenceMessage } from "../storage/persistence-errors";
 import { CaptureLibrary, type CaptureLibraryState } from "./CaptureLibrary";
@@ -55,18 +57,23 @@ export function App() {
   const deleteSequenceRef = useRef(0);
   const deleteInFlightRef = useRef(false);
 
-  const loadLibrary = async () => {
+  const loadLibrary = async ({ showLoading = true }: { showLoading?: boolean } = {}) => {
     const sequence = libraryLoadSequenceRef.current + 1;
     libraryLoadSequenceRef.current = sequence;
-    setCaptureLibrary({ status: "loading" });
+    if (showLoading) {
+      setCaptureLibrary({ status: "loading" });
+    }
 
     try {
-      const savedCaptures = await loadSavedCaptureLibrary();
+      const [savedCaptures, interactionPairs] = await Promise.all([
+        loadSavedCaptureLibrary(),
+        loadInteractionPairLibrary()
+      ]);
       if (libraryLoadSequenceRef.current !== sequence) {
         return;
       }
 
-      setCaptureLibrary(savedCaptures.length ? { status: "loaded", savedCaptures } : { status: "empty" });
+      setCaptureLibrary(savedCaptures.length || interactionPairs.length ? { status: "loaded", savedCaptures, interactionPairs } : { status: "empty" });
     } catch (error) {
       if (libraryLoadSequenceRef.current !== sequence) {
         return;
@@ -362,6 +369,16 @@ export function App() {
     }
   };
 
+  const handleSaveInteractionPair = async (input: InteractionPairCreateInput) => {
+    await saveInteractionPair(input);
+    await loadLibrary({ showLoading: false });
+  };
+
+  const handleDeleteInteractionPair = async (id: string) => {
+    await deleteInteractionPair(id);
+    await loadLibrary({ showLoading: false });
+  };
+
   const updateLoadedLibraryCapture = (updatedCapture: SavedCaptureReadModel) => {
     setCaptureLibrary((current) => {
       if (current.status !== "loaded") {
@@ -379,7 +396,8 @@ export function App() {
         status: "loaded",
         savedCaptures: current.savedCaptures.map((savedCapture, index) =>
           index === itemIndex ? updatedCapture : savedCapture
-        )
+        ),
+        interactionPairs: current.interactionPairs
       };
     });
   };
@@ -397,7 +415,9 @@ export function App() {
         return current;
       }
 
-      return remainingCaptures.length ? { status: "loaded", savedCaptures: remainingCaptures } : { status: "empty" };
+      return remainingCaptures.length || current.interactionPairs.length
+        ? { status: "loaded", savedCaptures: remainingCaptures, interactionPairs: current.interactionPairs }
+        : { status: "empty" };
     });
   };
 
@@ -456,6 +476,8 @@ export function App() {
           onQueryChange={setLibraryQuery}
           onRetry={loadLibrary}
           onOpenCapture={(recordId) => void openSavedCaptureDetail(recordId)}
+          onSaveInteractionPair={handleSaveInteractionPair}
+          onDeleteInteractionPair={handleDeleteInteractionPair}
         />
       ) : (
         <SavedCaptureDetail

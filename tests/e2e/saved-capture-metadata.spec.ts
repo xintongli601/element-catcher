@@ -1,9 +1,7 @@
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import {
-  CAPTURE_RECORD_STORE_NAME,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   ELEMENT_CATCHER_DATABASE_VERSION,
-  SCREENSHOT_ASSET_STORE_NAME,
   deleteRecordWrapper,
   readPersistenceCounts,
   readRecordWrapper,
@@ -89,7 +87,7 @@ test.describe("Milestone 4C saved capture metadata automated validation", () => 
     });
 
     await sidePanelPage.getByRole("button", { name: "Back to Library" }).click();
-    await expect(sidePanelPage.locator(".library-count")).toHaveText(String(seeded.length));
+    await expect(sidePanelPage.locator(".capture-library-header .library-count")).toHaveText(String(seeded.length));
     const updatedTitles = await sidePanelPage.locator(".library-item-title").allTextContents();
     expect(updatedTitles).toEqual(["Updated Gamma Title", ...originalOrder.slice(1)]);
     await expect(sidePanelPage.locator(".library-component-type").first()).toHaveText("updated-modal");
@@ -348,7 +346,7 @@ test.describe("Milestone 4C saved capture metadata automated validation", () => 
 
     await expect(sidePanelPage.getByRole("heading", { name: "Capture Library" })).toBeVisible();
     await expect(sidePanelPage.getByRole("button", { name: "Open saved capture: Back During Save" })).toBeVisible();
-    await expect(sidePanelPage.locator(".library-count")).toHaveText(String(seeded.length));
+    await expect(sidePanelPage.locator(".capture-library-header .library-count")).toHaveText(String(seeded.length));
     const titles = await sidePanelPage.locator(".library-item-title").allTextContents();
     expect(titles).toEqual(["Back During Save", seeded[1].title, seeded[2].title]);
   });
@@ -385,7 +383,7 @@ test.describe("Milestone 4C saved capture metadata automated validation", () => 
 
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length,
       screenshotAssets: seeded.length,
       generatedComponentVersions: 0
@@ -454,7 +452,7 @@ async function expectMetadataView(
 
 async function expectLibraryOrder(page: Parameters<typeof resetAndSeedSavedCaptures>[0], seeded: SeededCapture[]) {
   await expect(page.getByRole("heading", { name: "Capture Library" })).toBeVisible();
-  await expect(page.locator(".library-count")).toHaveText(String(seeded.length));
+  await expect(page.locator(".capture-library-header .library-count")).toHaveText(String(seeded.length));
   const titles = await page.locator(".library-item-title").allTextContents();
   expect(titles).toEqual(seeded.map((capture) => capture.title));
 }

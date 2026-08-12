@@ -1,9 +1,7 @@
 import { createServer } from "node:http";
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import {
-  CAPTURE_RECORD_STORE_NAME,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
-  SCREENSHOT_ASSET_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   readPersistenceCounts,
   readRecordWrapper,
   readScreenshotAssetSnapshot,
@@ -72,7 +70,7 @@ test("browser generation flow sends one loopback request and preserves persisten
     expect(await readScreenshotAssetSnapshot(page, target.storageKey)).toEqual(beforeAsset);
     expect(await readPersistenceCounts(page)).toEqual({
       ...beforeCounts,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME],
+      stores: CURRENT_OBJECT_STORE_NAMES,
       generatedComponentVersions: beforeCounts.generatedComponentVersions + 1
     });
     expect(await page.evaluate(() => localStorage.length)).toBe(0);

@@ -1,10 +1,8 @@
 import { test, expect, openSidePanelPage, getObjectUrlSnapshot } from "./extension-fixture";
 import {
-  CAPTURE_RECORD_STORE_NAME,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   DEFAULT_CAPTURE_FIXTURES,
   ELEMENT_CATCHER_DATABASE_VERSION,
-  SCREENSHOT_ASSET_STORE_NAME,
   createBrowserPngDataUrl,
   createCaptureRecordFixture,
   readGeneratedVersions,
@@ -425,7 +423,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
     const beforeLocalStorage = await page.evaluate(() => JSON.stringify({ ...localStorage }));
     const beforeSessionStorage = await page.evaluate(() => JSON.stringify({ ...sessionStorage }));
     expect(beforeCounts.version).toBe(ELEMENT_CATCHER_DATABASE_VERSION);
-    expect([...beforeCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
+    expect([...beforeCounts.stores].sort()).toEqual(CURRENT_OBJECT_STORE_NAMES);
 
     await openCapture(page, target.title);
     await page.getByRole("button", { name: "Generate component" }).click();
@@ -488,7 +486,7 @@ test.describe("Milestone 5B generation contracts and deterministic mock flow", (
       ...beforeCounts,
       generatedComponentVersions: beforeCounts.generatedComponentVersions + 1
     });
-    expect([...afterCounts.stores].sort()).toEqual([CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort());
+    expect([...afterCounts.stores].sort()).toEqual(CURRENT_OBJECT_STORE_NAMES);
     const afterWrapper = await readRecordWrapper(page, target.record.id) as typeof beforeWrapper;
     expect(afterWrapper).toEqual(beforeWrapper);
     expect((afterWrapper as { savedAt: string }).savedAt).toBe((beforeWrapper as { savedAt: string }).savedAt);

@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import { test, expect, getObjectUrlSnapshot, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
   DEFAULT_CAPTURE_FIXTURES,
   ELEMENT_CATCHER_DATABASE_VERSION,
@@ -88,7 +89,7 @@ test.describe("Milestone 4D saved capture deletion automated validation", () => 
     expect(afterAssets).toEqual(beforeAssets.filter((asset) => asset.storageKey !== target.storageKey));
     expect(await readPersistenceCounts(sidePanelPage)).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length - 1,
       screenshotAssets: seeded.length - 1,
       generatedComponentVersions: 0
@@ -390,12 +391,12 @@ async function expectDeletionSuccess(page: Page, remaining: SeededCapture[]) {
 async function expectLibraryOrder(page: Page, seeded: SeededCapture[]) {
   await expect(page.getByRole("heading", { name: "Capture Library" })).toBeVisible();
   if (seeded.length === 0) {
-    await expect(page.locator(".library-count")).toHaveCount(0);
+    await expect(page.locator(".capture-library-header .library-count")).toHaveCount(0);
     await expect(page.getByText("No explicitly saved captures yet.")).toBeVisible();
     return;
   }
 
-  await expect(page.locator(".library-count")).toHaveText(String(seeded.length));
+  await expect(page.locator(".capture-library-header .library-count")).toHaveText(String(seeded.length));
   const titles = await page.locator(".library-item-title").allTextContents();
   expect(titles).toEqual(seeded.map((capture) => capture.title));
 }
@@ -622,7 +623,7 @@ async function installSameSavedAtWrapperMutation(
         databaseName: "element-catcher-local-persistence",
         databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION,
         captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
+        generatedComponentVersionStoreName: GENERATED_COMPONENT_VERSION_STORE_NAME,
         screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME
       }
     }

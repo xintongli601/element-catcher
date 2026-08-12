@@ -13,6 +13,7 @@ import {
   type GeneratedComponentVersionEntryV1
 } from "../shared/generated-version-contract";
 import { REQUESTED_OUTPUT } from "../shared/generation-contract";
+import { validateInteractionPairV1, type InteractionPairV1 } from "../shared/interaction-pair-contract";
 import { assertJsonCompatible } from "../shared/json";
 import { createScreenshotStorageKey } from "../shared/screenshot-storage";
 import { canonicalJsonStringify, type CanonicalJsonValue } from "../generation/canonical-json";
@@ -96,9 +97,10 @@ type GeneratedVersionV2DigestMutation =
   | { kind: "pendingSummary"; value: string };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
-export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
+export const ELEMENT_CATCHER_DATABASE_VERSION = 3;
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
+export const INTERACTION_PAIR_STORE_NAME = "interactionPairs";
 export { GENERATED_COMPONENT_VERSION_STORE_NAME };
 export { createScreenshotStorageKey };
 
@@ -117,6 +119,8 @@ export type StoredRecordEntry = {
   value: JsonObject;
   savedAt?: string;
 };
+
+export type StoredInteractionPairEntry = InteractionPairV1;
 
 export type PersistPendingGeneratedComponentVersionV2Input = {
   pendingEntry: GeneratedVersionEntryV2;
@@ -1213,6 +1217,80 @@ export async function deleteGeneratedComponentVersionsBySourceCaptureId(sourceCa
   );
 }
 
+export async function addInteractionPairEntry(entry: StoredInteractionPairEntry) {
+  validateInteractionPairV1(entry);
+  await withDatabase(async (database) => {
+    const transaction = database.transaction(INTERACTION_PAIR_STORE_NAME, "readwrite");
+    transaction.objectStore(INTERACTION_PAIR_STORE_NAME).add(entry);
+    await waitForTransaction(transaction);
+  });
+}
+
+export async function readInteractionPairEntry(id: string) {
+  return withDatabase((database) =>
+    requestResult<StoredInteractionPairEntry | undefined>(
+      database.transaction(INTERACTION_PAIR_STORE_NAME, "readonly").objectStore(INTERACTION_PAIR_STORE_NAME).get(id)
+    )
+  );
+}
+
+export async function readInteractionPairEntries() {
+  return withDatabase(
+    (database) =>
+      new Promise<StoredInteractionPairEntry[]>((resolve, reject) => {
+        const transaction = database.transaction(INTERACTION_PAIR_STORE_NAME, "readonly");
+        const store = transaction.objectStore(INTERACTION_PAIR_STORE_NAME);
+        const request = store.openCursor();
+        const entries: StoredInteractionPairEntry[] = [];
+        let requestError: DOMException | null = null;
+        let settled = false;
+
+        request.onsuccess = () => {
+          const cursor = request.result;
+
+          if (!cursor) {
+            return;
+          }
+
+          try {
+            validateInteractionPairV1(cursor.value);
+            entries.push(cursor.value as StoredInteractionPairEntry);
+          } catch (error) {
+            settled = true;
+            requestError = error instanceof DOMException ? error : null;
+            transaction.abort();
+            reject(toPersistenceError(error, "validation"));
+            return;
+          }
+
+          cursor.continue();
+        };
+
+        request.onerror = () => {
+          requestError = request.error;
+        };
+        transaction.oncomplete = () => {
+          if (!settled) {
+            resolve(entries);
+          }
+        };
+        transaction.onabort = () => {
+          if (!settled) {
+            reject(toPersistenceError(transaction.error ?? requestError, "transaction"));
+          }
+        };
+      })
+  );
+}
+
+export async function deleteInteractionPairEntry(id: string) {
+  await withDatabase(async (database) => {
+    const transaction = database.transaction(INTERACTION_PAIR_STORE_NAME, "readwrite");
+    transaction.objectStore(INTERACTION_PAIR_STORE_NAME).delete(id);
+    await waitForTransaction(transaction, "cleanup");
+  });
+}
+
 export async function getPersistenceDatabaseInfo() {
   return withDatabase((database) => ({
     name: database.name,
@@ -1259,6 +1337,18 @@ function openDatabase() {
         if (event.oldVersion < 2 && !database.objectStoreNames.contains(GENERATED_COMPONENT_VERSION_STORE_NAME)) {
           const store = database.createObjectStore(GENERATED_COMPONENT_VERSION_STORE_NAME, { keyPath: "id" });
           store.createIndex(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME, "sourceCaptureId", { unique: false });
+        }
+
+        if (event.oldVersion >= 2) {
+          const transaction = request.transaction;
+          if (!transaction || !database.objectStoreNames.contains(GENERATED_COMPONENT_VERSION_STORE_NAME)) {
+            throw new PersistenceError("database-upgrade", "Unexpected generated-version store schema.");
+          }
+          validateGeneratedVersionStoreSchema(transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME));
+        }
+
+        if (event.oldVersion < 3 && !database.objectStoreNames.contains(INTERACTION_PAIR_STORE_NAME)) {
+          database.createObjectStore(INTERACTION_PAIR_STORE_NAME, { keyPath: "id" });
         }
       } catch (error) {
         upgradeError = new PersistenceError("database-upgrade", undefined, error);
@@ -1891,27 +1981,44 @@ function validateDatabaseSchema(database: IDBDatabase) {
   }
 
   const stores = Array.from(database.objectStoreNames).sort();
-  const expectedStores = [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort();
+  const expectedStores = [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, INTERACTION_PAIR_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort();
   if (JSON.stringify(stores) !== JSON.stringify(expectedStores)) {
     throw new PersistenceError("database-upgrade", "Unexpected local persistence database stores.");
   }
 
-  const transaction = database.transaction(GENERATED_COMPONENT_VERSION_STORE_NAME, "readonly");
+  const transaction = database.transaction([GENERATED_COMPONENT_VERSION_STORE_NAME, INTERACTION_PAIR_STORE_NAME], "readonly");
   const store = transaction.objectStore(GENERATED_COMPONENT_VERSION_STORE_NAME);
-  if (store.keyPath !== "id") {
+  try {
+    validateGeneratedVersionStoreSchema(store);
+  } catch (error) {
     transaction.abort();
+    throw error;
+  }
+
+  const interactionStore = transaction.objectStore(INTERACTION_PAIR_STORE_NAME);
+  if (interactionStore.keyPath !== "id") {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected interaction-pair store keyPath.");
+  }
+
+  if (interactionStore.indexNames.length !== 0) {
+    transaction.abort();
+    throw new PersistenceError("database-upgrade", "Unexpected interaction-pair indexes.");
+  }
+}
+
+function validateGeneratedVersionStoreSchema(store: IDBObjectStore) {
+  if (store.keyPath !== "id") {
     throw new PersistenceError("database-upgrade", "Unexpected generated-version store keyPath.");
   }
 
   const indexes = Array.from(store.indexNames);
   if (indexes.length !== 1 || indexes[0] !== GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME) {
-    transaction.abort();
     throw new PersistenceError("database-upgrade", "Unexpected generated-version indexes.");
   }
 
   const index = store.index(GENERATED_COMPONENT_VERSION_SOURCE_INDEX_NAME);
   if (index.keyPath !== "sourceCaptureId" || index.unique) {
-    transaction.abort();
     throw new PersistenceError("database-upgrade", "Unexpected generated-version source index schema.");
   }
 }

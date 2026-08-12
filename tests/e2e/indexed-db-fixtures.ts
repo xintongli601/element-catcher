@@ -41,10 +41,17 @@ export type SeededCapture = {
 };
 
 export const ELEMENT_CATCHER_DATABASE_NAME = "element-catcher-local-persistence";
-export const ELEMENT_CATCHER_DATABASE_VERSION = 2;
+export const ELEMENT_CATCHER_DATABASE_VERSION = 3;
 export const CAPTURE_RECORD_STORE_NAME = "captureRecords";
 export const SCREENSHOT_ASSET_STORE_NAME = "screenshotAssets";
 export const GENERATED_COMPONENT_VERSION_STORE_NAME = "generatedComponentVersions";
+export const INTERACTION_PAIR_STORE_NAME = "interactionPairs";
+export const CURRENT_OBJECT_STORE_NAMES = [
+  CAPTURE_RECORD_STORE_NAME,
+  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  INTERACTION_PAIR_STORE_NAME,
+  SCREENSHOT_ASSET_STORE_NAME
+].sort();
 
 export const DEFAULT_CAPTURE_FIXTURES: CaptureFixtureSpec[] = [
   {
@@ -431,7 +438,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         databaseVersion,
         captureRecordStoreName,
         screenshotAssetStoreName,
-        generatedComponentVersionStoreName
+        generatedComponentVersionStoreName,
+        interactionPairStoreName
       } = constants;
 
       const operations: Record<string, (value: unknown) => Promise<unknown>> = {
@@ -1053,6 +1061,9 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
                 const store = database.createObjectStore(generatedComponentVersionStoreName, { keyPath: "id" });
                 store.createIndex("sourceCaptureId", "sourceCaptureId", { unique: false });
               }
+              if (!database.objectStoreNames.contains(interactionPairStoreName)) {
+                database.createObjectStore(interactionPairStoreName, { keyPath: "id" });
+              }
             } catch (error) {
               try {
                 request.transaction?.abort();
@@ -1083,10 +1094,11 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
       }
 
       async function clearStores(database: IDBDatabase) {
-        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName, generatedComponentVersionStoreName], "readwrite");
+        const transaction = database.transaction([captureRecordStoreName, screenshotAssetStoreName, generatedComponentVersionStoreName, interactionPairStoreName], "readwrite");
         transaction.objectStore(captureRecordStoreName).clear();
         transaction.objectStore(screenshotAssetStoreName).clear();
         transaction.objectStore(generatedComponentVersionStoreName).clear();
+        transaction.objectStore(interactionPairStoreName).clear();
         await transactionComplete(transaction);
       }
 
@@ -1243,7 +1255,8 @@ async function runDatabaseOperation<TArg, TResult>(page: Page, operation: string
         databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION,
         captureRecordStoreName: CAPTURE_RECORD_STORE_NAME,
         screenshotAssetStoreName: SCREENSHOT_ASSET_STORE_NAME,
-        generatedComponentVersionStoreName: GENERATED_COMPONENT_VERSION_STORE_NAME
+        generatedComponentVersionStoreName: GENERATED_COMPONENT_VERSION_STORE_NAME,
+        interactionPairStoreName: INTERACTION_PAIR_STORE_NAME
       }
     }
   );

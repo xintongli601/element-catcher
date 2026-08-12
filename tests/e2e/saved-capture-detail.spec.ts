@@ -1,10 +1,8 @@
 import { createServer } from "node:http";
 import { test, expect, getObjectUrlSnapshot, openSidePanelPage } from "./extension-fixture";
 import {
-  CAPTURE_RECORD_STORE_NAME,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   ELEMENT_CATCHER_DATABASE_VERSION,
-  SCREENSHOT_ASSET_STORE_NAME,
   clearTestData,
   deleteRecordWrapper,
   deleteScreenshotAsset,
@@ -30,7 +28,7 @@ test.describe("Milestone 4B saved capture detail automated validation", () => {
     const counts = await readPersistenceCounts(sidePanelPage);
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length,
       screenshotAssets: seeded.length,
       generatedComponentVersions: 0
@@ -358,7 +356,7 @@ async function seedAndReload(page: Parameters<typeof resetAndSeedSavedCaptures>[
 
 async function expectLibraryOrder(page: Parameters<typeof resetAndSeedSavedCaptures>[0], seeded: SeededCapture[]) {
   await expect(page.getByRole("heading", { name: "Capture Library" })).toBeVisible();
-  await expect(page.locator(".library-count")).toHaveText(String(seeded.length));
+  await expect(page.locator(".capture-library-header .library-count")).toHaveText(String(seeded.length));
   const titles = await page.locator(".library-item-title").allTextContents();
   expect(titles).toEqual(seeded.map((capture) => capture.title));
 }

@@ -382,7 +382,7 @@ test.describe("Milestone 6D slice boundary regression", () => {
     expect(backendApp).not.toContain("/v1/revise-component");
     expect(sidePanel).not.toContain("revision-contract");
     expect(indexedDb).not.toContain("GeneratedComponentVersionEntryV2");
-    expect(indexedDb).toContain("ELEMENT_CATCHER_DATABASE_VERSION = 2");
+    expect(indexedDb).toContain("ELEMENT_CATCHER_DATABASE_VERSION = 3");
     expect(previewHost).not.toContain("revision-contract");
   });
 });

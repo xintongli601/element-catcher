@@ -1,6 +1,7 @@
 import { test, expect, openSidePanelPage } from "./extension-fixture";
 import {
   CAPTURE_RECORD_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   ELEMENT_CATCHER_DATABASE_VERSION,
   GENERATED_COMPONENT_VERSION_STORE_NAME,
   createInvalidVersionTwoDatabase,
@@ -38,7 +39,7 @@ test.describe("Milestone 5D generated component persistence", () => {
 
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: before.wrappers.length,
       screenshotAssets: before.assets.length,
       generatedComponentVersions: 0
@@ -51,13 +52,13 @@ test.describe("Milestone 5D generated component persistence", () => {
     expect(await readAllScreenshotAssetSnapshots(sidePanelPage)).toEqual(before.assets);
   });
 
-  test("database opens at version 2 with exact generated-version store and empty migration result", async ({ sidePanelPage }) => {
+  test("database opens at version 3 with exact generated-version and interaction-pair stores and empty migration result", async ({ sidePanelPage }) => {
     const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
     const counts = await readPersistenceCounts(sidePanelPage);
     const storeInfo = await readGeneratedStoreInfo(sidePanelPage);
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: seeded.length,
       screenshotAssets: seeded.length,
       generatedComponentVersions: 0
@@ -845,7 +846,7 @@ test.describe("Milestone 5D generated component persistence", () => {
     const counts = await readPersistenceCounts(sidePanelPage);
     expect(counts).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: before.wrappers.length,
       screenshotAssets: before.assets.length,
       generatedComponentVersions: 0

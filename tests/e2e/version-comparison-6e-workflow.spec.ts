@@ -1,6 +1,7 @@
 import { expect, test } from "./extension-fixture";
 import type { Locator } from "@playwright/test";
 import {
+  ELEMENT_CATCHER_DATABASE_VERSION,
   putGeneratedVersion,
   readGeneratedVersions,
   resetAndSeedSavedCaptures,
@@ -354,8 +355,8 @@ async function saveRevisionFromVersion(
 
 async function deleteGeneratedVersionForWorkflow(page: Parameters<typeof resetAndSeedSavedCaptures>[0], id: string) {
   await page.evaluate(
-    async ({ id: generatedVersionId }) => {
-      const request = indexedDB.open("element-catcher-local-persistence", 2);
+    async ({ databaseVersion, id: generatedVersionId }) => {
+      const request = indexedDB.open("element-catcher-local-persistence", databaseVersion);
       const database = await new Promise<IDBDatabase>((resolve, reject) => {
         request.onerror = () => reject(request.error);
         request.onupgradeneeded = () => reject(new Error("Unexpected database upgrade during generated version deletion."));
@@ -374,7 +375,7 @@ async function deleteGeneratedVersionForWorkflow(page: Parameters<typeof resetAn
         database.close();
       }
     },
-    { id }
+    { databaseVersion: ELEMENT_CATCHER_DATABASE_VERSION, id }
   );
 }
 

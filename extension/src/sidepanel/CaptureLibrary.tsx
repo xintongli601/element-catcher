@@ -10,6 +10,8 @@ import {
   type CaptureLibraryQueryState
 } from "../library/capture-library-query";
 import type { SavedCaptureReadModel } from "../storage/capture-save";
+import type { InteractionPairCreateInput } from "../shared/interaction-pair-contract";
+import type { InteractionPairReadModel } from "../storage/interaction-pair";
 import {
   boundText,
   formatSourceLocation,
@@ -17,6 +19,7 @@ import {
   getCaptureDisplayTitle,
   normalizedOptionalText
 } from "./display-format";
+import { InteractionPairLibrary } from "./InteractionPairLibrary";
 
 export type CaptureLibraryState =
   | {
@@ -28,6 +31,7 @@ export type CaptureLibraryState =
   | {
       status: "loaded";
       savedCaptures: SavedCaptureReadModel[];
+      interactionPairs: InteractionPairReadModel[];
     }
   | {
       status: "failed";
@@ -40,7 +44,9 @@ export function CaptureLibrary({
   statusMessage,
   onQueryChange,
   onRetry,
-  onOpenCapture
+  onOpenCapture,
+  onSaveInteractionPair,
+  onDeleteInteractionPair
 }: {
   libraryState: CaptureLibraryState;
   queryState: CaptureLibraryQueryState;
@@ -48,6 +54,8 @@ export function CaptureLibrary({
   onQueryChange: (queryState: CaptureLibraryQueryState) => void;
   onRetry: () => void;
   onOpenCapture: (recordId: string) => void;
+  onSaveInteractionPair: (input: InteractionPairCreateInput) => Promise<void>;
+  onDeleteInteractionPair: (id: string) => Promise<void>;
 }) {
   const loadedCount = libraryState.status === "loaded" ? libraryState.savedCaptures.length : 0;
   const filteredCaptures =
@@ -111,6 +119,12 @@ export function CaptureLibrary({
               <p>Try another search term or clear the active filters.</p>
             </div>
           )}
+          <InteractionPairLibrary
+            savedCaptures={libraryState.savedCaptures}
+            interactionPairs={libraryState.interactionPairs}
+            onSaveInteractionPair={onSaveInteractionPair}
+            onDeleteInteractionPair={onDeleteInteractionPair}
+          />
         </>
       ) : null}
     </section>

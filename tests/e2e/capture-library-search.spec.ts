@@ -1,10 +1,8 @@
 import type { Locator, Page } from "@playwright/test";
 import { test, expect, getObjectUrlSnapshot, openSidePanelPage } from "./extension-fixture";
 import {
-  CAPTURE_RECORD_STORE_NAME,
-  GENERATED_COMPONENT_VERSION_STORE_NAME,
+  CURRENT_OBJECT_STORE_NAMES,
   ELEMENT_CATCHER_DATABASE_VERSION,
-  SCREENSHOT_ASSET_STORE_NAME,
   clearTestData,
   readAllRecordWrappers,
   readAllScreenshotAssetSnapshots,
@@ -566,7 +564,7 @@ test.describe("Milestone 4E Capture Library search and filter automated validati
     await expectTitles(reopened, ["Epsilon Untyped", "Delta Summary Tile", "Gamma Modal", "Beta Pricing Edited"]);
     expect(await readPersistenceCounts(reopened)).toEqual({
       version: ELEMENT_CATCHER_DATABASE_VERSION,
-      stores: [CAPTURE_RECORD_STORE_NAME, GENERATED_COMPONENT_VERSION_STORE_NAME, SCREENSHOT_ASSET_STORE_NAME].sort(),
+      stores: CURRENT_OBJECT_STORE_NAMES,
       captureRecords: 4,
       screenshotAssets: 4,
       generatedComponentVersions: 0
