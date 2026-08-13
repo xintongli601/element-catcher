@@ -1,6 +1,6 @@
 # Milestone 12 - Interactive Reconstruction
 
-Status: Local implementation complete
+Status: Completed / Accepted at `e56e00872d1bd4d15e3d19b666804d0ff5a2a308`
 
 Baseline: M11 Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`.
 

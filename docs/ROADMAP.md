@@ -1220,7 +1220,7 @@ Milestone status summary:
 - Slice 2 - Browser-session trust and privacy UX: Completed / Accepted at `5b6a0b81c75a2c7c354a630620ec62e784a9bc99`.
 - Slice 3: Not created.
 - Milestone 11: Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf` for bounded user-assisted Interaction Capture V1, including Trigger / Before -> Interaction -> Primary Reaction plus optional Additional Reactions and Minimal Hover Capture Assist.
-- Milestone 12: Completed locally for bounded Interactive Reconstruction from complete Interaction Pairs.
+- Milestone 12: Completed / Accepted at `e56e00872d1bd4d15e3d19b666804d0ff5a2a308` for bounded Interactive Reconstruction from complete Interaction Pairs.
 
 Included scope:
 
@@ -1281,7 +1281,7 @@ Local validation status: complete. M11 is Completed / Accepted at `5efef21b85167
 
 Known limitation: if an Interaction Pair is already loaded in the current Side Panel session and one of its referenced captures is deleted, the pair view may not refresh immediately. Reopening the Side Panel causes the references to be re-resolved correctly and the missing source is shown as unavailable. This is accepted as non-blocking Slice 1 behavior because persisted data remains correct, reopening resolves the missing reference correctly, the UI fails closed, and no source data is fabricated.
 
-M11 final local implementation is formally accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`. M12 begins after this baseline and is tracked separately.
+M11 final local implementation is formally accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`. M12 is tracked separately below and is now Completed / Accepted.
 
 Architecture: `docs/MILESTONE_11_INTERACTION_CAPTURE.md`.
 
@@ -1289,7 +1289,7 @@ Milestone 10 completion does not mean universal private-site compatibility, auth
 
 ## Milestone 12 - Interactive Reconstruction
 
-Status: Local implementation complete
+Status: Completed / Accepted at `e56e00872d1bd4d15e3d19b666804d0ff5a2a308`
 
 Objective: Rebuild a complete `InteractionPairV1` into a reusable bounded React + Tailwind interactive component while preserving local-first privacy, explicit review/consent, and safe preview isolation.
 

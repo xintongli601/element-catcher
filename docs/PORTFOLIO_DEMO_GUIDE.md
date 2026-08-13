@@ -1,179 +1,166 @@
 # Element Catcher Portfolio Demo Guide
 
-This guide is for an external reviewer evaluating the portfolio-ready local v0.1 demonstration.
+This guide supports a 3-5 minute interviewer demo of the completed v0.1 portfolio build.
 
-Element Catcher is not production-ready, SaaS, store-ready, deployed, or production GitHub-integrated. The default demo path requires no provider secret and focuses on local extension behavior.
+Element Catcher is a local-first Chrome extension that captures visible UI elements from supported webpages and turns those references into reusable React + Tailwind components. The strongest demo path is local Interaction Reconstruction, because it shows the product differentiator without requiring a paid provider.
 
-Milestone 9 portfolio/demo readiness is Completed for the bounded local-first v0.1 scope. Final real Chrome manual smoke evidence covered extension reload/errors, authenticated/private regular webpage capture, browser-protected page boundaries, backend-unconfigured generation preparation for newly saved captures, library metadata/search/persistence, Side Panel console, and Service Worker console checks. Generated-version-only GitHub and Bundle paths retain automated evidence when no configured provider/generated version is available for manual execution.
+## Demo Goal
 
-## 1. Prerequisites
+Show this story clearly:
+
+```text
+Capture -> Save -> Interaction Pair -> Interactive Reconstruction -> Safe Preview -> Export
+```
+
+Recommended example:
+
+```text
+More button -> hover or toggle -> dropdown appears
+```
+
+Use any supported ordinary webpage with a simple visible interaction pattern. A menu, dropdown, toggle panel, focus state, or call-to-action reveal works well.
+
+## Setup
+
+Prerequisites:
 
 - Node.js 20 or newer.
 - npm.
 - Google Chrome with extension Developer mode enabled.
-- A supported ordinary `http://` or `https://` webpage for capture. This may include many authenticated, login-only, private, internal, or localhost pages the user can already access in Chrome.
+- A supported `http://` or `https://` page the user can already access.
 
-Unsupported capture targets include `chrome://` pages, Chrome Web Store pages, browser-controlled UI, inaccessible cross-origin iframe contents, closed shadow roots, and pages where the content script is blocked or unavailable.
-
-## 2. Checkout and Install
-
-Check out the repository:
-
-```bash
-git clone https://github.com/xintongli601/element-catcher.git
-cd element-catcher
-```
-
-Install dependencies:
+Build:
 
 ```bash
 npm install
-```
-
-## 3. Build and Load the Extension
-
-Create the production extension build:
-
-```bash
 npm run build
 ```
 
-Load the unpacked extension:
+Load the extension:
 
-1. Open Chrome.
-2. Go to `chrome://extensions`.
-3. Turn on Developer mode.
-4. Choose Load unpacked.
-5. Select the repository `dist/` directory.
-6. Open Element Catcher from the extension icon or Side Panel entry.
+1. Open `chrome://extensions`.
+2. Enable Developer mode.
+3. Choose Load unpacked.
+4. Select the repository `dist/` directory.
+5. Open Element Catcher from the extension icon or Side Panel entry.
 
-Expected visible outcome: Chrome shows an Element Catcher extension card without red extension errors, and the Side Panel opens.
+Expected result: the Side Panel opens without extension errors.
 
-## 4. Default Local Extension Demonstration
+## Part A - Capture
 
-Use this path when no provider backend is configured.
+Goal: show Element Catcher collecting an element-level reference directly from the browser session.
 
 1. Open a supported ordinary webpage.
 2. Open the Element Catcher Side Panel.
-3. Start capture.
-4. Hover a visible UI element.
+3. Choose Start Capture.
+4. Hover a meaningful UI element.
 5. Click to lock the candidate.
-6. Use Parent and Child refinement where available.
+6. Use Parent or Child refinement if it improves the selected boundary.
 7. Confirm the selected element.
+8. Save the capture.
+9. Open the Capture Library.
 
-Expected visible outcome: the Side Panel shows captured element information, screenshot preview, and local Save controls.
+What to say:
 
-Save and organize:
+> Element Catcher captures at the element level, not the whole page. It stores a structured CaptureRecord and a screenshot locally, then lets me organize the result in a Capture Library.
 
-1. Save the capture.
-2. Open the Capture Library.
-3. Reopen the saved capture.
-4. Edit title, component type, tags, or notes.
-5. Use search and filtering.
-6. Delete a capture only when deletion behavior is intentionally being reviewed.
+Expected visible result: the saved capture appears in the Capture Library with its thumbnail, title, component type, source display, and saved time.
 
-Expected visible outcome: capture metadata and screenshot persist after Library reopen, and edited user-managed fields are reflected locally.
+## Part B - Interaction Capture
 
-Unavailable-backend behavior:
+Goal: show the key product insight that interaction states are explicit references, not hidden event-system reverse engineering.
 
-- Generation, revision, and regeneration require the configured local backend/provider path.
-- When the backend is unavailable or unconfigured, the UI should fail safely with a bounded user-facing error.
-- The default local extension demonstration should not require `OPENAI_API_KEY`, `OPENAI_MODEL`, or `ELEMENT_CATCHER_EXTENSION_ORIGIN`.
+Capture at least two related states:
 
-## 5. Optional Configured Generation Demonstration
+- **Trigger / Before:** for example, a More button before interaction.
+- **Primary Reaction:** for example, the dropdown after hover/toggle/click.
+- **Additional Reaction:** optional extra visible UI that appears at the same time.
 
-Use this path only when the reviewer intentionally configures the local backend/provider.
+Create the Interaction Pair:
 
-Required backend configuration is read from environment variables:
+1. In Capture Library, choose the Trigger / Before capture.
+2. Choose the Primary Reaction capture.
+3. Optionally select Additional Reactions.
+4. Select the interaction type: click, toggle, hover, or focus.
+5. Add a short title such as `More menu hover`.
+6. Save the Interaction Pair.
+
+What to say:
+
+> A dropdown is often not just the same node changing state. M11 models the product truth explicitly: Trigger / Before plus Interaction plus visible Reaction states.
+
+Expected visible result: the Interaction Pair detail shows the transition, referenced captures, and reaction surfaces.
+
+## Part C - Interactive Reconstruction
+
+Goal: show the strongest local portfolio capability.
+
+1. Open the saved Interaction Pair.
+2. Choose Reconstruct interaction.
+3. Review the reconstruction data and privacy copy.
+4. Explain that source URL, page title, cookies, browser storage, credentials, and browser session are excluded.
+5. Check the consent box.
+6. Generate the interactive reconstruction.
+7. Open the safe interactive preview.
+8. Perform the interaction in the preview.
+9. Show the reaction appearing.
+10. Show the React + Tailwind source.
+11. Export `.tsx`.
+
+What to say:
+
+> M12 reconstructs a bounded interactive component from sanitized DOM, text, style, and layout projections. The preview uses a validated declarative plan; it does not execute arbitrary generated source inside the preview realm.
+
+Expected visible result: preview rest state shows the trigger, the active state shows the reaction, and the source/export controls are visible.
+
+## Optional Secondary Demo - Static AI Generation
+
+Use this only when a reviewer intentionally configures the local backend/provider.
+
+Required environment:
 
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `ELEMENT_CATCHER_EXTENSION_ORIGIN`
 
-The backend listens on `127.0.0.1:8787` after it is built and started with the documented project scripts:
+Run:
 
 ```bash
 npm run build
 npm run start:backend
 ```
 
-Expected visible outcome: after explicit Review and consent, generation can send the approved screenshot and structured projection through the configured local backend/proxy. Provider secrets remain backend-only.
-
-Consent-gated generation:
+Demo path:
 
 1. Reopen a saved capture.
 2. Start generation.
-3. Review the exact outbound data shown by Element Catcher.
-4. Consent only if the outbound projection is acceptable.
-5. Wait for a generated React + Tailwind source version.
+3. Review the outbound data.
+4. Consent only if the provider path is intentionally configured.
+5. Wait for the generated React + Tailwind version.
+6. Preview if the source passes the Previewable Subset V1 gate.
+7. Optionally revise, regenerate, compare, or export.
 
-Expected visible outcome: generated source is saved as a separate generated version linked to the capture. The original capture remains unchanged.
+What to say:
 
-## 6. Preview, Revision, Regeneration, and Comparison
+> Static AI generation is consent-gated and backend-mediated. Provider secrets stay server-side, and generated versions are stored separately from the original capture.
 
-Preview:
+## Optional Export Demos
 
-1. Expand a generated version.
-2. Choose Preview.
-3. Review the result or unsupported-source state.
+Exact `.tsx` export:
 
-Expected visible outcome: only source that passes Previewable Subset V1 renders through the isolated preview sandbox. Unsupported or unsafe generated source remains visible as inert source text.
-
-Previewable Subset V1 limitations:
-
-- No universal generated-code execution.
-- No arbitrary React, TypeScript, JavaScript, CSS, Tailwind runtime, imports, hooks, browser APIs, timers, workers, storage, navigation, remote assets, generated CSS, `eval`, or `Function` execution.
-- Rendering is not a production security proof, compile guarantee, or rendering correctness guarantee.
-
-Revision and regeneration:
-
-1. Select an existing generated version.
-2. Choose Revise or Regenerate.
-3. Review the approved outbound data.
-4. Consent only if the configured backend/provider path is intended.
-5. Confirm that successful results create new immutable generated versions.
-
-Expected visible outcome: revision or regeneration appends a new generated version and leaves the original capture and earlier generated versions unchanged.
-
-Comparison:
-
-1. Select two distinct generated versions for the same capture.
-2. Choose Baseline and Candidate.
-3. Use Swap if needed.
-4. Review metadata and source diff.
-
-Expected visible outcome: comparison is local, read-only, and ephemeral. It does not execute source, call the backend, or persist comparison state.
-
-## 7. Export Demonstrations
-
-Exact local `.tsx` export:
-
-1. Expand one generated-version row.
-2. Choose `Export .tsx`.
+1. Expand a generated or reconstructed source row.
+2. Choose Export `.tsx`.
 3. Inspect the downloaded file.
 
-Expected visible outcome: the browser downloads exactly one UTF-8 `.tsx` file containing the selected persisted `entry.value.code` bytes. The export does not transform, format, parse, compile, execute, or add metadata.
-
-Deterministic fake/development GitHub workflow:
-
-1. Expand one generated-version row.
-2. Choose `Export to GitHub`.
-3. In deterministic fake/development mode only, select one repository and existing branch.
-4. Enter or confirm one repository-relative `.tsx` path and a bounded single-line commit message.
-5. Review the frozen create/update summary.
-6. Explicitly confirm the fake/development write.
-
-Expected visible outcome: deterministic fake/development mode can show a verified fake single-file create/update success, with Review and Success states labeled as development/fake only and not production GitHub integration. Normal runtime remains fail-closed and explicitly states that real GitHub authorization, OAuth, token storage, real GitHub REST transport, and production GitHub writes are not implemented.
-
-Never claim real GitHub integration. Element Catcher does not implement real GitHub authorization, OAuth exchange, token storage, real GitHub REST transport, production GitHub writes, repository creation, branch creation, pull requests, workflows, Actions, releases, deployments, or GitHub Pages.
+Expected result: one UTF-8 `.tsx` file with exact persisted source bytes.
 
 Bundle V1 ZIP export:
 
-1. Expand one generated-version row.
-2. Choose `Export bundle`.
-3. Inspect the downloaded ZIP.
+1. Expand a generated-version row.
+2. Choose Export bundle.
+3. Inspect the ZIP.
 
-Expected visible outcome: Bundle V1 contains exactly:
+Expected result:
 
 ```text
 README.md
@@ -181,32 +168,38 @@ element-catcher.json
 src/<ComponentName>.tsx
 ```
 
-The visible download status should state that Bundle V1 is local source-only and is not a runnable or dependency-complete project.
+Deterministic fake/development GitHub export:
 
-Bundle V1 is source-only. It is not an npm package, runnable application, dependency-complete project, production-ready scaffold, compile guarantee, publishing workflow, or deployment workflow.
+1. Expand a generated-version row.
+2. Choose Export to GitHub.
+3. Use only the deterministic fake/development workflow.
+4. Review and confirm the fake create/update.
 
-## 8. Common Unsupported or Unavailable States
+Expected result: fake/development success only. Do not present this as production GitHub integration.
 
-- Unsupported pages cannot be selected.
-- The Side Panel may need reload after extension rebuild.
-- Cross-origin iframe contents and closed shadow roots are unavailable.
-- Generation, revision, and regeneration are unavailable without a configured local backend/provider.
-- Preview may reject valid-looking generated source that is outside Previewable Subset V1.
-- Normal runtime GitHub export is fail-closed and not configured for real GitHub.
-- Bundle V1 and `.tsx` export do not prove the source compiles or runs in a project.
+## Boundaries To State Out Loud
 
-## 9. Claims to Avoid
+- Element Catcher v0.1 is a portfolio build, not production SaaS.
+- Capture works on supported ordinary pages where Chrome allows extension access.
+- The product must not bypass auth, paywalls, permissions, browser restrictions, or inaccessible iframes.
+- Interactive Reconstruction is bounded visual approximation, not pixel-perfect cloning.
+- Source-site JavaScript, cookies, browser storage, credentials, browser session, and hidden app state are not reconstructed.
+- Preview uses restricted declarative plans and does not execute arbitrary generated code.
+- Real GitHub OAuth, token storage, production repository writes, PRs, releases, deployments, and GitHub Pages are not implemented.
 
-Never claim in a portfolio demonstration that Element Catcher v0.1 is:
+## Common Recovery Notes
 
-- production-ready;
-- Chrome Web Store ready or submitted;
-- deployed as a production hosted service;
-- SaaS or multi-user;
-- backed by an account system, cloud sync, or collaboration;
-- integrated with real GitHub;
-- able to execute arbitrary generated code safely;
-- an npm package generator;
-- a runnable project generator;
-- a publishing or deployment workflow;
-- dependency-complete or guaranteed to compile.
+- If the Side Panel looks stale after rebuilding, reload the extension from `chrome://extensions` and reopen the Side Panel.
+- If Start Capture is unavailable on a restricted page, switch to a supported ordinary webpage.
+- If provider-backed generation is unavailable, continue with Interaction Reconstruction, Capture Library, preview, and export.
+- If preview rejects static generated source, explain that Previewable Subset V1 is intentionally restricted.
+
+## Portfolio Assets
+
+Deterministic documentation screenshots live in [`docs/assets/`](assets/):
+
+- [`capture-library.png`](assets/capture-library.png)
+- [`interaction-pair.png`](assets/interaction-pair.png)
+- [`interactive-reconstruction-review.png`](assets/interactive-reconstruction-review.png)
+- [`interactive-preview-rest.png`](assets/interactive-preview-rest.png)
+- [`interactive-preview-active.png`](assets/interactive-preview-active.png)
