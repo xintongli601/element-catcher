@@ -405,7 +405,7 @@ function InteractionReconstructionPanel({ readModel }: { readModel: InteractionP
             <MetadataItem label="Surfaces" value={String(state.review.requestWithoutDataUrls.surfaces.length)} />
             <MetadataItem label="Privacy" value="Source URL, page title, cookies, browser storage, credentials, and browser session excluded." />
           </dl>
-          <p className="generation-review-copy">Visible screenshot content and bounded capture projections are used only after this consent. This local V1 reconstructs visible UI behavior, not source-site business logic.</p>
+          <p className="generation-review-copy">Bounded capture projections and verified screenshot metadata are used only after this consent. This local V1 reconstructs visible UI behavior, not source-site business logic.</p>
           <label className="consent-row">
             <input type="checkbox" checked={state.consent} onChange={(event) => setState({ ...state, consent: event.currentTarget.checked })} />
             <span>I reviewed the interaction reconstruction data and consent to generate this local interactive component.</span>

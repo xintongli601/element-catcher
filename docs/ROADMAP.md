@@ -1299,21 +1299,23 @@ Implemented scope:
 - Prepare a privacy-preserving `InteractionReconstructionRequestWithoutDataUrlsV1` projection with Trigger / Before, Primary Reaction, and optional Additional Reactions.
 - Review outbound/material data before generation, including clear exclusions for source URL, page title, cookies, browser storage, credentials, and browser session.
 - Require explicit consent before generation.
-- Generate deterministic local React + Tailwind source for click, toggle, hover, and focus behavior.
+- Generate deterministic local React + Tailwind source for click, toggle, hover, and focus behavior, using a bounded visual mapper over sanitized DOM/text/style/layout projections rather than generic metadata cards.
 - Persist reconstruction entries in a separate `interactionReconstructions` IndexedDB store with `sourceInteractionPairId` indexing.
 - Reopen persisted reconstructions from an Interaction Pair.
 - Preview interaction behavior through `InteractivePreviewPlanV1`, a declarative plan rendered by the existing isolated preview render realm; generated source is displayed and exported but not executed inside Element Catcher.
 - Render simultaneous Additional Reactions with the Primary Reaction when active.
 - Export the exact persisted interactive source as `.tsx`.
 - Delete a reconstruction without deleting source captures or the Interaction Pair.
+- Verify screenshot asset metadata/digest for capture completeness and lineage; local deterministic V1 does not reconstruct from screenshot pixels.
 
 Exclusions:
 
 - No CaptureRecord v1 schema change.
 - No source-site JavaScript execution, event-listener scraping, framework introspection, network observation, mutation tracing, universal interaction detection, multi-step state machine, drag/drop, scroll, or keyboard macro reconstruction.
+- No screenshot-pixel reconstruction, image-to-code inference, or hidden source-site business logic inference.
 - No backend/provider/GitHub changes, Manifest permission changes, new browser permissions, CSP weakening, dependency additions, cookies, credentials, browser storage, authentication state, source JavaScript, network traffic, or app state manager reads.
 - Revision, comparison, and GitHub export remain scoped to persisted static generated versions.
 
-Local validation status: focused M12 Playwright `5 passed / 0 failed / 0 skipped / 0 did not run`; `npm run build:extension` PASS. Backend tests are not required because backend files and network/provider behavior are unchanged.
+Local validation status: focused M12 Playwright `6 passed / 0 failed / 0 skipped / 0 did not run`; `npm run build:extension` PASS. Backend tests are not required because backend files and network/provider behavior are unchanged.
 
-Architecture: `docs/MILESTONE_10_PRIVATE_SESSION_CAPTURE.md`.
+Architecture: `docs/MILESTONE_12_INTERACTIVE_RECONSTRUCTION.md`.

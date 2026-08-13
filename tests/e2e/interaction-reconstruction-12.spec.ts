@@ -4,6 +4,7 @@ import { expect, test } from "./extension-fixture";
 import {
   CURRENT_OBJECT_STORE_NAMES,
   DEFAULT_CAPTURE_FIXTURES,
+  type CaptureFixtureSpec,
   createCaptureRecordFixture,
   deleteRecordWrapper,
   readAllRecordWrappers,
@@ -37,6 +38,31 @@ import {
 
 const root = join(import.meta.dirname, "../..");
 const pairId = "interaction-00000000-0000-4000-8000-000000000001";
+const VISUAL_RECONSTRUCTION_FIXTURES: CaptureFixtureSpec[] = [
+  {
+    ...DEFAULT_CAPTURE_FIXTURES[0],
+    title: "Alpha Menu",
+    domTextPreview: "Annual plan menu",
+    childSummaryTextPreview: "Annual plan menu",
+    styleSentinel: "#2563eb"
+  },
+  {
+    ...DEFAULT_CAPTURE_FIXTURES[1],
+    title: "Beta Trigger",
+    tagName: "button",
+    semanticRole: "button",
+    domTextPreview: "Open pricing",
+    childSummaryTextPreview: "Open pricing",
+    styleSentinel: "#0f766e"
+  },
+  {
+    ...DEFAULT_CAPTURE_FIXTURES[2],
+    title: "Gamma Action",
+    domTextPreview: "Upgrade now",
+    childSummaryTextPreview: "Upgrade now",
+    styleSentinel: "#7c3aed"
+  }
+];
 
 test.describe("Milestone 12 Interactive Reconstruction", () => {
   test("contract projects private Interaction Pair data and maps every supported trigger", async () => {
@@ -61,6 +87,10 @@ test.describe("Milestone 12 Interactive Reconstruction", () => {
       expect(entry.interactivePreviewPlan.additionalReactions).toHaveLength(1);
       expect(entry.value.code).toContain("useState");
       expect(entry.value.code).toContain(trigger === "hover" ? "onMouseEnter" : trigger === "focus" ? "onFocus" : "onClick");
+      expect(entry.value.code).toContain("Safe fixture text");
+      expect(entry.value.code).not.toContain("Rest state");
+      expect(entry.value.code).not.toContain("Primary visible reaction");
+      expect(entry.value.code).not.toContain("Additional reaction surface");
     }
   });
 
@@ -89,13 +119,16 @@ test.describe("Milestone 12 Interactive Reconstruction", () => {
         httpRequests.push(request.url());
       }
     });
-    const seeded = await resetAndSeedSavedCaptures(sidePanelPage);
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage, VISUAL_RECONSTRUCTION_FIXTURES);
     await sidePanelPage.reload();
     await installPreviewMessageRecorder(sidePanelPage);
+    const triggerCapture = seeded.find((capture) => capture.title === "Beta Trigger")!;
+    const primaryCapture = seeded.find((capture) => capture.title === "Alpha Menu")!;
+    const additionalCapture = seeded.find((capture) => capture.title === "Gamma Action")!;
 
-    await sidePanelPage.getByLabel("Trigger / Before").selectOption({ label: seeded[1].title });
-    await sidePanelPage.getByLabel("Primary Reaction").selectOption({ label: seeded[0].title });
-    await sidePanelPage.getByLabel("Additional Reactions").selectOption([{ label: seeded[2].title }]);
+    await sidePanelPage.getByLabel("Trigger / Before").selectOption({ label: triggerCapture.title });
+    await sidePanelPage.getByLabel("Primary Reaction").selectOption({ label: primaryCapture.title });
+    await sidePanelPage.getByLabel("Additional Reactions").selectOption([{ label: additionalCapture.title }]);
     await sidePanelPage.getByLabel("Interaction trigger").selectOption("hover");
     await sidePanelPage.getByLabel("Interaction title").fill("Hover price detail");
     await sidePanelPage.getByRole("button", { name: "Save Interaction Pair" }).click();
@@ -103,23 +136,32 @@ test.describe("Milestone 12 Interactive Reconstruction", () => {
     await sidePanelPage.getByRole("button", { name: "Reconstruct interaction" }).click();
     await expect(sidePanelPage.getByText("Review interaction reconstruction data")).toBeVisible();
     await expect(sidePanelPage.getByText("Source URL, page title, cookies, browser storage, credentials, and browser session excluded.")).toBeVisible();
-    await expect(sidePanelPage.getByText("Visible screenshot content and bounded capture projections are used only after this consent.")).toBeVisible();
+    await expect(sidePanelPage.getByText("Bounded capture projections and verified screenshot metadata are used only after this consent.")).toBeVisible();
     expect(httpRequests).toEqual([]);
 
     await sidePanelPage.getByRole("checkbox").check();
     await sidePanelPage.getByRole("button", { name: "Generate interactive reconstruction" }).click();
     await expect(sidePanelPage.getByRole("button", { name: /Open interactive reconstruction:/ })).toBeVisible();
     await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("export function");
-    await expect(sidePanelPage.locator("pre.generated-code-block")).not.toContainText(seeded[0].record.source.pageTitle);
+    await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("Open pricing");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("Annual plan menu");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("Upgrade now");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("bg-teal-600");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("bg-blue-600");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).toContainText("bg-purple-600");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).not.toContainText("Rest state");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).not.toContainText("Primary visible reaction");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).not.toContainText("Additional reaction surface");
+    await expect(sidePanelPage.locator("pre.generated-code-block")).not.toContainText(primaryCapture.record.source.pageTitle);
     await expect(sidePanelPage.locator("pre.generated-code-block")).not.toContainText("user:secret");
 
     await expect(sidePanelPage.getByText("Preview ready", { exact: true })).toBeVisible();
     const frame = previewFrameBySuffix(sidePanelPage, "src/preview/render-realm.html");
-    await expect(frame.getByText(seeded[1].title)).toBeVisible();
-    await expect(frame.getByText(seeded[0].title)).toHaveCount(0);
+    await expect(frame.locator(".bg-teal-600", { hasText: "Open pricing" })).toBeVisible();
+    await expect(frame.getByText("Annual plan menu")).toHaveCount(0);
     await frame.getByRole("group", { name: /interactive preview/ }).hover();
-    await expect(frame.getByText(seeded[0].title)).toBeVisible();
-    await expect(frame.getByText(seeded[2].title)).toBeVisible();
+    await expect(frame.locator(".bg-blue-600", { hasText: "Annual plan menu" })).toBeVisible();
+    await expect(frame.locator(".bg-purple-600", { hasText: "Upgrade now" })).toBeVisible();
     expect(await renderMessagesContainGeneratedSource(sidePanelPage)).toBe(false);
 
     const downloadPromise = sidePanelPage.waitForEvent("download");
@@ -129,7 +171,8 @@ test.describe("Milestone 12 Interactive Reconstruction", () => {
 
     const stored = await readInteractionReconstructions(sidePanelPage);
     expect(stored).toHaveLength(1);
-    expect(JSON.stringify(stored)).not.toContain(seeded[0].record.source.pageTitle);
+    expect(JSON.stringify(stored)).toContain("Open pricing");
+    expect(JSON.stringify(stored)).not.toContain(primaryCapture.record.source.pageTitle);
 
     await sidePanelPage.reload();
     await sidePanelPage.getByRole("button", { name: "Open interaction pair: Hover price detail" }).click();
@@ -140,6 +183,28 @@ test.describe("Milestone 12 Interactive Reconstruction", () => {
     expect(await readInteractionReconstructions(sidePanelPage)).toHaveLength(0);
     expect(await readAllRecordWrappers(sidePanelPage)).toHaveLength(seeded.length);
     expect(httpRequests).toEqual([]);
+  });
+
+  test("toggle preview uses reconstructed capture visuals rather than source execution", async ({ sidePanelPage }) => {
+    const seeded = await resetAndSeedSavedCaptures(sidePanelPage, VISUAL_RECONSTRUCTION_FIXTURES);
+    await sidePanelPage.reload();
+    const triggerCapture = seeded.find((capture) => capture.title === "Beta Trigger")!;
+    const primaryCapture = seeded.find((capture) => capture.title === "Alpha Menu")!;
+
+    await sidePanelPage.getByLabel("Trigger / Before").selectOption({ label: triggerCapture.title });
+    await sidePanelPage.getByLabel("Primary Reaction").selectOption({ label: primaryCapture.title });
+    await sidePanelPage.getByLabel("Interaction trigger").selectOption("toggle");
+    await sidePanelPage.getByRole("button", { name: "Save Interaction Pair" }).click();
+    await sidePanelPage.getByRole("button", { name: "Reconstruct interaction" }).click();
+    await sidePanelPage.getByRole("checkbox").check();
+    await sidePanelPage.getByRole("button", { name: "Generate interactive reconstruction" }).click();
+    await expect(sidePanelPage.getByText("Preview ready", { exact: true })).toBeVisible();
+    const frame = previewFrameBySuffix(sidePanelPage, "src/preview/render-realm.html");
+    await expect(frame.getByText("Annual plan menu")).toHaveCount(0);
+    await frame.getByRole("group", { name: /interactive preview/ }).click();
+    await expect(frame.locator(".bg-blue-600", { hasText: "Annual plan menu" })).toBeVisible();
+    await frame.getByRole("group", { name: /interactive preview/ }).click();
+    await expect(frame.getByText("Annual plan menu")).toHaveCount(0);
   });
 
   test("missing referenced captures fail closed before reconstruction starts", async ({ sidePanelPage }) => {

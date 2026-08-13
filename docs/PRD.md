@@ -42,7 +42,7 @@ Implemented:
 - Bounded M10 Slice 1 Start Capture recovery for supported ordinary webpages when Chrome permits active-tab script injection; Completed / Accepted at `b0ed05823c530b2b0632c5db3bdb189459719f0d`.
 - Bounded M11 Interaction Pair V1 workflow for Trigger / Before, Interaction, Primary Reaction, and optional Additional Reactions; Completed / Accepted at `5efef21b85167bbe0dc091231343b8ef51afe2bf`.
 - M11 Minimal Hover Capture Assist for pressing Enter during active selection to capture the current highlighted hover state through the existing CaptureRecord v1 pipeline.
-- Bounded M12 Interactive Reconstruction workflow for complete Interaction Pairs: review projected surfaces, consent locally, generate deterministic React + Tailwind source, preview through a safe declarative interactive plan, persist, reopen, delete, and export `.tsx`.
+- Bounded M12 Interactive Reconstruction workflow for complete Interaction Pairs: review projected surfaces, consent locally, generate deterministic React + Tailwind source with visual approximation from sanitized DOM/text/style/layout projections, preview through a safe declarative interactive plan, persist, reopen, delete, and export `.tsx`.
 
 ## 3. Problem Statement
 
